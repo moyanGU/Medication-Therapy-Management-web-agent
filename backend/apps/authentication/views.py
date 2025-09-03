@@ -295,7 +295,7 @@ def send_verification_code(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def logout(request):
     """
     用户登出API
@@ -308,19 +308,11 @@ def logout(request):
     - message: 提示信息
     """
     try:
-        # 获取当前用户的refresh token（如果有的话）
-        refresh_token = request.data.get('refresh_token')
-        
-        if refresh_token:
-            try:
-                # 将refresh token加入黑名单
-                token = RefreshToken(refresh_token)
-                token.blacklist()
-                logger.info(f"用户登出成功: user_id={request.user.id}, username={request.user.username}")
-            except Exception as e:
-                logger.warning(f"Refresh token处理失败: {str(e)}")
+        # 安全地获取用户信息
+        if hasattr(request, 'user') and request.user.is_authenticated:
+            logger.info(f"用户登出成功: user_id={request.user.id}, username={request.user.username}")
         else:
-            logger.info(f"用户登出成功（无refresh token）: user_id={request.user.id}, username={request.user.username}")
+            logger.info("匿名用户登出")
         
         return Response({
             'success': True,
@@ -333,5 +325,103 @@ def logout(request):
         return Response({
             'success': False,
             'message': '登出失败，请稍后重试',
+            'data': None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def refresh_token(request):
+    """
+    刷新访问令牌API
+    
+    请求参数:
+    - refresh_token: 刷新令牌
+    
+    返回:
+    - success: 是否成功
+    - data: 新的访问令牌
+    - message: 提示信息
+    """
+    try:
+        refresh_token_str = request.data.get('refresh_token', '').strip()
+        
+        if not refresh_token_str:
+            return Response({
+                'success': False,
+                'message': '刷新令牌不能为空',
+                'data': None
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # 验证刷新令牌
+            refresh = RefreshToken(refresh_token_str)
+            
+            # 生成新的访问令牌
+            access_token = refresh.access_token
+            
+            logger.info(f"令牌刷新成功: user_id={refresh.get('user_id')}")
+            
+            return Response({
+                'success': True,
+                'message': '令牌刷新成功',
+                'data': {
+                    'access': str(access_token)
+                }
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as token_error:
+            logger.warning(f"无效的刷新令牌: {str(token_error)}")
+            return Response({
+                'success': False,
+                'message': '刷新令牌无效或已过期',
+                'data': None
+            }, status=status.HTTP_401_UNAUTHORIZED)
+            
+    except Exception as e:
+        logger.error(f"令牌刷新失败: {str(e)}")
+        return Response({
+            'success': False,
+            'message': '令牌刷新失败，请重新登录',
+            'data': None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def verify_token(request):
+    """
+    验证令牌有效性API
+    
+    请求头:
+    - Authorization: Bearer <access_token>
+    
+    返回:
+    - success: 是否成功
+    - data: 用户信息
+    - message: 提示信息
+    """
+    try:
+        logger.info(f"令牌验证成功: user_id={request.user.id}, username={request.user.username}")
+        
+        return Response({
+            'success': True,
+            'message': '令牌有效',
+            'data': {
+                'user': {
+                    'id': request.user.id,
+                    'username': request.user.username,
+                    'phone': request.user.phone,
+                    'email': request.user.email,
+                    'is_admin': request.user.is_admin,
+                }
+            }
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"令牌验证失败: {str(e)}")
+        return Response({
+            'success': False,
+            'message': '令牌验证失败',
             'data': None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

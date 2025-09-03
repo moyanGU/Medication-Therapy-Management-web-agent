@@ -4,11 +4,11 @@ from .views import MedicineViewSet
 
 # 创建路由器
 router = DefaultRouter()
-router.register(r'medicines', MedicineViewSet, basename='medicine')
+router.register(r'', MedicineViewSet, basename='medicine')
 
 # URL配置
 urlpatterns = [
-    path('api/', include(router.urls)),
+    path('', include(router.urls)),
 ]
 
 # 药品管理API路由说明：

@@ -15,4 +15,10 @@ urlpatterns = [
     
     # 用户登出
     path('logout/', views.logout, name='logout'),
+    
+    # 刷新令牌
+    path('refresh/', views.refresh_token, name='refresh_token'),
+    
+    # 验证令牌
+    path('verify/', views.verify_token, name='verify_token'),
 ]
