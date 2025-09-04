@@ -30,24 +30,18 @@ export enum DosageForm {
 export interface Medicine {
   id: number
   name: string
-  generic_name?: string
+  specification?: string
   manufacturer?: string
-  type: MedicineType
-  dosage_form: DosageForm
-  strength?: string
+  medicine_type: string
   quantity: number
-  unit: string
   purchase_price?: number
-  selling_price?: number
   purchase_date?: string
   expiry_date?: string
   batch_number?: string
   storage_conditions?: string
   description?: string
-  image?: string
-  barcode?: string
-  prescription_required: boolean
-  min_stock_level: number
+  image_path?: string
+  is_prescription: boolean
   created_at: string
   updated_at: string
   is_expired: boolean
@@ -60,24 +54,18 @@ export interface Medicine {
  */
 export interface MedicineCreateData {
   name: string
-  generic_name?: string
+  specification?: string
   manufacturer?: string
-  type: MedicineType
-  dosage_form: DosageForm
-  strength?: string
+  medicine_type: string
   quantity: number
-  unit: string
   purchase_price?: number
-  selling_price?: number
   purchase_date?: string
   expiry_date?: string
   batch_number?: string
   storage_conditions?: string
   description?: string
-  image?: string
-  barcode?: string
-  prescription_required?: boolean
-  min_stock_level?: number
+  image_path?: string
+  is_prescription?: boolean
 }
 
 /**
@@ -85,24 +73,18 @@ export interface MedicineCreateData {
  */
 export interface MedicineUpdateData {
   name?: string
-  generic_name?: string
+  specification?: string
   manufacturer?: string
-  type?: MedicineType
-  dosage_form?: DosageForm
-  strength?: string
+  medicine_type?: string
   quantity?: number
-  unit?: string
   purchase_price?: number
-  selling_price?: number
   purchase_date?: string
   expiry_date?: string
   batch_number?: string
   storage_conditions?: string
   description?: string
-  image?: string
-  barcode?: string
-  prescription_required?: boolean
-  min_stock_level?: number
+  image_path?: string
+  is_prescription?: boolean
 }
 
 /**

@@ -67,12 +67,13 @@ class Medicine(models.Model):
         help_text='药品存储要求，如温度、湿度、光照等条件'
     )
     
-    # 药品图片
-    image_url = models.URLField(
+    # 药品图片路径
+    image_path = models.CharField(
+        max_length=500,
         blank=True,
         null=True,
-        verbose_name='药品图片URL',
-        help_text='药品图片的存储URL'
+        verbose_name='药品图片路径',
+        help_text='药品图片的服务器存储路径'
     )
     
     # 药品描述

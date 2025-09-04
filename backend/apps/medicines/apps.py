@@ -13,8 +13,5 @@ class MedicinesConfig(AppConfig):
         """
         应用准备就绪时的初始化操作
         """
-        # 导入信号处理器
-        try:
-            import apps.medicines.signals  # noqa F401
-        except ImportError:
-            pass
+        # 信号处理器将在需要时添加
+        pass

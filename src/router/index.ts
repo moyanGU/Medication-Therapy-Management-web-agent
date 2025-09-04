@@ -174,16 +174,40 @@ const router = createRouter({
 
 // 路由守卫 - 检查认证状态
 router.beforeEach(async (to, from, next) => {
+  console.log('🔵 [Router] === Route Guard Started ===')
+  console.log('🔵 [Router] Navigation from:', from.path, 'to:', to.path)
+  console.log('🔵 [Router] Route name:', to.name)
+  console.log('🔵 [Router] Route params:', to.params)
+  console.log('🔵 [Router] Route query:', to.query)
+  
   const authStore = useAuthStore()
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
   const requiresGuest = to.matched.some(record => record.meta.requiresGuest)
   
+  console.log('🔵 [Router] Auth store state:', {
+    isAuthenticated: authStore.isAuthenticated,
+    hasAccessToken: !!authStore.accessToken,
+    hasRefreshToken: !!authStore.refreshToken,
+    user: authStore.user
+  })
+  console.log('🔵 [Router] localStorage tokens:', {
+    accessToken: !!localStorage.getItem('access_token'),
+    refreshToken: !!localStorage.getItem('refresh_token'),
+    userInfo: !!localStorage.getItem('user_info')
+  })
+  console.log('🔵 [Router] Route requirements:', {
+    requiresAuth,
+    requiresGuest
+  })
+  
   // 如果是从登录页跳转，给一个小延迟确保认证状态已更新
   if (from.path === '/login' && authStore.isAuthenticated) {
+    console.log('🔵 [Router] 从登录页跳转，等待认证状态更新')
     await new Promise(resolve => setTimeout(resolve, 50))
+    console.log('🔵 [Router] 认证状态更新完成')
   }
   
-  console.log('路由守卫检查:', {
+  console.log('🔵 [Router] 路由守卫检查:', {
     to: to.path,
     from: from.path,
     requiresAuth,
@@ -193,7 +217,11 @@ router.beforeEach(async (to, from, next) => {
   
   // 如果需要认证但未登录
   if (requiresAuth && !authStore.isAuthenticated) {
-    console.log('需要认证但未登录，重定向到登录页')
+    console.log('🔴 [Router] 需要认证但未登录，重定向到登录页')
+    console.log('🔴 [Router] 重定向参数:', {
+      path: '/login',
+      query: { redirect: to.fullPath }
+    })
     next({
       path: '/login',
       query: { redirect: to.fullPath }
@@ -203,19 +231,21 @@ router.beforeEach(async (to, from, next) => {
   
   // 如果需要访客状态但已登录
   if (requiresGuest && authStore.isAuthenticated) {
-    console.log('已登录用户访问访客页面，重定向到仪表板')
+    console.log('🟡 [Router] 已登录用户访问访客页面，重定向到仪表板')
     next('/dashboard')
     return
   }
   
   // 如果访问根路径且已登录，重定向到仪表板
   if (to.path === '/' && authStore.isAuthenticated) {
-    console.log('已登录用户访问根路径，重定向到仪表板')
+    console.log('🟡 [Router] 已登录用户访问根路径，重定向到仪表板')
     next('/dashboard')
     return
   }
   
   // 其他情况正常通过
+  console.log('🟢 [Router] 路由守卫检查通过，允许导航')
+  console.log('🔵 [Router] === Route Guard Completed ===')
   next()
 })
 

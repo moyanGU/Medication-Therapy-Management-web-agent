@@ -16,11 +16,14 @@ class MedicineSerializer(serializers.ModelSerializer):
     # 用户字段（从请求中获取，不需要在创建时传递）
     user = serializers.HiddenField(default=serializers.CurrentUserDefault())
     
+    # 使用CharField存储图片文件路径
+    image_path = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    
     class Meta:
         model = Medicine
         fields = [
             'id', 'user', 'name', 'specification', 'manufacturer',
-            'expiry_date', 'quantity', 'storage_conditions', 'image_url',
+            'expiry_date', 'quantity', 'storage_conditions', 'image_path',
             'description', 'medicine_type', 'is_prescription', 'batch_number',
             'purchase_date', 'purchase_price', 'created_at', 'updated_at',
             'is_expired', 'days_until_expiry', 'is_low_stock'
@@ -59,6 +62,15 @@ class MedicineSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("购买价格不能为负数")
         return value
     
+    def validate_image_path(self, value):
+        """
+        验证图片路径
+        """
+        # 如果值为空或None，直接返回None
+        if not value or value.strip() == '':
+            return None
+        return value
+    
     def validate(self, attrs):
         """
         整体数据验证
@@ -88,7 +100,7 @@ class MedicineListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'specification', 'manufacturer', 'expiry_date',
             'quantity', 'medicine_type', 'medicine_type_display', 'is_prescription',
-            'image_url', 'created_at', 'is_expired', 'days_until_expiry', 'is_low_stock'
+            'image_path', 'created_at', 'is_expired', 'days_until_expiry', 'is_low_stock'
         ]
 
 
@@ -98,12 +110,14 @@ class MedicineCreateSerializer(serializers.ModelSerializer):
     用于创建新药品时的数据验证
     """
     user = serializers.HiddenField(default=serializers.CurrentUserDefault())
+    # 使用CharField存储图片文件路径
+    image_path = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     
     class Meta:
         model = Medicine
         fields = [
             'user', 'name', 'specification', 'manufacturer', 'expiry_date',
-            'quantity', 'storage_conditions', 'image_url', 'description',
+            'quantity', 'storage_conditions', 'image_path', 'description',
             'medicine_type', 'is_prescription', 'batch_number', 'purchase_date',
             'purchase_price'
         ]
@@ -131,6 +145,25 @@ class MedicineCreateSerializer(serializers.ModelSerializer):
         if value and value < timezone.now().date():
             raise serializers.ValidationError("有效期不能早于今天")
         return value
+    
+    def validate_image_path(self, value):
+        """
+        验证图片路径 - 支持可选路径
+        """
+        # 如果值为空或None，直接返回None
+        if not value or value.strip() == '':
+            return None
+        return value
+    
+    def create(self, validated_data):
+        """
+        创建药品实例
+        """
+        # 如果image_path为None或空字符串，不设置该字段
+        if 'image_path' in validated_data and not validated_data['image_path']:
+            validated_data['image_path'] = None
+            
+        return super().create(validated_data)
 
 
 class MedicineUpdateSerializer(serializers.ModelSerializer):
@@ -138,11 +171,14 @@ class MedicineUpdateSerializer(serializers.ModelSerializer):
     药品更新序列化器
     用于更新药品信息
     """
+    # 使用CharField存储图片文件路径
+    image_path = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    
     class Meta:
         model = Medicine
         fields = [
             'name', 'specification', 'manufacturer', 'expiry_date',
-            'quantity', 'storage_conditions', 'image_url', 'description',
+            'quantity', 'storage_conditions', 'image_path', 'description',
             'medicine_type', 'is_prescription', 'batch_number', 'purchase_date',
             'purchase_price'
         ]
@@ -169,4 +205,13 @@ class MedicineUpdateSerializer(serializers.ModelSerializer):
         """
         if value and value < timezone.now().date():
             raise serializers.ValidationError("有效期不能早于今天")
+        return value
+    
+    def validate_image_path(self, value):
+        """
+        验证图片路径
+        """
+        # 如果值为空或None，直接返回None
+        if not value or value.strip() == '':
+            return None
         return value

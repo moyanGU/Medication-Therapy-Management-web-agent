@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import MedicineViewSet
+from .upload_views import ImageUploadView
 
 # 创建路由器
 router = DefaultRouter()
@@ -8,6 +9,7 @@ router.register(r'', MedicineViewSet, basename='medicine')
 
 # URL配置
 urlpatterns = [
+    path('upload-image/', ImageUploadView.as_view(), name='upload-image'),
     path('', include(router.urls)),
 ]
 

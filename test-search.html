@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>药品搜索测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .search-box { margin: 20px 0; }
+        .search-box input { padding: 10px; border: 1px solid #ccc; border-radius: 4px; width: 300px; }
+        .results { margin-top: 20px; }
+        .medicine-item { padding: 10px; border: 1px solid #eee; margin: 5px 0; border-radius: 4px; }
+        .highlight { background-color: yellow; }
+    </style>
+</head>
+<body>
+    <h1>药品搜索测试</h1>
+    
+    <div class="search-box">
+        <input type="text" id="searchInput" placeholder="输入药品名称，如：阿司匹林" onkeyup="handleSearch()" />
+        <p>搜索结果：<span id="resultsCount">0</span> 个</p>
+    </div>
+    
+    <div class="results" id="results">
+        <!-- 搜索结果将显示在这里 -->
+    </div>
+
+    <script>
+        // 模拟药品数据
+        const medicines = [
+            {
+                id: 1,
+                name: '阿司匹林肠溶片',
+                specification: '100mg×30片',
+                manufacturer: '拜耳医药',
+                quantity: 25,
+                expiry_date: '2025-12-31',
+                storage_conditions: '阴凉干燥处'
+            },
+            {
+                id: 2,
+                name: '阿司匹林片',
+                specification: '50mg×100片',
+                manufacturer: '华北制药',
+                quantity: 80,
+                expiry_date: '2025-09-30',
+                storage_conditions: '室温保存'
+            },
+            {
+                id: 3,
+                name: '降压药(氨氯地平)',
+                specification: '5mg×28片',
+                manufacturer: '诺华制药',
+                quantity: 3,
+                expiry_date: '2025-03-01',
+                storage_conditions: '室温保存'
+            },
+            {
+                id: 4,
+                name: '布洛芬缓释胶囊',
+                specification: '300mg×20粒',
+                manufacturer: '中美史克',
+                quantity: 12,
+                expiry_date: '2025-02-01',
+                storage_conditions: '阴凉干燥处'
+            },
+            {
+                id: 5,
+                name: '维生素C泡腾片',
+                specification: '1000mg×10片',
+                manufacturer: '健康制药',
+                quantity: 50,
+                expiry_date: '2026-05-15',
+                storage_conditions: '密封保存'
+            }
+        ];
+
+        let searchTimeout;
+
+        function handleSearch() {
+            const searchInput = document.getElementById('searchInput');
+            const query = searchInput.value.toLowerCase().trim();
+            
+            // 防抖处理
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                performSearch(query);
+            }, 300);
+        }
+
+        function performSearch(query) {
+            console.log('搜索查询:', query);
+            
+            let filteredMedicines = medicines;
+            
+            if (query) {
+                filteredMedicines = medicines.filter(medicine => 
+                    medicine.name.toLowerCase().includes(query) ||
+                    medicine.manufacturer.toLowerCase().includes(query) ||
+                    medicine.specification.toLowerCase().includes(query)
+                );
+            }
+            
+            displayResults(filteredMedicines, query);
+        }
+
+        function displayResults(results, query) {
+            const resultsContainer = document.getElementById('results');
+            const resultsCount = document.getElementById('resultsCount');
+            
+            resultsCount.textContent = results.length;
+            
+            if (results.length === 0) {
+                resultsContainer.innerHTML = '<p>没有找到相关药品</p>';
+                return;
+            }
+            
+            let html = '';
+            results.forEach(medicine => {
+                const status = getStatus(medicine);
+                const highlightedName = highlightText(medicine.name, query);
+                
+                html += `
+                    <div class="medicine-item">
+                        <h3>${highlightedName}</h3>
+                        <p><strong>规格:</strong> ${medicine.specification}</p>
+                        <p><strong>厂家:</strong> ${medicine.manufacturer}</p>
+                        <p><strong>数量:</strong> ${medicine.quantity}</p>
+                        <p><strong>有效期:</strong> ${medicine.expiry_date}</p>
+                        <p><strong>存储:</strong> ${medicine.storage_conditions}</p>
+                        <p><strong>状态:</strong> <span style="color: ${status.color}">${status.text}</span></p>
+                    </div>
+                `;
+            });
+            
+            resultsContainer.innerHTML = html;
+        }
+
+        function highlightText(text, query) {
+            if (!query) return text;
+            const regex = new RegExp(`(${query})`, 'gi');
+            return text.replace(regex, '<span class="highlight">$1</span>');
+        }
+
+        function getStatus(medicine) {
+            const today = new Date();
+            const expiryDate = new Date(medicine.expiry_date);
+            const diffTime = expiryDate.getTime() - today.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            if (diffDays <= 0) {
+                return { text: '已过期', color: 'red' };
+            } else if (diffDays <= 30) {
+                return { text: '即将过期', color: 'orange' };
+            } else if (medicine.quantity <= 5) {
+                return { text: '库存不足', color: 'orange' };
+            } else {
+                return { text: '正常', color: 'green' };
+            }
+        }
+
+        // 页面加载时显示所有药品
+        window.onload = function() {
+            performSearch('');
+        };
+    </script>
+</body>
+</html>

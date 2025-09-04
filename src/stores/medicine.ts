@@ -95,26 +95,60 @@ export const useMedicineStore = defineStore('medicine', () => {
   
   // 创建药品
   const createMedicine = async (data: MedicineCreateData) => {
+    console.log('🔵 [Medicine Store] createMedicine 开始执行', {
+      data,
+      timestamp: new Date().toISOString()
+    })
+    
     try {
       loading.value = true
       error.value = null
       
+      console.log('🔵 [Medicine Store] 准备调用 medicineApi.createMedicine', {
+        apiData: data
+      })
+      
       const response = await medicineApi.createMedicine(data)
+      
+      console.log('🔵 [Medicine Store] medicineApi.createMedicine 响应', {
+        response: response,
+        responseData: response.data,
+        success: response.data?.success,
+        timestamp: new Date().toISOString()
+      })
       
       if (response.data.success) {
         // 添加到列表中
         medicines.value.unshift(response.data.data)
+        console.log('🟢 [Medicine Store] 药品创建成功', {
+          newMedicine: response.data.data,
+          totalMedicines: medicines.value.length
+        })
         return response.data.data
       } else {
         error.value = response.data.message || '创建药品失败'
+        console.error('🔴 [Medicine Store] 服务器返回失败', {
+          message: response.data.message,
+          responseData: response.data
+        })
         throw new Error(error.value)
       }
     } catch (err: any) {
       error.value = err.message || '创建药品失败'
-      console.error('创建药品失败:', err)
+      console.error('🔴 [Medicine Store] 创建药品异常', {
+        error: err,
+        message: err.message,
+        stack: err.stack,
+        response: err.response,
+        timestamp: new Date().toISOString()
+      })
       throw err
     } finally {
       loading.value = false
+      console.log('🔵 [Medicine Store] createMedicine 执行完成', {
+        loading: loading.value,
+        timestamp: new Date().toISOString()
+      })
     }
   }
   

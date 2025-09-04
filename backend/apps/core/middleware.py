@@ -28,11 +28,47 @@ class RequestLoggingMiddleware(MiddlewareMixin):
         """
         request.start_time = time.time()
         
-        # 记录请求信息
+        # 获取Authorization头
+        auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+        has_auth_header = bool(auth_header)
+        token_type = ''
+        token_preview = ''
+        
+        if auth_header:
+            parts = auth_header.split(' ')
+            if len(parts) == 2:
+                token_type = parts[0]
+                token_preview = parts[1][:20] + '...' if len(parts[1]) > 20 else parts[1]
+        
+        # 尝试进行JWT认证验证
+        jwt_auth_result = 'Not attempted'
+        jwt_user = 'Unknown'
+        
+        if has_auth_header and token_type.lower() == 'bearer':
+            try:
+                jwt_auth = JWTAuthentication()
+                validated_token = jwt_auth.get_validated_token(auth_header.split(' ')[1])
+                user = jwt_auth.get_user(validated_token)
+                jwt_auth_result = 'Success'
+                jwt_user = user.username if user else 'None'
+                logger.info(f"🟢 [Auth Middleware] JWT认证成功 - 用户: {jwt_user}")
+            except (InvalidToken, TokenError) as e:
+                jwt_auth_result = f'Failed: {str(e)}'
+                logger.error(f"🔴 [Auth Middleware] JWT认证失败: {str(e)}")
+            except Exception as e:
+                jwt_auth_result = f'Error: {str(e)}'
+                logger.error(f"🔴 [Auth Middleware] JWT认证异常: {str(e)}")
+        
+        # 记录详细的请求信息
         logger.info(
-            f"API请求开始: {request.method} {request.get_full_path()} - "
+            f"🔵 [Request] API请求开始: {request.method} {request.get_full_path()} - "
             f"User: {getattr(request.user, 'username', 'Anonymous')} - "
-            f"IP: {self._get_client_ip(request)}"
+            f"IP: {self._get_client_ip(request)} - "
+            f"Auth Header: {'Yes' if has_auth_header else 'No'} - "
+            f"Token Type: {token_type} - "
+            f"Token Preview: {token_preview} - "
+            f"JWT Auth: {jwt_auth_result} - "
+            f"JWT User: {jwt_user}"
         )
     
     def process_response(self, request, response):

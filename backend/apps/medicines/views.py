@@ -70,17 +70,54 @@ class MedicineViewSet(viewsets.ModelViewSet):
         """
         创建药品
         """
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            self.perform_create(serializer)
-            return APIResponse.success(
-                data=MedicineSerializer(serializer.instance).data,
-                message="药品创建成功"
-            )
-        return APIResponse.error(
-            message="数据验证失败",
-            errors=serializer.errors
-        )
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"🔵 [Medicine View] create 开始执行 - 用户: {request.user.id if request.user.is_authenticated else 'Anonymous'}")
+        logger.info(f"🔵 [Medicine View] 原始请求数据: {request.data}")
+        
+        try:
+            # 预处理请求数据，移除空的image_url字段
+            cleaned_data = dict(request.data)
+            
+            # 如果image_url为空字符串或None，则删除该字段
+            if 'image_url' in cleaned_data:
+                image_url_value = cleaned_data['image_url']
+                if image_url_value == '' or image_url_value is None or image_url_value == 'undefined':
+                    del cleaned_data['image_url']
+                    logger.info(f"🔵 [Medicine View] 删除空的image_url字段: '{image_url_value}'")
+            
+            logger.info(f"🔵 [Medicine View] 清理后的数据: {cleaned_data}")
+            
+            serializer = self.get_serializer(data=cleaned_data)
+            logger.info(f"🔵 [Medicine View] 序列化器创建完成: {type(serializer).__name__}")
+            
+            if serializer.is_valid():
+                logger.info(f"🔵 [Medicine View] 数据验证通过")
+                logger.info(f"🔵 [Medicine View] 验证后的数据: {serializer.validated_data}")
+                
+                self.perform_create(serializer)
+                logger.info(f"🟢 [Medicine View] 药品创建成功 - ID: {serializer.instance.id}")
+                
+                response_data = MedicineSerializer(serializer.instance).data
+                logger.info(f"🟢 [Medicine View] 返回数据: {response_data}")
+                
+                return APIResponse.success(
+                    data=response_data,
+                    message="药品创建成功"
+                )
+            else:
+                logger.error(f"🔴 [Medicine View] 数据验证失败: {serializer.errors}")
+                return APIResponse.error(
+                    message="数据验证失败",
+                    errors=serializer.errors
+                )
+        except Exception as e:
+            logger.error(f"🔴 [Medicine View] 创建药品异常: {str(e)}")
+            logger.error(f"🔴 [Medicine View] 异常详情: {e.__class__.__name__}: {e}")
+            import traceback
+            logger.error(f"🔴 [Medicine View] 异常堆栈: {traceback.format_exc()}")
+            raise
     
     def list(self, request, *args, **kwargs):
         """

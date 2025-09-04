@@ -3,7 +3,7 @@ Django==4.2.16
 djangorestframework==3.14.0
 
 # 数据库相关
-mysqlclient==2.2.4
+PyMySQL==1.1.1
 django-redis==5.4.0
 
 # 认证和安全

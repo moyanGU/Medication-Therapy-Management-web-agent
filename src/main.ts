@@ -1,3 +1,5 @@
+console.log('=== Application Starting ===')
+
 import { createApp } from 'vue'
 import './style.css'
 import App from './App.vue'
@@ -6,6 +8,8 @@ import { pinia } from './stores'
 import { useAuthStore } from './stores/auth'
 import { useReminderStore } from './stores/reminder'
 import { getGlobalNotification } from './composables/useNotification'
+
+console.log('=== Imports Loaded ===')
 
 // 创建Vue应用实例
 const app = createApp(App)

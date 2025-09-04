@@ -45,13 +45,13 @@
             <!-- 规格 -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">
-                规格
+                药品规格
               </label>
               <input
                 v-model="formData.specification"
                 type="text"
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="如：100mg/片"
+                placeholder="如：100mg*30片"
               />
             </div>
 
@@ -210,20 +210,17 @@
               药品图片
             </label>
             <div class="flex items-center space-x-4">
-              <input
-                v-model="formData.image_url"
-                type="url"
-                class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="请输入图片URL"
-              />
               <button
                 type="button"
                 @click="handleImageUpload"
-                class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center"
               >
-                <Upload class="w-4 h-4 mr-2 inline" />
+                <Upload class="w-4 h-4 mr-2" />
                 上传图片
               </button>
+              <span v-if="formData.image_url" class="text-sm text-gray-600">
+                已选择图片
+              </span>
             </div>
             <!-- 图片预览 -->
             <div v-if="formData.image_url" class="mt-2">
@@ -233,6 +230,13 @@
                 class="w-20 h-20 object-cover rounded-lg border border-gray-200"
                 @error="handleImageError"
               />
+              <button
+                type="button"
+                @click="removeImage"
+                class="mt-1 text-sm text-red-600 hover:text-red-800"
+              >
+                删除图片
+              </button>
             </div>
           </div>
 
@@ -310,15 +314,35 @@ const formData = reactive<MedicineCreateData>({
   manufacturer: '',
   medicine_type: 'tablet',
   quantity: 0,
-  is_prescription: false,
-  expiry_date: '',
-  purchase_date: '',
   purchase_price: undefined,
+  purchase_date: '',
+  expiry_date: '',
   batch_number: '',
   storage_conditions: '',
-  image_url: '',
-  description: ''
+  description: '',
+  image_path: '', // 使用image_path替代image_url
+  is_prescription: false
 })
+
+// 重置表单
+const resetForm = () => {
+  Object.assign(formData, {
+    name: '',
+    specification: '',
+    manufacturer: '',
+    medicine_type: 'tablet',
+    quantity: 0,
+    purchase_price: undefined,
+    purchase_date: '',
+    expiry_date: '',
+    batch_number: '',
+    storage_conditions: '',
+    description: '',
+    image_path: '', // 使用image_path替代image_url
+    is_prescription: false
+  })
+  errors.value = {}
+}
 
 // 监听medicine变化，用于编辑模式
 watch(
@@ -332,14 +356,14 @@ watch(
         manufacturer: newMedicine.manufacturer || '',
         medicine_type: newMedicine.medicine_type || 'tablet',
         quantity: newMedicine.quantity || 0,
-        is_prescription: newMedicine.is_prescription || false,
-        expiry_date: newMedicine.expiry_date || '',
-        purchase_date: newMedicine.purchase_date || '',
         purchase_price: newMedicine.purchase_price,
+        purchase_date: newMedicine.purchase_date || '',
+        expiry_date: newMedicine.expiry_date || '',
         batch_number: newMedicine.batch_number || '',
         storage_conditions: newMedicine.storage_conditions || '',
-        image_url: newMedicine.image_url || '',
-        description: newMedicine.description || ''
+        description: newMedicine.description || '',
+        image_url: newMedicine.image_url || '', // 恢复图片URL字段
+        is_prescription: newMedicine.is_prescription || false
       })
     } else {
       // 添加模式，重置表单
@@ -348,26 +372,6 @@ watch(
   },
   { immediate: true }
 )
-
-// 重置表单
-const resetForm = () => {
-  Object.assign(formData, {
-    name: '',
-    specification: '',
-    manufacturer: '',
-    medicine_type: 'tablet',
-    quantity: 0,
-    is_prescription: false,
-    expiry_date: '',
-    purchase_date: '',
-    purchase_price: undefined,
-    batch_number: '',
-    storage_conditions: '',
-    image_url: '',
-    description: ''
-  })
-  errors.value = {}
-}
 
 // 表单验证
 const validateForm = (): boolean => {
@@ -394,29 +398,77 @@ const validateForm = (): boolean => {
 
 // 处理表单提交
 const handleSubmit = async () => {
-  if (!validateForm()) {
+  console.log('🔵 [MedicineForm] === FORM SUBMIT START ===')
+  console.log('🔵 [MedicineForm] Form submit started:', {
+    isEditMode: !!props.medicine,
+    formData: formData,
+    tokenExists: !!localStorage.getItem('access_token')
+  })
+  
+  const validationResult = validateForm()
+  if (!validationResult) {
+    console.log('🔴 [MedicineForm] Form validation failed:', errors.value)
     return
   }
 
   loading.value = true
+  
   try {
+    // 清理表单数据，处理空字符串字段
+    const cleanFormData = { ...formData }
+    
+    console.log('🔵 [MedicineForm] Original form data:', cleanFormData)
+    
+    // 清理其他可能的空字符串字段
+    Object.keys(cleanFormData).forEach(key => {
+      const value = cleanFormData[key as keyof typeof cleanFormData]
+      if (value === '' && key !== 'name') { // 保留名称字段，其他空字段删除
+        delete cleanFormData[key as keyof typeof cleanFormData]
+        console.log(`🔵 [MedicineForm] Deleted empty field: ${key}`)
+      }
+    })
+    
+    console.log('🔵 [MedicineForm] Cleaned form data:', cleanFormData)
+    console.log('🔵 [MedicineForm] Fields included:', Object.keys(cleanFormData))
+    
     if (props.medicine) {
       // 编辑模式
-      const updateData: MedicineUpdateData = { ...formData }
-      await medicineStore.updateMedicine(props.medicine.id, updateData)
+      console.log('🔵 [MedicineForm] Updating medicine:', props.medicine.id)
+      const updateData: MedicineUpdateData = cleanFormData
+      
+      const result = await medicineStore.updateMedicine(props.medicine.id, updateData)
+      console.log('🟢 [MedicineForm] Medicine updated successfully')
       toast.success('药品更新成功')
     } else {
       // 添加模式
-      await medicineStore.createMedicine(formData)
+      console.log('🔵 [MedicineForm] Creating new medicine')
+      
+      const result = await medicineStore.createMedicine(cleanFormData)
+      console.log('🟢 [MedicineForm] Medicine created successfully')
       toast.success('药品添加成功')
     }
+    
     emit('success')
+    
   } catch (error: any) {
-    console.error('保存药品失败:', error)
+    console.error('🔴 [MedicineForm] Save failed:', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+      timestamp: new Date().toISOString()
+    })
+    
+    // 处理表单验证错误
     if (error.response?.data?.errors) {
       errors.value = error.response.data.errors
+      console.log('🔴 [MedicineForm] Form validation errors:', error.response.data.errors)
+      console.log('🔴 [MedicineForm] Detailed error analysis:')
+      Object.entries(error.response.data.errors).forEach(([field, fieldErrors]) => {
+        console.log(`  - ${field}:`, fieldErrors)
+      })
     } else {
-      toast.error(error.message || '保存失败，请重试')
+      const errorMessage = error.response?.data?.message || error.message || '保存失败，请重试'
+      toast.error(errorMessage)
     }
   } finally {
     loading.value = false
@@ -445,17 +497,29 @@ const handleImageUpload = () => {
   input.click()
 }
 
+// 删除图片
+const removeImage = () => {
+  formData.image_url = ''
+  toast.success('图片已删除')
+}
+
 // 处理图片加载错误
 const handleImageError = () => {
   formData.image_url = ''
-  toast.error('图片加载失败，请检查URL是否正确')
+  toast.error('图片加载失败，请重新上传')
 }
 
 // 组件挂载时设置默认采购日期
 onMounted(() => {
+  console.log('=== MedicineForm Component Mounted ===')
+  console.log('Props medicine:', props.medicine)
+  console.log('Initial form data:', formData)
+  
   if (!props.medicine && !formData.purchase_date) {
     formData.purchase_date = new Date().toISOString().split('T')[0]
   }
+  
+  console.log('=== Component Mount Complete ===')
 })
 </script>
 
