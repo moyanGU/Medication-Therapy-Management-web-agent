@@ -289,6 +289,7 @@ import {
   Clock
 } from 'lucide-vue-next'
 import { api } from '@/utils/api'
+import { MedicalRecordPDFExporter } from '@/utils/pdfExport'
 
 // 接口类型定义
 interface Attachment {
@@ -339,7 +340,7 @@ const fetchRecord = async () => {
     loading.value = true
     error.value = ''
     console.log('🔵 [MedicalRecordDetail] 加载病历详情', { id: recordId.value })
-    const { data } = await api.get<MedicalRecord>(`/medical-records/${recordId.value}/`)
+    const { data } = await api.get<MedicalRecord>(`/medical-records/records/${recordId.value}/`)
     record.value = data
     console.log('🟢 [MedicalRecordDetail] 病历详情加载成功', { id: recordId.value })
   } catch (err: any) {
@@ -356,34 +357,51 @@ const goBack = () => {
 
 const exportToPDF = async () => {
   try {
-    console.log('🔵 [MedicalRecordDetail] 导出PDF', { id: recordId.value })
-    await api.download(
-      `/medical-records/${recordId.value}/export/`,
-      `病历_${record.value?.patient_name}_${record.value?.visit_date}.pdf`,
-      { method: 'POST' }
-    )
+    console.log('🔵 [MedicalRecordDetail] 导出PDF(客户端生成)', { id: recordId.value })
+    if (!record.value) {
+      showError('暂无可导出的数据')
+      return
+    }
+    const exporter = new MedicalRecordPDFExporter()
+    await exporter.exportRecord(record.value as any)
     showSuccess('PDF导出成功')
   } catch (error) {
-    console.error('PDF导出失败:', error)
+    console.error('🔴 [MedicalRecordDetail] PDF导出失败:', error)
     showError('PDF导出失败')
   }
 }
 
 const downloadAttachment = async (attachment: Attachment) => {
   try {
-    const response = await fetch(attachment.file_url)
-    const blob = await response.blob()
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = attachment.name
-    document.body.appendChild(a)
-    a.click()
-    window.URL.revokeObjectURL(url)
-    document.body.removeChild(a)
-  } catch (error) {
-    console.error('下载附件失败:', error)
-    showError('下载附件失败')
+    const urlToFetch = (attachment as any).download_url || (attachment as any).file_url
+    if (!urlToFetch) {
+      console.error('附件无可用下载链接:', attachment)
+      showError('下载链接不可用')
+      return
+    }
+    console.log('🔵 [MedicalRecordDetail] 下载附件(优先api.download)', { urlToFetch, name: attachment.name })
+    // 优先使用带鉴权头的 ApiClient.download
+    await api.download(urlToFetch, attachment.name, { method: 'GET' })
+    showSuccess('附件开始下载')
+  } catch (err) {
+    console.warn('🟠 [MedicalRecordDetail] api.download 失败，尝试回退到 fetch 直链下载', err)
+    try {
+      const urlToFetch = (attachment as any).download_url || (attachment as any).file_url
+      const response = await fetch(urlToFetch)
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = attachment.name
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      showSuccess('附件下载完成')
+    } catch (error) {
+      console.error('下载附件失败:', error)
+      showError('下载附件失败')
+    }
   }
 }
 
