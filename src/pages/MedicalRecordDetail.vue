@@ -288,6 +288,7 @@ import {
   Star,
   Clock
 } from 'lucide-vue-next'
+import { api } from '@/utils/api'
 
 // 接口类型定义
 interface Attachment {
@@ -337,18 +338,13 @@ const fetchRecord = async () => {
   try {
     loading.value = true
     error.value = ''
-    
-    const response = await fetch(`/api/medical-records/${recordId.value}/`)
-    const data = await response.json()
-    
-    if (data.success) {
-      record.value = data.data
-    } else {
-      error.value = data.message || '获取病历详情失败'
-    }
-  } catch (err) {
-    console.error('获取病历详情失败:', err)
-    error.value = '网络错误，请稍后重试'
+    console.log('🔵 [MedicalRecordDetail] 加载病历详情', { id: recordId.value })
+    const { data } = await api.get<MedicalRecord>(`/medical-records/${recordId.value}/`)
+    record.value = data
+    console.log('🟢 [MedicalRecordDetail] 病历详情加载成功', { id: recordId.value })
+  } catch (err: any) {
+    console.error('🔴 [MedicalRecordDetail] 获取病历详情失败:', err)
+    error.value = err?.message || '网络错误，请稍后重试'
   } finally {
     loading.value = false
   }
@@ -360,24 +356,13 @@ const goBack = () => {
 
 const exportToPDF = async () => {
   try {
-    const response = await fetch(`/api/medical-records/${recordId.value}/export/`, {
-      method: 'POST'
-    })
-    
-    if (response.ok) {
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `病历_${record.value?.patient_name}_${record.value?.visit_date}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-      showSuccess('PDF导出成功')
-    } else {
-      showError('PDF导出失败')
-    }
+    console.log('🔵 [MedicalRecordDetail] 导出PDF', { id: recordId.value })
+    await api.download(
+      `/medical-records/${recordId.value}/export/`,
+      `病历_${record.value?.patient_name}_${record.value?.visit_date}.pdf`,
+      { method: 'POST' }
+    )
+    showSuccess('PDF导出成功')
   } catch (error) {
     console.error('PDF导出失败:', error)
     showError('PDF导出失败')

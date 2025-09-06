@@ -288,7 +288,7 @@ import {
   Star,
   Clock
 } from 'lucide-vue-next'
-import { http } from '@/utils/http'
+import { api } from '@/utils/api'
 
 // 接口类型定义
 interface Attachment {
@@ -340,14 +340,10 @@ const fetchRecord = async () => {
     error.value = ''
 
     console.log('[MedicalRecordDetail] 开始获取病历详情', { id: recordId.value })
-    const { data } = await http.get(`/api/medical-records/${recordId.value}/`)
-    console.log('[MedicalRecordDetail] 响应', data)
+    const { data } = await api.get<MedicalRecord>(`/medical-records/${recordId.value}/`)
+    console.log('[MedicalRecordDetail] 响应 data', data)
 
-    if (data?.success) {
-      record.value = data.data
-    } else {
-      error.value = data?.message || '获取病历详情失败'
-    }
+    record.value = data
   } catch (err) {
     console.error('获取病历详情失败:', err)
     error.value = '网络错误，请稍后重试'
@@ -362,18 +358,11 @@ const goBack = () => {
 
 const exportToPDF = async () => {
   try {
-    console.log('[MedicalRecordDetail] 请求导出PDF', { id: recordId.value })
-    const response = await http.post(`/api/medical-records/${recordId.value}/export/`, undefined, { responseType: 'blob' })
+    const filename = `病历_${record.value?.patient_name}_${record.value?.visit_date}.pdf`
+    console.log('[MedicalRecordDetail] 请求导出PDF', { id: recordId.value, filename })
 
-    const blob = new Blob([response.data])
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `病历_${record.value?.patient_name}_${record.value?.visit_date}.pdf`
-    document.body.appendChild(a)
-    a.click()
-    window.URL.revokeObjectURL(url)
-    document.body.removeChild(a)
+    await api.download(`/medical-records/${recordId.value}/export/`, filename)
+
     showSuccess('PDF导出成功')
   } catch (error) {
     console.error('PDF导出失败:', error)
