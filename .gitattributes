@@ -1,0 +1,43 @@
+# Normalize line endings per-repo (independent of global Git settings)
+# Text files unified as LF (cross-platform friendly)
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.js        text eol=lf
+*.jsx       text eol=lf
+*.vue       text eol=lf
+*.json      text eol=lf
+*.css       text eol=lf
+*.scss      text eol=lf
+*.md        text eol=lf
+*.html      text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.py        text eol=lf
+*.sh        text eol=lf
+*.sql       text eol=lf
+*.dockerignore text eol=lf
+*.gitignore text eol=lf
+*.prettierignore text eol=lf
+Dockerfile* text eol=lf
+
+# Windows scripts keep CRLF
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# Images and binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.rdb binary
+*.sqlite3 binary
+
+# SVG is text; normalize to LF for readability in diffs
+*.svg text eol=lf
+
+# SQLite DB example (ensure binary)
+db.sqlite3 binary
