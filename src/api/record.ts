@@ -18,7 +18,7 @@ export const recordApi = {
     console.log('获取用药记录列表:', params)
     const response = await api.get('/records/medication-records/', { params })
     console.log('用药记录列表响应:', response.data)
-    return response.data
+    return response
   },
 
   /**
@@ -28,7 +28,7 @@ export const recordApi = {
     console.log('获取用药记录详情:', id)
     const response = await api.get(`/records/medication-records/${id}/`)
     console.log('用药记录详情响应:', response.data)
-    return response.data
+    return response
   },
 
   /**
@@ -37,8 +37,11 @@ export const recordApi = {
   async createRecord(data: MedicationRecordForm) {
     console.log('创建用药记录:', data)
     const response = await api.post('/records/medication-records/', data)
-    console.log('创建用药记录响应:', response.data)
-    return response.data
+    console.log('创建用药记录完整响应:', response)
+    console.log('创建用药记录响应数据:', response.data)
+    console.log('响应数据类型:', typeof response.data)
+    console.log('响应是否有success字段:', 'success' in response)
+    return response
   },
 
   /**
@@ -48,7 +51,7 @@ export const recordApi = {
     console.log('更新用药记录:', id, data)
     const response = await api.patch(`/records/medication-records/${id}/`, data)
     console.log('更新用药记录响应:', response.data)
-    return response.data
+    return response
   },
 
   /**
@@ -58,7 +61,7 @@ export const recordApi = {
     console.log('删除用药记录:', id)
     const response = await api.delete(`/records/medication-records/${id}/`)
     console.log('删除用药记录响应:', response.data)
-    return response.data
+    return response
   },
 
   /**
@@ -67,22 +70,28 @@ export const recordApi = {
   async getStatistics(params?: {
     start_date?: string
     end_date?: string
-    medicine_id?: number
+    medicine?: string | number
   }) {
     console.log('获取用药记录统计:', params)
     const response = await api.get('/records/medication-records/statistics/', { params })
     console.log('用药记录统计响应:', response.data)
-    return response.data
+    return response
   },
 
   /**
    * 获取用药趋势数据
    */
-  async getTrends() {
-    console.log('获取用药趋势数据')
-    const response = await api.get('/records/medication-records/trends/')
+  async getTrends(params?: {
+    start_date?: string
+    end_date?: string
+    medicine?: string | number
+  }) {
+    console.log('获取用药趋势数据:', params)
+    const response = await api.get('/records/medication-records/trends/', {
+      params
+    })
     console.log('用药趋势数据响应:', response.data)
-    return response.data
+    return response
   },
 
   /**
@@ -94,7 +103,7 @@ export const recordApi = {
       params: { limit }
     })
     console.log('最近用药记录响应:', response.data)
-    return response.data
+    return response
   },
 
   /**

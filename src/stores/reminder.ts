@@ -16,7 +16,7 @@ import type {
 import { useToast } from '@/composables/useToast'
 
 export const useReminderStore = defineStore('reminder', () => {
-  const { showToast } = useToast()
+  const { success: showSuccess, error: showError } = useToast()
 
   // 状态
   const reminders = ref<Reminder[]>([])
@@ -103,7 +103,7 @@ export const useReminderStore = defineStore('reminder', () => {
       }
     } catch (err: any) {
       error.value = err.message || '获取提醒列表失败'
-      showToast(error.value, 'error')
+      showError(error.value)
     } finally {
       loading.value = false
     }
@@ -124,7 +124,7 @@ export const useReminderStore = defineStore('reminder', () => {
       }
     } catch (err: any) {
       error.value = err.message || '获取提醒详情失败'
-      showToast(error.value, 'error')
+      showError(error.value)
       return null
     } finally {
       loading.value = false
@@ -140,14 +140,14 @@ export const useReminderStore = defineStore('reminder', () => {
       
       if (response.success) {
         reminders.value.unshift(response.data)
-        showToast('提醒创建成功', 'success')
+        showSuccess('提醒创建成功')
         return response.data
       } else {
         throw new Error(response.message || '创建提醒失败')
       }
     } catch (err: any) {
       error.value = err.message || '创建提醒失败'
-      showToast(error.value, 'error')
+      showError(error.value)
       return null
     } finally {
       loading.value = false
@@ -169,15 +169,15 @@ export const useReminderStore = defineStore('reminder', () => {
         if (currentReminder.value?.id === id) {
           currentReminder.value = response.data
         }
-        showToast('提醒更新成功', 'success')
+        showSuccess('提醒更新成功')
         return response.data
       } else {
         throw new Error(response.message || '更新提醒失败')
       }
     } catch (err: any) {
-      error.value = err.message || '更新提醒失败'
-      showToast(error.value, 'error')
-      return null
+        error.value = err.message || '更新提醒失败'
+        showError(error.value)
+        return null
     } finally {
       loading.value = false
     }
@@ -195,15 +195,15 @@ export const useReminderStore = defineStore('reminder', () => {
         if (currentReminder.value?.id === id) {
           currentReminder.value = null
         }
-        showToast('提醒删除成功', 'success')
+        showSuccess('提醒删除成功')
         return true
       } else {
         throw new Error(response.message || '删除提醒失败')
       }
     } catch (err: any) {
-      error.value = err.message || '删除提醒失败'
-      showToast(error.value, 'error')
-      return false
+        error.value = err.message || '删除提醒失败'
+        showError(error.value)
+        return false
     } finally {
       loading.value = false
     }
@@ -222,7 +222,7 @@ export const useReminderStore = defineStore('reminder', () => {
       }
     } catch (err: any) {
       error.value = err.message || '获取今日提醒失败'
-      showToast(error.value, 'error')
+      showError(error.value)
       return []
     } finally {
       loading.value = false
@@ -241,7 +241,7 @@ export const useReminderStore = defineStore('reminder', () => {
       }
     } catch (err: any) {
       error.value = err.message || '获取即将到来的提醒失败'
-      showToast(error.value, 'error')
+      showError(error.value)
       return []
     } finally {
       loading.value = false
@@ -261,14 +261,14 @@ export const useReminderStore = defineStore('reminder', () => {
         if (currentReminder.value?.id === id) {
           currentReminder.value = response.data
         }
-        showToast(response.message || '提醒状态更新成功', 'success')
+        showSuccess(response.message || '提醒状态更新成功')
         return response.data
       } else {
         throw new Error(response.message || '更新提醒状态失败')
       }
     } catch (err: any) {
       error.value = err.message || '更新提醒状态失败'
-      showToast(error.value, 'error')
+      showError(error.value)
       return null
     }
   }
@@ -282,15 +282,15 @@ export const useReminderStore = defineStore('reminder', () => {
         if (index !== -1) {
           reminders.value[index] = response.data
         }
-        showToast(response.message || '提醒已标记为已响应', 'success')
+        showSuccess(response.message || '提醒已标记为已响应')
         return response.data
       } else {
         throw new Error(response.message || '标记提醒响应失败')
       }
     } catch (err: any) {
-      error.value = err.message || '标记提醒响应失败'
-      showToast(error.value, 'error')
-      return null
+        error.value = err.message || '标记提醒失败'
+        showError(error.value)
+        return null
     }
   }
 
@@ -299,15 +299,15 @@ export const useReminderStore = defineStore('reminder', () => {
       const response = await reminderService.testNotification(id)
       
       if (response.success) {
-        showToast(response.message || '测试通知发送成功', 'success')
+        showSuccess(response.message || '测试通知发送成功')
         return true
       } else {
         throw new Error(response.message || '测试通知发送失败')
       }
     } catch (err: any) {
-      error.value = err.message || '测试通知发送失败'
-      showToast(error.value, 'error')
-      return false
+        error.value = err.message || '发送测试通知失败'
+        showError(error.value)
+        return false
     }
   }
 
@@ -320,15 +320,15 @@ export const useReminderStore = defineStore('reminder', () => {
       if (response.success) {
         // 刷新列表
         await fetchReminders()
-        showToast(response.message || `成功更新 ${response.data.updated_count} 个提醒`, 'success')
+        showSuccess(response.message || `成功更新 ${response.data.updated_count} 个提醒`)
         return response.data
       } else {
         throw new Error(response.message || '批量更新提醒状态失败')
       }
     } catch (err: any) {
-      error.value = err.message || '批量更新提醒状态失败'
-      showToast(error.value, 'error')
-      return null
+        error.value = err.message || '批量更新提醒失败'
+        showError(error.value)
+        return null
     } finally {
       loading.value = false
     }
@@ -342,14 +342,14 @@ export const useReminderStore = defineStore('reminder', () => {
       if (response.success) {
         // 从本地状态中移除删除的提醒
         reminders.value = reminders.value.filter(r => !data.reminder_ids.includes(r.id))
-        showToast(response.message || `成功删除 ${response.data.deleted_count} 个提醒`, 'success')
+        showSuccess(response.message || `成功删除 ${response.data.deleted_count} 个提醒`)
         return response.data
       } else {
         throw new Error(response.message || '批量删除提醒失败')
       }
     } catch (err: any) {
       error.value = err.message || '批量删除提醒失败'
-      showToast(error.value, 'error')
+      showError(error.value)
       return null
     } finally {
       loading.value = false
@@ -382,7 +382,7 @@ export const useReminderStore = defineStore('reminder', () => {
       }
     } catch (err: any) {
       error.value = err.message || '获取提醒历史失败'
-      showToast(error.value, 'error')
+      showError(error.value)
     } finally {
       loading.value = false
     }
@@ -397,14 +397,14 @@ export const useReminderStore = defineStore('reminder', () => {
         if (index !== -1) {
           reminderHistory.value[index] = response.data
         }
-        showToast(response.message || '响应记录成功', 'success')
+        showSuccess(response.message || '响应记录成功')
         return response.data
       } else {
         throw new Error(response.message || '响应提醒失败')
       }
     } catch (err: any) {
       error.value = err.message || '响应提醒失败'
-      showToast(error.value, 'error')
+      showError(error.value)
       return null
     }
   }
@@ -417,14 +417,14 @@ export const useReminderStore = defineStore('reminder', () => {
       if (response.success) {
         // 刷新历史列表
         await fetchReminderHistory()
-        showToast(response.message || `成功响应 ${response.data.updated_count} 条提醒`, 'success')
+        showSuccess(response.message || `成功响应 ${response.data.updated_count} 条提醒`)
         return response.data
       } else {
         throw new Error(response.message || '批量响应提醒失败')
       }
     } catch (err: any) {
       error.value = err.message || '批量响应提醒失败'
-      showToast(error.value, 'error')
+      showError(error.value)
       return null
     } finally {
       loading.value = false
@@ -445,7 +445,7 @@ export const useReminderStore = defineStore('reminder', () => {
       }
     } catch (err: any) {
       error.value = err.message || '获取统计数据失败'
-      showToast(error.value, 'error')
+      showError(error.value)
       return {}
     } finally {
       loading.value = false
@@ -465,7 +465,7 @@ export const useReminderStore = defineStore('reminder', () => {
       }
     } catch (err: any) {
       error.value = err.message || '获取依从性数据失败'
-      showToast(error.value, 'error')
+      showError(error.value)
       return {}
     } finally {
       loading.value = false
@@ -485,7 +485,7 @@ export const useReminderStore = defineStore('reminder', () => {
       }
     } catch (err: any) {
       error.value = err.message || '获取趋势数据失败'
-      showToast(error.value, 'error')
+      showError(error.value)
       return []
     } finally {
       loading.value = false

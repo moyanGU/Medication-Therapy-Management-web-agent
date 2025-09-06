@@ -56,7 +56,7 @@ export interface MedicationRecord {
 
 // 用药记录创建/更新数据
 export interface MedicationRecordForm {
-  medicine: number
+  medicine: number | string
   taken_at: string
   quantity_taken: number
   administration_method: AdministrationMethod
@@ -79,6 +79,20 @@ export interface MedicationRecordStats {
   avg_effectiveness: number
   most_used_medicine: string
   daily_average: number
+  medicine_stats?: MedicineStats[]
+}
+
+// 药品统计数据
+export interface MedicineStats {
+  medicine: number
+  medicine_name: string
+  total_records: number
+  taken_count: number
+  missed_count: number
+  delayed_count: number
+  adherence_rate: number
+  avg_effectiveness?: number
+  side_effects_count?: number
 }
 
 // 用药趋势数据

@@ -323,7 +323,7 @@ interface MedicalRecord {
 // 响应式数据
 const router = useRouter()
 const route = useRoute()
-const { showToast } = useToast()
+const { success: showSuccess, error: showError } = useToast()
 
 const loading = ref(false)
 const error = ref('')
@@ -374,13 +374,13 @@ const exportToPDF = async () => {
       a.click()
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
-      showToast('PDF导出成功', 'success')
+      showSuccess('PDF导出成功')
     } else {
-      showToast('PDF导出失败', 'error')
+      showError('PDF导出失败')
     }
   } catch (error) {
     console.error('PDF导出失败:', error)
-    showToast('PDF导出失败', 'error')
+    showError('PDF导出失败')
   }
 }
 
@@ -398,7 +398,7 @@ const downloadAttachment = async (attachment: Attachment) => {
     document.body.removeChild(a)
   } catch (error) {
     console.error('下载附件失败:', error)
-    showToast('下载附件失败', 'error')
+    showError('下载附件失败')
   }
 }
 

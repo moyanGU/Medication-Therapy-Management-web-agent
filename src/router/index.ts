@@ -69,6 +69,13 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/medicines/:id',
+    name: 'MedicineDetail',
+    component: () => import('@/pages/MedicineDetailPage.vue'),
+    meta: { requiresAuth: true },
+    props: true
+  },
+  {
     path: '/records',
     name: 'Records',
     component: RecordsPage,

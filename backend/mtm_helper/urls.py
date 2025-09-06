@@ -19,9 +19,13 @@ api_urlpatterns = [
     # path('plans/', include('apps.plans.urls')),
 ]
 
+from apps.core.views import api_docs
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(api_urlpatterns)),
+    # 根路径显示API文档
+    path('', api_docs, name='root'),
 ]
 
 # 开发环境下提供媒体文件服务

@@ -45,14 +45,31 @@ interface LoginResponseData {
  * 管理用户登录状态、JWT令牌等
  */
 export const useAuthStore = defineStore('auth', () => {
+  // 辅助函数：安全获取localStorage值
+  const getValidToken = (key: string): string | null => {
+    const value = localStorage.getItem(key)
+    if (!value || value === 'null' || value === 'undefined' || value.trim() === '') {
+      return null
+    }
+    return value
+  }
+
   // 状态
-  const accessToken = ref<string | null>(localStorage.getItem('access_token'))
-  const refreshToken = ref<string | null>(localStorage.getItem('refresh_token'))
+  const accessToken = ref<string | null>(getValidToken('access_token'))
+  const refreshToken = ref<string | null>(getValidToken('refresh_token'))
   const user = ref<UserInfo | null>(null)
   const loading = ref(false)
 
   // 计算属性
-  const isAuthenticated = computed(() => !!accessToken.value)
+  const isAuthenticated = computed(() => {
+    const hasValidToken = !!accessToken.value && accessToken.value !== 'null' && accessToken.value !== 'undefined'
+    console.log('🔵 [AuthStore] isAuthenticated计算:', {
+      accessTokenValue: accessToken.value,
+      hasValidToken,
+      tokenType: typeof accessToken.value
+    })
+    return hasValidToken
+  })
   const userName = computed(() => user.value?.username || '')
   const userPhone = computed(() => user.value?.phone || '')
 
@@ -132,7 +149,7 @@ export const useAuthStore = defineStore('auth', () => {
       accessTokenValue === 'null' || 
       accessTokenValue.trim() === '' ||
       typeof accessTokenValue !== 'string' ||
-      accessTokenValue.length < 10  // JWT token应该很长
+      accessTokenValue.length < 50  // JWT token应该很长，至少50个字符
     )) {
       console.warn('🟡 [AuthStore] 发现无效的access_token:', accessTokenValue)
       needsCleanup = true
@@ -144,7 +161,7 @@ export const useAuthStore = defineStore('auth', () => {
       refreshTokenValue === 'null' || 
       refreshTokenValue.trim() === '' ||
       typeof refreshTokenValue !== 'string' ||
-      refreshTokenValue.length < 10  // JWT token应该很长
+      refreshTokenValue.length < 50  // JWT token应该很长，至少50个字符
     )) {
       console.warn('🟡 [AuthStore] 发现无效的refresh_token:', refreshTokenValue)
       needsCleanup = true

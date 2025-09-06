@@ -493,16 +493,12 @@ const loadRecords = async () => {
     
     console.log('Loading medical records with params:', params)
     await medicalRecordsStore.fetchRecords(params)
-    const response = { success: true, data: { results: medicalRecordsStore.records, count: medicalRecordsStore.pagination.total } }
     
-    if (response.success) {
-      records.value = response.data.results || []
-      pagination.total = response.data.count || 0
-      console.log('Medical records loaded:', records.value.length)
-    } else {
-      throw new Error(response.message || '加载病历列表失败')
-    }
-  } catch (err) {
+    // 直接使用 store 状态，避免构造模拟响应
+    records.value = medicalRecordsStore.records
+    pagination.total = medicalRecordsStore.pagination.total
+    console.log('Medical records loaded:', records.value.length, 'total:', pagination.total)
+  } catch (err: any) {
     console.error('Error loading medical records:', err)
     error.value = err.message || '加载病历列表失败'
     toast.error(error.value)
@@ -518,14 +514,10 @@ const loadStatistics = async () => {
   try {
     console.log('Loading medical records statistics')
     await medicalRecordsStore.fetchStatistics()
-    const response = { success: true, data: medicalRecordsStore.statistics }
     
-    if (response.success) {
-      statistics.value = response.data
-      console.log('Statistics loaded:', statistics.value)
-    } else {
-      console.warn('Failed to load statistics:', response.message)
-    }
+    // 直接使用 store 状态
+    statistics.value = medicalRecordsStore.statistics
+    console.log('Statistics loaded:', statistics.value)
   } catch (err) {
     console.error('Error loading statistics:', err)
   }
@@ -538,14 +530,10 @@ const loadCategories = async () => {
   try {
     console.log('Loading medical records categories')
     await medicalRecordsStore.fetchCategories()
-    const response = { success: true, data: medicalRecordsStore.categories }
     
-    if (response.success) {
-      categories.value = response.data
-      console.log('Categories loaded:', categories.value)
-    } else {
-      console.warn('Failed to load categories:', response.message)
-    }
+    // 直接使用 store 状态
+    categories.value = medicalRecordsStore.categories
+    console.log('Categories loaded:', categories.value)
   } catch (err) {
     console.error('Error loading categories:', err)
   }
@@ -613,16 +601,16 @@ const deleteRecord = async (recordId: number) => {
   
   try {
     console.log('Deleting medical record:', recordId)
-    const response = await medicalRecordsStore.deleteRecord(recordId)
+    const ok = await medicalRecordsStore.deleteRecord(recordId)
     
-    if (response.success) {
+    if (ok) {
       toast.success('病历删除成功')
       loadRecords()
       loadStatistics()
     } else {
-      throw new Error(response.message || '删除病历失败')
+      throw new Error('删除病历失败')
     }
-  } catch (err) {
+  } catch (err: any) {
     console.error('Error deleting medical record:', err)
     toast.error(err.message || '删除病历失败')
   }

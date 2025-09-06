@@ -25,15 +25,34 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">搜索药品</label>
-            <input
-              type="text"
-              placeholder="输入药品名称或拼音首字母"
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            />
+            <div class="flex gap-2">
+              <input
+                v-model="searchQuery"
+                type="text"
+                placeholder="输入药品名称或拼音首字母"
+                class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                @keyup.enter="handleSearch"
+              />
+              <button
+                @click="handleSearch"
+                :disabled="loading"
+                class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg v-if="loading" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                {{ loading ? '搜索中...' : '搜索' }}
+              </button>
+            </div>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">状态筛选</label>
-            <select class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+            <select 
+              v-model="filters.status"
+              @change="handleFilter"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            >
               <option value="">全部状态</option>
               <option value="normal">正常</option>
               <option value="low-stock">库存不足</option>
@@ -42,11 +61,15 @@
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">排序方式</label>
-            <select class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+            <select 
+              v-model="filters.sortBy"
+              @change="handleFilter"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            >
               <option value="name">按名称</option>
-              <option value="expiry">按有效期</option>
+              <option value="expiry_date">按有效期</option>
               <option value="quantity">按库存</option>
-              <option value="created">按添加时间</option>
+              <option value="-created_at">按添加时间</option>
             </select>
           </div>
         </div>
@@ -68,8 +91,10 @@
                 <p class="text-sm text-gray-500">{{ medicine.manufacturer }}</p>
               </div>
               <div class="ml-4">
+                <!-- 调试信息 -->
+                <div class="text-xs text-gray-500 mb-1">{{ medicine.image_path || '无图片' }}</div>
                 <img
-                  :src="medicine.image_path || 'https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=medicine%20pill%20bottle&image_size=square'"
+                  :src="getImageUrl(medicine.image_path) || 'https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=medicine%20pill%20bottle&image_size=square'"
                   :alt="`${medicine.name}图片`"
                   class="w-16 h-16 rounded-lg object-cover bg-gray-100"
                   @error="handleImageError"
@@ -114,9 +139,19 @@
                 <button 
                   @click="editMedicine(medicine)"
                   class="text-gray-400 hover:text-gray-500"
+                  title="编辑药品"
                 >
                   <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                  </svg>
+                </button>
+                <button 
+                  @click="deleteMedicine(medicine)"
+                  class="text-red-400 hover:text-red-500"
+                  title="删除药品"
+                >
+                  <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                   </svg>
                 </button>
               </div>
@@ -175,10 +210,62 @@ const showAddDialog = ref(false)
 const showEditDialog = ref(false)
 const editingMedicine = ref<Medicine | null>(null)
 
+// 搜索状态
+const searchQuery = ref('')
+const filters = ref({
+  status: '',
+  sortBy: 'name'
+})
+
 // 计算属性
 const medicines = computed(() => medicineStore.medicines)
 const loading = computed(() => medicineStore.loading)
 const error = computed(() => medicineStore.error)
+
+// 搜索和筛选方法
+const handleSearch = async () => {
+  console.log('🔵 [MedicinesPage] 开始搜索:', searchQuery.value)
+  await loadMedicines()
+}
+
+const handleFilter = async () => {
+  console.log('🔵 [MedicinesPage] 筛选条件变更:', filters.value)
+  await loadMedicines()
+}
+
+// 加载药品列表
+const loadMedicines = async () => {
+  try {
+    const params: any = {}
+    
+    // 添加搜索参数
+    if (searchQuery.value.trim()) {
+      params.search = searchQuery.value.trim()
+    }
+    
+    // 添加排序参数
+    if (filters.value.sortBy) {
+      params.ordering = filters.value.sortBy
+    }
+    
+    // 添加状态筛选参数
+    if (filters.value.status === 'low-stock') {
+      params.low_stock = true
+    } else if (filters.value.status === 'expired') {
+      params.expiry_date__lt = new Date().toISOString().split('T')[0]
+    }
+    
+    console.log('🔵 [MedicinesPage] 请求参数:', params)
+    await medicineStore.fetchMedicines(params)
+    console.log('🟢 [MedicinesPage] 药品列表加载成功', {
+      count: medicines.value.length,
+      searchQuery: searchQuery.value,
+      filters: filters.value
+    })
+  } catch (err) {
+    console.error('🔴 [MedicinesPage] 加载药品列表失败:', err)
+  }
+}
 
 // 组件挂载时的调试信息和数据获取
 onMounted(async () => {
@@ -187,16 +274,7 @@ onMounted(async () => {
   console.log('showEditDialog:', showEditDialog.value)
   
   // 获取药品列表
-  try {
-    console.log('🔵 [MedicinesPage] 开始获取药品列表')
-    await medicineStore.fetchMedicines()
-    console.log('🟢 [MedicinesPage] 药品列表获取成功', {
-      count: medicines.value.length,
-      medicines: medicines.value
-    })
-  } catch (err) {
-    console.error('🔴 [MedicinesPage] 获取药品列表失败:', err)
-  }
+  await loadMedicines()
 })
 
 // 关闭对话框
@@ -212,17 +290,34 @@ const editMedicine = (medicine: Medicine) => {
   showEditDialog.value = true
 }
 
+// 删除药品
+const deleteMedicine = async (medicine: Medicine) => {
+  // 确认删除
+  const confirmed = confirm(`确定要删除药品「${medicine.name}」吗？\n\n删除后将无法恢复，请谨慎操作。`)
+  
+  if (!confirmed) {
+    return
+  }
+  
+  try {
+    console.log('🔵 [MedicinesPage] 开始删除药品:', medicine.id, medicine.name)
+    await medicineStore.deleteMedicine(medicine.id)
+    console.log('🟢 [MedicinesPage] 药品删除成功:', medicine.name)
+    
+    // 显示成功提示
+    alert(`药品「${medicine.name}」已成功删除`)
+  } catch (err: any) {
+    console.error('🔴 [MedicinesPage] 删除药品失败:', err)
+    alert(`删除药品失败：${err.message || '未知错误'}`)
+  }
+}
+
 // 处理表单成功提交
 const handleFormSuccess = async () => {
   console.log('🟢 [MedicinesPage] 表单提交成功，刷新列表')
   closeDialog()
-  // 刷新药品列表
-  try {
-    await medicineStore.fetchMedicines()
-    console.log('🟢 [MedicinesPage] 列表刷新成功')
-  } catch (err) {
-    console.error('🔴 [MedicinesPage] 列表刷新失败:', err)
-  }
+  // 刷新药品列表，保持当前搜索和筛选条件
+  await loadMedicines()
 }
 
 // 处理图片加载错误
@@ -284,5 +379,26 @@ const getStatusText = (medicine: Medicine) => {
   } else {
     return '正常'
   }
+}
+
+// 获取完整的图片URL
+const getImageUrl = (imagePath: string | null | undefined) => {
+  console.log('🔵 [MedicinesPage] getImageUrl called with:', imagePath)
+  if (!imagePath) {
+    console.log('🔵 [MedicinesPage] imagePath is null/undefined, returning null')
+    return null
+  }
+  // 如果已经是完整URL，直接返回
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+    console.log('🔵 [MedicinesPage] imagePath is full URL, returning as-is:', imagePath)
+    return imagePath
+  }
+  // 构建完整的服务器URL - 后端返回的path已经包含了相对路径
+  const baseURL = 'http://127.0.0.1:8000'
+  // 确保路径以/开头
+  const path = imagePath.startsWith('/') ? imagePath : `/${imagePath}`
+  const fullUrl = `${baseURL}/media${path}`
+  console.log('🔵 [MedicinesPage] constructed full URL:', fullUrl)
+  return fullUrl
 }
 </script>

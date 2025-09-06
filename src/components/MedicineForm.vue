@@ -218,14 +218,14 @@
                 <Upload class="w-4 h-4 mr-2" />
                 上传图片
               </button>
-              <span v-if="formData.image_url" class="text-sm text-gray-600">
+              <span v-if="formData.image_path" class="text-sm text-gray-600">
                 已选择图片
               </span>
             </div>
             <!-- 图片预览 -->
-            <div v-if="formData.image_url" class="mt-2">
+            <div v-if="formData.image_path" class="mt-2">
               <img 
-                :src="formData.image_url" 
+                :src="getImagePreviewUrl(formData.image_path)" 
                 alt="药品图片预览" 
                 class="w-20 h-20 object-cover rounded-lg border border-gray-200"
                 @error="handleImageError"
@@ -362,7 +362,7 @@ watch(
         batch_number: newMedicine.batch_number || '',
         storage_conditions: newMedicine.storage_conditions || '',
         description: newMedicine.description || '',
-        image_url: newMedicine.image_url || '', // 恢复图片URL字段
+        image_path: newMedicine.image_path || '', // 使用image_path字段
         is_prescription: newMedicine.is_prescription || false
       })
     } else {
@@ -422,7 +422,8 @@ const handleSubmit = async () => {
     // 清理其他可能的空字符串字段
     Object.keys(cleanFormData).forEach(key => {
       const value = cleanFormData[key as keyof typeof cleanFormData]
-      if (value === '' && key !== 'name') { // 保留名称字段，其他空字段删除
+      // 保留名称字段和图片路径字段，其他空字段删除
+      if (value === '' && key !== 'name' && key !== 'image_path') {
         delete cleanFormData[key as keyof typeof cleanFormData]
         console.log(`🔵 [MedicineForm] Deleted empty field: ${key}`)
       }
@@ -476,22 +477,39 @@ const handleSubmit = async () => {
 }
 
 // 处理图片上传
-const handleImageUpload = () => {
+const handleImageUpload = async () => {
   // 创建文件输入元素
   const input = document.createElement('input')
   input.type = 'file'
   input.accept = 'image/*'
-  input.onchange = (e) => {
+  input.onchange = async (e) => {
     const file = (e.target as HTMLInputElement).files?.[0]
     if (file) {
-      // 这里可以实现图片上传到服务器的逻辑
-      // 目前使用本地预览
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        formData.image_url = e.target?.result as string
+      try {
+        console.log('🔵 [MedicineForm] Starting image upload:', file.name)
+        toast.info('正在上传图片...')
+        
+        // 调用上传API
+        const { uploadApi } = await import('@/api/upload')
+        const response = await uploadApi.uploadMedicineImage(file)
+        
+        console.log('🟢 [MedicineForm] Image upload response:', response)
+        console.log('🔵 [MedicineForm] Response data structure:', response.data)
+        
+        // 检查响应数据结构 - 后端返回 {success: true, data: {image_path: '...'}}
+        if (response.data?.success && response.data?.data?.image_path) {
+          formData.image_path = response.data.data.image_path
+          console.log('🟢 [MedicineForm] Image path set:', formData.image_path)
+          toast.success('图片上传成功')
+        } else {
+          console.error('🔴 [MedicineForm] Invalid response structure:', response)
+          console.error('🔴 [MedicineForm] Expected: response.data.data.image_path, got:', response.data?.data?.image_path)
+          toast.error('图片上传失败：响应格式错误')
+        }
+      } catch (error) {
+        console.error('🔴 [MedicineForm] Image upload failed:', error)
+        toast.error('图片上传失败，请重试')
       }
-      reader.readAsDataURL(file)
-      toast.info('图片上传功能待实现，当前为本地预览')
     }
   }
   input.click()
@@ -499,13 +517,27 @@ const handleImageUpload = () => {
 
 // 删除图片
 const removeImage = () => {
-  formData.image_url = ''
+  formData.image_path = ''
   toast.success('图片已删除')
+}
+
+// 获取图片预览URL
+const getImagePreviewUrl = (imagePath: string): string => {
+  if (!imagePath) return ''
+  // 如果已经是完整URL，直接返回
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+    return imagePath
+  }
+  // 构建完整的服务器URL - 后端返回的path已经包含了相对路径
+  const baseUrl = 'http://127.0.0.1:8000'
+  // 确保路径以/开头
+  const path = imagePath.startsWith('/') ? imagePath : `/${imagePath}`
+  return `${baseUrl}/media${path}`
 }
 
 // 处理图片加载错误
 const handleImageError = () => {
-  formData.image_url = ''
+  formData.image_path = ''
   toast.error('图片加载失败，请重新上传')
 }
 

@@ -114,21 +114,76 @@
         </div>
       </div>
 
-      <!-- 图表区域 -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        <!-- 服药趋势图 -->
-        <div class="bg-white rounded-lg shadow p-6">
-          <h3 class="text-lg font-semibold text-gray-900 mb-4">服药趋势</h3>
-          <div class="h-80">
-            <canvas ref="trendChart" class="w-full h-full"></canvas>
+      <!-- 药品库存统计 -->
+      <div class="bg-white rounded-lg shadow p-6 mb-8">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">药品库存统计</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div 
+            v-for="medicine in medicineInventory" 
+            :key="medicine.id"
+            class="border rounded-lg p-4"
+            :class="{
+              'border-red-300 bg-red-50': medicine.quantity <= 5,
+              'border-yellow-300 bg-yellow-50': medicine.quantity > 5 && medicine.quantity <= 10,
+              'border-green-300 bg-green-50': medicine.quantity > 10
+            }"
+          >
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="font-medium text-gray-900 truncate">{{ medicine.name }}</h4>
+              <span 
+                class="px-2 py-1 text-xs rounded-full"
+                :class="{
+                  'bg-red-100 text-red-800': medicine.quantity <= 5,
+                  'bg-yellow-100 text-yellow-800': medicine.quantity > 5 && medicine.quantity <= 10,
+                  'bg-green-100 text-green-800': medicine.quantity > 10
+                }"
+              >
+                {{ medicine.quantity <= 5 ? '急需补充' : medicine.quantity <= 10 ? '库存偏低' : '库存充足' }}
+              </span>
+            </div>
+            <div class="space-y-1 text-sm text-gray-600">
+              <p><span class="font-medium">剩余数量:</span> {{ medicine.quantity }}</p>
+              <p v-if="medicine.specification"><span class="font-medium">规格:</span> {{ medicine.specification }}</p>
+              <p v-if="medicine.expiry_date"><span class="font-medium">有效期:</span> {{ formatDate(medicine.expiry_date) }}</p>
+              <p v-if="medicine.manufacturer"><span class="font-medium">厂商:</span> {{ medicine.manufacturer }}</p>
+            </div>
+            <div v-if="medicine.quantity <= 10" class="mt-3">
+              <div class="flex items-center text-sm">
+                <i class="fas fa-exclamation-triangle text-orange-500 mr-1"></i>
+                <span class="text-orange-600">建议及时补充库存</span>
+              </div>
+            </div>
           </div>
         </div>
-
-        <!-- 服药状态分布 -->
-        <div class="bg-white rounded-lg shadow p-6">
-          <h3 class="text-lg font-semibold text-gray-900 mb-4">服药状态分布</h3>
-          <div class="h-80">
-            <canvas ref="statusChart" class="w-full h-full"></canvas>
+        
+        <!-- 库存统计摘要 -->
+        <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div class="flex items-center">
+              <i class="fas fa-exclamation-circle text-red-500 mr-2"></i>
+              <div>
+                <p class="text-sm font-medium text-red-800">急需补充</p>
+                <p class="text-lg font-bold text-red-900">{{ lowStockCount }} 种</p>
+              </div>
+            </div>
+          </div>
+          <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div class="flex items-center">
+              <i class="fas fa-exclamation-triangle text-yellow-500 mr-2"></i>
+              <div>
+                <p class="text-sm font-medium text-yellow-800">库存偏低</p>
+                <p class="text-lg font-bold text-yellow-900">{{ mediumStockCount }} 种</p>
+              </div>
+            </div>
+          </div>
+          <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+            <div class="flex items-center">
+              <i class="fas fa-check-circle text-green-500 mr-2"></i>
+              <div>
+                <p class="text-sm font-medium text-green-800">库存充足</p>
+                <p class="text-lg font-bold text-green-900">{{ goodStockCount }} 种</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -154,9 +209,7 @@
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   平均效果
                 </th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  副作用次数
-                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">副作用次数</th>
               </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
@@ -193,18 +246,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRecordStore } from '../stores/record'
 import { useMedicineStore } from '../stores/medicine'
-import Chart from 'chart.js/auto'
-import type { Chart as ChartType } from 'chart.js'
 
 // 状态管理
 const recordStore = useRecordStore()
 const medicineStore = useMedicineStore()
-const { loading, stats, trends, fetchStats, fetchTrends } = recordStore
+const { loading, statistics, fetchStatistics } = recordStore
 const { fetchMedicines } = medicineStore
 const medicines = computed(() => medicineStore.medicines)
+
+// 修复：使用正确的统计数据属性名
+const stats = computed(() => statistics.value)
 
 // 响应式数据
 const dateRange = ref({
@@ -213,12 +267,7 @@ const dateRange = ref({
 })
 const selectedMedicine = ref('')
 const medicineStats = ref<any[]>([])
-
-// 图表引用
-const trendChart = ref<HTMLCanvasElement>()
-const statusChart = ref<HTMLCanvasElement>()
-let trendChartInstance: ChartType | null = null
-let statusChartInstance: ChartType | null = null
+const medicineInventory = ref<any[]>([])
 
 // 初始化日期范围（最近30天）
 const initDateRange = () => {
@@ -239,15 +288,11 @@ const loadData = async () => {
       medicine: selectedMedicine.value || undefined
     }
     
-    // 并行加载统计数据和趋势数据
+    // 并行加载统计数据和药品库存数据
     await Promise.all([
-      fetchStats(params),
-      fetchTrends(params)
+      fetchStatistics(params),
+      loadMedicineInventory()
     ])
-    
-    // 更新图表
-    await nextTick()
-    updateCharts()
     
     // 生成药品统计数据
     generateMedicineStats()
@@ -256,105 +301,40 @@ const loadData = async () => {
   }
 }
 
-// 更新图表
-const updateCharts = () => {
-  updateTrendChart()
-  updateStatusChart()
+// 加载药品库存数据
+const loadMedicineInventory = async () => {
+  try {
+    // 获取所有药品数据（包含库存信息）
+    await fetchMedicines()
+    medicineInventory.value = medicines.value.map(medicine => ({
+      ...medicine,
+      // 确保数量字段存在
+      quantity: medicine.quantity || 0
+    }))
+  } catch (error) {
+    console.error('加载药品库存数据失败:', error)
+    medicineInventory.value = []
+  }
 }
 
-// 更新趋势图表
-const updateTrendChart = () => {
-  if (!trendChart.value || !trends.value?.length) return
-  
-  // 销毁现有图表
-  if (trendChartInstance) {
-    trendChartInstance.destroy()
-  }
-  
-  const ctx = trendChart.value.getContext('2d')
-  if (!ctx) return
-  
-  trendChartInstance = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: trends.value.map(item => item.date),
-      datasets: [
-        {
-          label: '服药次数',
-          data: trends.value.map(item => item.total_records),
-          borderColor: 'rgb(59, 130, 246)',
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          tension: 0.1
-        },
-        {
-          label: '按时服药次数',
-          data: trends.value.map(item => item.on_time_records),
-          borderColor: 'rgb(34, 197, 94)',
-          backgroundColor: 'rgba(34, 197, 94, 0.1)',
-          tension: 0.1
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        y: {
-          beginAtZero: true,
-          ticks: {
-            stepSize: 1
-          }
-        }
-      },
-      plugins: {
-        legend: {
-          position: 'top'
-        }
-      }
-    }
-  })
-}
+// 库存统计计算属性
+const lowStockCount = computed(() => {
+  return medicineInventory.value.filter(medicine => medicine.quantity <= 5).length
+})
 
-// 更新状态分布图表
-const updateStatusChart = () => {
-  if (!statusChart.value || !stats.value) return
-  
-  // 销毁现有图表
-  if (statusChartInstance) {
-    statusChartInstance.destroy()
-  }
-  
-  const ctx = statusChart.value.getContext('2d')
-  if (!ctx) return
-  
-  const statusData = [
-    { label: '按时服药', value: stats.value.on_time_count || 0, color: '#22c55e' },
-    { label: '延迟服药', value: stats.value.delayed_count || 0, color: '#f59e0b' },
-    { label: '漏服', value: stats.value.missed_count || 0, color: '#ef4444' },
-    { label: '部分服药', value: stats.value.partial_count || 0, color: '#f97316' }
-  ].filter(item => item.value > 0)
-  
-  statusChartInstance = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: statusData.map(item => item.label),
-      datasets: [{
-        data: statusData.map(item => item.value),
-        backgroundColor: statusData.map(item => item.color),
-        borderWidth: 2,
-        borderColor: '#ffffff'
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: 'bottom'
-        }
-      }
-    }
-  })
+const mediumStockCount = computed(() => {
+  return medicineInventory.value.filter(medicine => medicine.quantity > 5 && medicine.quantity <= 10).length
+})
+
+const goodStockCount = computed(() => {
+  return medicineInventory.value.filter(medicine => medicine.quantity > 10).length
+})
+
+// 格式化日期
+const formatDate = (dateString: string) => {
+  if (!dateString) return '-'
+  const date = new Date(dateString)
+  return date.toLocaleDateString('zh-CN')
 }
 
 // 生成药品统计数据
@@ -364,13 +344,13 @@ const generateMedicineStats = () => {
     return
   }
   
-  medicineStats.value = stats.value.medicine_stats.map((item: any) => {
+  medicineStats.value = stats.value?.medicine_stats?.map((item: any) => {
     const medicine = medicines.value.find(m => m.id === item.medicine)
     return {
       ...item,
       medicine_name: medicine?.name || '未知药品'
     }
-  })
+  }) || []
 }
 
 // 生命周期
@@ -387,19 +367,5 @@ onMounted(async () => {
   await loadData()
 })
 
-// 组件卸载时清理图表
-const cleanup = () => {
-  if (trendChartInstance) {
-    trendChartInstance.destroy()
-    trendChartInstance = null
-  }
-  if (statusChartInstance) {
-    statusChartInstance.destroy()
-    statusChartInstance = null
-  }
-}
 
-// 监听组件卸载
-import { onBeforeUnmount } from 'vue'
-onBeforeUnmount(cleanup)
 </script>

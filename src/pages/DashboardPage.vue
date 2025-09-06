@@ -19,7 +19,7 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-600">药品总数</p>
-              <p class="text-2xl font-semibold text-gray-900">12</p>
+              <p class="text-2xl font-semibold text-gray-900">{{ medicineStats?.total_medicines || 0 }}</p>
             </div>
           </div>
         </div>
@@ -33,7 +33,7 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-600">今日提醒</p>
-              <p class="text-2xl font-semibold text-gray-900">3</p>
+              <p class="text-2xl font-semibold text-gray-900">{{ todayReminders?.length || 0 }}</p>
             </div>
           </div>
         </div>
@@ -47,7 +47,7 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-600">即将过期</p>
-              <p class="text-2xl font-semibold text-gray-900">2</p>
+              <p class="text-2xl font-semibold text-gray-900">{{ medicineStats?.expiring_soon_count || 0 }}</p>
             </div>
           </div>
         </div>
@@ -61,7 +61,7 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-600">用药计划</p>
-              <p class="text-2xl font-semibold text-gray-900">5</p>
+              <p class="text-2xl font-semibold text-gray-900">{{ activeReminders?.length || 0 }}</p>
             </div>
           </div>
         </div>
@@ -171,12 +171,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useMedicineStore } from '@/stores/medicine'
+import { useReminderStore } from '@/stores/reminder'
+import { useToast } from '@/composables/useToast'
 
 /**
  * 主导航页面组件
  * 提供系统功能导航和快捷统计信息
  */
+
+// 状态管理
+const medicineStore = useMedicineStore()
+const reminderStore = useReminderStore()
+const { error: showError } = useToast()
+
+// 响应式数据
+const loading = ref(false)
 
 // 当前日期
 const currentDate = computed(() => {
@@ -187,5 +198,34 @@ const currentDate = computed(() => {
     day: 'numeric',
     weekday: 'long'
   })
+})
+
+// 统计数据计算属性
+const medicineStats = computed(() => medicineStore.statistics)
+const todayReminders = computed(() => reminderStore.todayReminders)
+const activeReminders = computed(() => reminderStore.activeReminders)
+
+// 获取仪表盘数据
+const fetchDashboardData = async () => {
+  try {
+    loading.value = true
+    
+    // 并行获取所有数据
+    await Promise.all([
+      medicineStore.fetchStatistics(),
+      reminderStore.fetchReminders(),
+      reminderStore.fetchTodayReminders()
+    ])
+  } catch (error) {
+    console.error('获取仪表盘数据失败:', error)
+    showError('获取数据失败，请刷新页面重试')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 组件挂载时获取数据
+onMounted(() => {
+  fetchDashboardData()
 })
 </script>

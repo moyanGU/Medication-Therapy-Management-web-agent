@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc -b && vite build",
-    "preview": "vite preview",
+    "dev": "vite --config vite1.config.ts",
+    "build": "vue-tsc -b && vite build --config vite1.config.ts",
+    "preview": "vite preview --config vite1.config.ts",
     "check": "vue-tsc -b",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

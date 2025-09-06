@@ -13,7 +13,7 @@
             class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
           >
             <i class="fas fa-chart-bar mr-2"></i>
-            统计分析
+            药量统计
           </router-link>
           <button
             @click="exportRecords"
@@ -34,7 +34,7 @@
       </div>
 
       <!-- 统计卡片 -->
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6" v-if="statistics">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6" v-if="statistics">
         <div class="bg-white rounded-lg shadow p-6">
           <div class="flex items-center">
             <div class="p-3 rounded-full bg-blue-100 text-blue-600">
@@ -61,24 +61,12 @@
         
         <div class="bg-white rounded-lg shadow p-6">
           <div class="flex items-center">
-            <div class="p-3 rounded-full bg-yellow-100 text-yellow-600">
-              <i class="fas fa-star text-xl"></i>
+            <div class="p-3 rounded-full bg-orange-100 text-orange-600">
+              <i class="fas fa-capsules text-xl"></i>
             </div>
             <div class="ml-4">
-              <p class="text-sm font-medium text-gray-600">平均效果</p>
-              <p class="text-2xl font-bold text-gray-900">{{ statistics.avg_effectiveness.toFixed(1) }}</p>
-            </div>
-          </div>
-        </div>
-        
-        <div class="bg-white rounded-lg shadow p-6">
-          <div class="flex items-center">
-            <div class="p-3 rounded-full bg-purple-100 text-purple-600">
-              <i class="fas fa-calendar-day text-xl"></i>
-            </div>
-            <div class="ml-4">
-              <p class="text-sm font-medium text-gray-600">日均用药</p>
-              <p class="text-2xl font-bold text-gray-900">{{ statistics.daily_average.toFixed(1) }}</p>
+              <p class="text-sm font-medium text-gray-600">当日用药种类</p>
+              <p class="text-2xl font-bold text-gray-900">{{ todayMedicineTypes }}</p>
             </div>
           </div>
         </div>
@@ -366,13 +354,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, watchEffect } from 'vue'
+import { useRouter } from 'vue-router'
 import { useRecordStore } from '../stores/record'
+import { useAuthStore } from '../stores/auth'
 import { MEDICATION_STATUS_OPTIONS } from '../types/record'
 import type { MedicationRecord } from '../types/record'
 import RecordForm from '../components/RecordForm.vue'
 import RecordDetail from '../components/RecordDetail.vue'
 import { debounce } from 'lodash-es'
+
+// 路由和认证
+const router = useRouter()
+const authStore = useAuthStore()
 
 // 状态管理
 const recordStore = useRecordStore()
@@ -388,6 +382,24 @@ const {
   deleteRecord,
   exportRecords: storeExportRecords
 } = recordStore
+
+// 计算属性
+const todayMedicineTypes = computed(() => {
+  if (!records.value || !Array.isArray(records.value)) {
+    return 0
+  }
+  
+  const today = new Date().toISOString().split('T')[0]
+  const todayRecords = records.value.filter(record => {
+    if (!record || !record.taken_at) return false
+    const recordDate = new Date(record.taken_at).toISOString().split('T')[0]
+    return recordDate === today
+  })
+  
+  // 获取今日用药的唯一药品ID
+  const uniqueMedicineIds = new Set(todayRecords.map(record => record.medicine).filter(Boolean))
+  return uniqueMedicineIds.size
+})
 
 // 本地状态
 const searchQuery = ref('')
@@ -418,6 +430,7 @@ const debouncedSearch = debounce(() => {
 
 // 加载记录
 const loadRecords = async () => {
+  console.log('🔵 [RecordsPage] loadRecords被调用')
   const params: any = {
     page: pagination.page,
     page_size: pagination.pageSize
@@ -439,7 +452,9 @@ const loadRecords = async () => {
     params.end_date = filters.value.end_date
   }
   
+  console.log('🔵 [RecordsPage] 调用fetchRecords，参数:', params)
   await fetchRecords(params)
+  console.log('🔵 [RecordsPage] fetchRecords完成，当前records数量:', records.value?.length || 0)
 }
 
 // 应用筛选
@@ -540,7 +555,9 @@ const closeForm = () => {
 }
 
 const handleFormSuccess = () => {
+  console.log('🟢 [RecordsPage] handleFormSuccess被调用')
   closeForm()
+  console.log('🟢 [RecordsPage] 表单已关闭，开始重新加载记录')
   loadRecords()
 }
 
@@ -607,8 +624,39 @@ const getAdherenceColor = (score: number) => {
 }
 
 // 生命周期
-onMounted(async () => {
-  await loadRecords()
-  await fetchStatistics()
+// 使用watchEffect监听认证状态变化
+const dataLoaded = ref(false)
+
+watchEffect(async () => {
+  console.log('🔵 [RecordsPage] watchEffect触发，检查认证状态')
+  console.log('🔵 [RecordsPage] isAuthenticated:', authStore.isAuthenticated)
+  console.log('🔵 [RecordsPage] localStorage access_token:', !!localStorage.getItem('access_token'))
+  console.log('🔵 [RecordsPage] accessToken value:', authStore.accessToken)
+  
+  // 如果用户未登录，重定向到登录页面
+  if (authStore.isAuthenticated === false) {
+    console.log('🔴 [RecordsPage] 用户未登录，重定向到登录页面')
+    router.push('/login')
+    return
+  }
+  
+  // 如果用户已登录且数据未加载，则加载数据
+  if (authStore.isAuthenticated === true && !dataLoaded.value) {
+    console.log('🔵 [RecordsPage] 用户已登录，开始加载数据')
+    dataLoaded.value = true
+    try {
+      await loadRecords()
+      await fetchStatistics()
+      console.log('🔵 [RecordsPage] 数据加载完成')
+    } catch (error) {
+      console.error('🔴 [RecordsPage] 数据加载失败:', error)
+      // 不重置dataLoaded状态，避免无限循环
+      // 用户可以通过刷新页面或重新登录来重试
+    }
+  }
+})
+
+onMounted(() => {
+  console.log('🔵 [RecordsPage] 组件挂载完成')
 })
 </script>

@@ -50,6 +50,8 @@ export const useMedicineStore = defineStore('medicine', () => {
       if (response.data.success) {
         if (response.data.data.results) {
           // 分页数据
+          console.log('🔵 [Medicine Store] 分页数据:', response.data.data.results)
+          console.log('🔵 [Medicine Store] 第一个药品的image_path:', response.data.data.results[0]?.image_path)
           medicines.value = response.data.data.results
           pagination.value = {
             current: response.data.data.pagination.current_page,
@@ -59,6 +61,7 @@ export const useMedicineStore = defineStore('medicine', () => {
           }
         } else {
           // 非分页数据
+          console.log('🔵 [Medicine Store] 非分页数据:', response.data.data)
           medicines.value = response.data.data
         }
       } else {

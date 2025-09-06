@@ -50,26 +50,52 @@ export const useRecordStore = defineStore('record', () => {
         queryParams.value = { ...queryParams.value, ...params }
       }
       
+      console.log('🔵 [Record Store] 获取记录列表参数:', queryParams.value)
+      
       const response = await recordApi.getRecords(queryParams.value)
       
+      if (!validateResponse(response, '获取记录列表')) {
+        throw new Error('响应数据格式无效')
+      }
+      
+      console.log('🔵 [Record Store] 记录列表响应:', response)
+      
       if (response.success) {
-        records.value = response.data.results || response.data
+        const data = response.data || {}
+        console.log('🔵 [Record Store] 解析的data对象:', data)
+        
+        // 安全地访问results数组
+        if (data && typeof data === 'object' && Array.isArray((data as any).results)) {
+          records.value = (data as any).results
+          console.log('🟢 [Record Store] 成功解析records数组，数量:', records.value.length)
+        } else {
+          console.warn('🟡 [Record Store] data.results不是数组，使用空数组')
+          records.value = []
+        }
         
         // 更新分页信息
-        if (response.data.count !== undefined) {
+        const pg = (data as any).pagination
+        if (pg && typeof pg === 'object') {
           pagination.value = {
-            page: queryParams.value.page || 1,
-            pageSize: queryParams.value.page_size || 20,
-            total: response.data.count,
-            totalPages: Math.ceil(response.data.count / (queryParams.value.page_size || 20))
+            page: Number(queryParams.value.page) || 1,
+            pageSize: Number((queryParams.value as any).page_size) || 20,
+            total: Number(pg.count) || 0,
+            totalPages: Number(pg.total_pages) || 1
           }
+          console.log('🟢 [Record Store] 分页信息更新:', pagination.value)
+        } else {
+          console.warn('🟡 [Record Store] 分页信息不可用')
         }
+        
+        console.log('🟢 [Record Store] 记录列表获取成功，数量:', records.value.length)
       } else {
-        throw new Error(response.message || '获取用药记录失败')
+        const errorMsg = (response as any).message || '获取用药记录失败'
+        console.error('🔴 [Record Store] 获取记录列表失败:', errorMsg)
+        throw new Error(errorMsg)
       }
     } catch (err: any) {
-      console.error('获取用药记录失败:', err)
       error.value = err.message || '获取用药记录失败'
+      console.error('🔴 [Record Store] 获取记录列表异常:', err)
       records.value = []
     } finally {
       loading.value = false
@@ -84,16 +110,27 @@ export const useRecordStore = defineStore('record', () => {
       loading.value = true
       error.value = null
       
+      console.log('🔵 [Record Store] 获取记录详情，ID:', id)
+      
       const response = await recordApi.getRecord(id)
       
+      if (!validateResponse(response, '获取记录详情')) {
+        throw new Error('响应数据格式无效')
+      }
+      
+      console.log('🔵 [Record Store] 记录详情响应:', response)
+      
       if (response.success) {
-        currentRecord.value = response.data
+        currentRecord.value = response.data as MedicationRecord
+        console.log('🟢 [Record Store] 记录详情获取成功:', currentRecord.value)
       } else {
-        throw new Error(response.message || '获取用药记录详情失败')
+        error.value = (response as any).message || '获取用药记录详情失败'
+        console.error('🔴 [Record Store] 服务器返回失败:', response)
+        throw new Error((response as any).message || '获取用药记录详情失败')
       }
     } catch (err: any) {
-      console.error('获取用药记录详情失败:', err)
       error.value = err.message || '获取用药记录详情失败'
+      console.error('🔴 [Record Store] 获取用药记录详情异常:', err)
       currentRecord.value = null
     } finally {
       loading.value = false
@@ -108,22 +145,38 @@ export const useRecordStore = defineStore('record', () => {
       loading.value = true
       error.value = null
       
+      console.log('🔵 [Record Store] 创建记录参数:', data)
+      
       const response = await recordApi.createRecord(data)
       
+      if (!validateResponse(response, '创建记录')) {
+        throw new Error('响应数据格式无效')
+      }
+      
+      console.log('🔵 [Record Store] 创建记录响应:', response)
+      
       if (response.success) {
+        console.log('🟢 [Record Store] 创建记录成功，准备更新records数组')
+        console.log('🟢 [Record Store] 当前records数组长度:', records.value.length)
+        console.log('🟢 [Record Store] 新记录数据:', response.data)
+        
         // 添加到记录列表开头
-        records.value.unshift(response.data)
+        records.value.unshift(response.data as MedicationRecord)
+        console.log('🟢 [Record Store] 更新后records数组长度:', records.value.length)
         
         // 更新统计信息
         await fetchStatistics()
+        console.log('🟢 [Record Store] 统计信息已更新')
         
         return response.data
       } else {
-        throw new Error(response.message || '创建用药记录失败')
+        error.value = (response as any).message || '创建用药记录失败'
+        console.error('🔴 [Record Store] 服务器返回失败:', response)
+        throw new Error((response as any).message || '创建用药记录失败')
       }
     } catch (err: any) {
-      console.error('创建用药记录失败:', err)
       error.value = err.message || '创建用药记录失败'
+      console.error('🔴 [Record Store] 创建记录异常:', err)
       throw err
     } finally {
       loading.value = false
@@ -138,30 +191,40 @@ export const useRecordStore = defineStore('record', () => {
       loading.value = true
       error.value = null
       
+      console.log('🔵 [Record Store] 更新记录，ID:', id, '数据:', data)
+      
       const response = await recordApi.updateRecord(id, data)
+      
+      if (!validateResponse(response, '更新记录')) {
+        throw new Error('响应数据格式无效')
+      }
+      
+      console.log('🔵 [Record Store] 更新记录响应:', response)
       
       if (response.success) {
         // 更新记录列表中的对应项
         const index = records.value.findIndex(record => record.id === id)
         if (index !== -1) {
-          records.value[index] = response.data
+          records.value[index] = response.data as MedicationRecord
         }
         
         // 更新当前记录
-        if (currentRecord.value?.id === id) {
-          currentRecord.value = response.data
-        }
+        currentRecord.value = response.data as MedicationRecord
         
         // 更新统计信息
         await fetchStatistics()
         
-        return response.data
+        console.log('🟢 [Record Store] 记录更新成功')
+        
+        return currentRecord.value
       } else {
-        throw new Error(response.message || '更新用药记录失败')
+        error.value = (response as any).message || '更新用药记录失败'
+        console.error('🔴 [Record Store] 服务器返回失败:', response)
+        throw new Error((response as any).message || '更新用药记录失败')
       }
     } catch (err: any) {
-      console.error('更新用药记录失败:', err)
       error.value = err.message || '更新用药记录失败'
+      console.error('🔴 [Record Store] 更新记录异常:', err)
       throw err
     } finally {
       loading.value = false
@@ -176,7 +239,15 @@ export const useRecordStore = defineStore('record', () => {
       loading.value = true
       error.value = null
       
+      console.log('🔵 [Record Store] 删除记录，ID:', id)
+      
       const response = await recordApi.deleteRecord(id)
+      
+      if (!validateResponse(response, '删除记录')) {
+        throw new Error('响应数据格式无效')
+      }
+      
+      console.log('🔵 [Record Store] 删除记录响应:', response)
       
       if (response.success) {
         // 从记录列表中移除
@@ -190,13 +261,17 @@ export const useRecordStore = defineStore('record', () => {
         // 更新统计信息
         await fetchStatistics()
         
+        console.log('🟢 [Record Store] 记录删除成功')
+        
         return true
       } else {
-        throw new Error(response.message || '删除用药记录失败')
+        error.value = (response as any).message || '删除用药记录失败'
+        console.error('🔴 [Record Store] 服务器返回失败:', response)
+        throw new Error(response.data.message || '删除用药记录失败')
       }
     } catch (err: any) {
-      console.error('删除用药记录失败:', err)
       error.value = err.message || '删除用药记录失败'
+      console.error('🔴 [Record Store] 删除记录异常:', err)
       throw err
     } finally {
       loading.value = false
@@ -209,37 +284,74 @@ export const useRecordStore = defineStore('record', () => {
   const fetchStatistics = async (params?: {
     start_date?: string
     end_date?: string
-    medicine_id?: number
+    medicine?: string | number
   }) => {
     try {
+      loading.value = true
+      error.value = null
+      
+      console.log('🔵 [Record Store] 获取统计信息参数:', params)
+      
       const response = await recordApi.getStatistics(params)
       
+      if (!validateResponse(response, '获取统计信息')) {
+        throw new Error('响应数据格式无效')
+      }
+      
+      console.log('🔵 [Record Store] 统计信息响应:', response)
+      
       if (response.success) {
-        statistics.value = response.data
+        statistics.value = response.data as MedicationRecordStats
+        console.log('🟢 [Record Store] 统计信息获取成功:', statistics.value)
       } else {
-        throw new Error(response.message || '获取统计信息失败')
+        error.value = (response as any).message || '获取统计信息失败'
+        console.error('🔴 [Record Store] 服务器返回失败:', response)
       }
     } catch (err: any) {
-      console.error('获取统计信息失败:', err)
+      error.value = err.message || '获取统计信息失败'
+      console.error('🔴 [Record Store] 获取统计信息异常:', err)
       statistics.value = null
+    } finally {
+      loading.value = false
     }
   }
   
   /**
    * 获取趋势数据
    */
-  const fetchTrends = async () => {
+  const fetchTrends = async (params?: {
+    start_date?: string
+    end_date?: string
+    medicine?: string | number
+  }) => {
     try {
-      const response = await recordApi.getTrends()
+      loading.value = true
+      error.value = null
+      
+      console.log('🔵 [Record Store] 获取趋势数据参数:', params)
+      
+      const response = await recordApi.getTrends(params)
+      
+      if (!validateResponse(response, '获取趋势数据')) {
+        throw new Error('响应数据格式无效')
+      }
+      
+      console.log('🔵 [Record Store] 趋势数据响应:', response)
       
       if (response.success) {
-        trends.value = response.data
+        trends.value = Array.isArray(response.data) ? (response.data as MedicationTrend[]) : []
+        console.log('🟢 [Record Store] 趋势数据获取成功，数量:', trends.value.length)
       } else {
-        throw new Error(response.message || '获取趋势数据失败')
+        const errorMsg = (response as any).message || '获取趋势数据失败'
+        console.error('🔴 [Record Store] 获取趋势数据失败:', errorMsg)
+        throw new Error(errorMsg)
       }
     } catch (err: any) {
-      console.error('获取趋势数据失败:', err)
+      error.value = err.message || '获取趋势数据失败'
+      console.error('🔴 [Record Store] 获取趋势数据异常:', err)
       trends.value = []
+    } finally {
+      loading.value = false
     }
   }
   
@@ -248,16 +360,33 @@ export const useRecordStore = defineStore('record', () => {
    */
   const fetchRecentRecords = async (limit: number = 10) => {
     try {
+      loading.value = true
+      error.value = null
+      
+      console.log('🔵 [Record Store] 获取最近记录，限制数量:', limit)
+      
       const response = await recordApi.getRecentRecords(limit)
       
+      if (!validateResponse(response, '获取最近记录')) {
+        throw new Error('响应数据格式无效')
+      }
+      
+      console.log('🔵 [Record Store] 最近记录响应:', response)
+      
       if (response.success) {
-        recentRecords.value = response.data
+        recentRecords.value = Array.isArray(response.data) ? (response.data as MedicationRecord[]) : []
+        console.log('🟢 [Record Store] 最近记录获取成功，数量:', recentRecords.value.length)
       } else {
-        throw new Error(response.message || '获取最近记录失败')
+        const errorMsg = (response as any).message || '获取最近记录失败'
+        console.error('🔴 [Record Store] 获取最近记录失败:', errorMsg)
+        throw new Error(errorMsg)
       }
     } catch (err: any) {
-      console.error('获取最近记录失败:', err)
+      error.value = err.message || '获取最近记录失败'
+      console.error('🔴 [Record Store] 获取最近记录异常:', err)
       recentRecords.value = []
+    } finally {
+      loading.value = false
     }
   }
   
@@ -273,7 +402,11 @@ export const useRecordStore = defineStore('record', () => {
       loading.value = true
       error.value = null
       
+      console.log('🔵 [Record Store] 导出记录参数:', params)
+      
       const blob = await recordApi.exportRecords(params)
+      
+      console.log('🔵 [Record Store] 导出记录响应类型:', typeof blob)
       
       // 创建下载链接
       const url = window.URL.createObjectURL(blob)
@@ -285,10 +418,12 @@ export const useRecordStore = defineStore('record', () => {
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url)
       
+      console.log('🟢 [Record Store] 记录导出成功')
+      
       return true
     } catch (err: any) {
-      console.error('导出记录失败:', err)
       error.value = err.message || '导出记录失败'
+      console.error('🔴 [Record Store] 导出记录异常:', err)
       throw err
     } finally {
       loading.value = false
@@ -318,15 +453,33 @@ export const useRecordStore = defineStore('record', () => {
   /**
    * 设置查询参数
    */
-  const setQueryParams = (params: MedicationRecordQuery) => {
+  const setQueryParams = (params: Partial<MedicationRecordQuery>) => {
     queryParams.value = { ...queryParams.value, ...params }
   }
   
   /**
-   * 清空错误
+   * 清空错误信息
    */
   const clearError = () => {
     error.value = null
+  }
+  
+  /**
+   * 验证响应数据结构
+   */
+  const validateResponse = (response: any, methodName: string): boolean => {
+    if (!response || typeof response !== 'object') {
+      console.error(`🔴 [Record Store] ${methodName} 响应无效:`, response)
+      return false
+    }
+    
+    // ApiClient返回的数据形如: { success: boolean, data: any, message?: string }
+    if (typeof (response as any).success !== 'boolean' || !('data' in response)) {
+      console.error(`🔴 [Record Store] ${methodName} 响应数据结构不符合ApiResponse:`, response)
+      return false
+    }
+    
+    return true
   }
   
   return {
@@ -358,6 +511,10 @@ export const useRecordStore = defineStore('record', () => {
     exportRecords,
     resetState,
     setQueryParams,
-    clearError
+    clearError,
+    
+    // 别名方法（向后兼容）
+    fetchStats: fetchStatistics,
+    stats: computed(() => statistics.value)
   }
 })

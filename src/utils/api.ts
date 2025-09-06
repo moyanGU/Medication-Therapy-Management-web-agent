@@ -17,6 +17,7 @@ interface RequestConfig extends RequestInit {
   skipAuth?: boolean
   skipErrorHandler?: boolean
   params?: Record<string, any>
+  isFormData?: boolean
 }
 
 // 错误类型
@@ -39,7 +40,7 @@ class ApiClient {
   private baseURL: string
   private defaultTimeout: number
   
-  constructor(baseURL: string = '/api', timeout: number = 10000) {
+  constructor(baseURL: string = 'http://127.0.0.1:8000/api', timeout: number = 10000) {
     this.baseURL = baseURL
     this.defaultTimeout = timeout
   }
@@ -84,8 +85,10 @@ class ApiClient {
    * 构建请求头
    */
   private buildHeaders(config: RequestConfig = {}): HeadersInit {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+    const headers: Record<string, string> = {}
+
+    if (!config.isFormData) {
+      headers['Content-Type'] = 'application/json'
     }
 
     // 添加认证头
@@ -234,10 +237,12 @@ class ApiClient {
     data?: any,
     config: RequestConfig = {}
   ): Promise<ApiResponse<T>> {
+    const isForm = typeof FormData !== 'undefined' && data instanceof FormData
     return this.request<T>(endpoint, {
       ...config,
       method: 'POST',
-      body: data ? JSON.stringify(data) : undefined,
+      isFormData: isForm || config.isFormData,
+      body: isForm ? data : (data ? JSON.stringify(data) : undefined),
     })
   }
 
@@ -295,9 +300,9 @@ class ApiClient {
     return this.request<T>(endpoint, {
       ...config,
       method: 'POST',
+      isFormData: true,
       body: formData,
       headers: {
-        // 不设置Content-Type，让浏览器自动设置multipart/form-data
         ...config.headers,
       },
     })

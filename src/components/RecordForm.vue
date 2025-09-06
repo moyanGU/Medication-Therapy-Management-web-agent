@@ -269,7 +269,7 @@ const isEdit = computed(() => !!props.record)
 
 // 表单数据
 const form = ref<MedicationRecordForm>({
-  medicine: 0,
+  medicine: '',
   taken_at: '',
   quantity_taken: 1,
   administration_method: AdministrationMethod.ORAL,
@@ -334,7 +334,7 @@ const initForm = () => {
 const validateForm = () => {
   errors.value = {}
   
-  if (!form.value.medicine) {
+  if (!form.value.medicine || form.value.medicine === '' || form.value.medicine === 0) {
     errors.value.medicine = '请选择药品'
   }
   
@@ -390,10 +390,20 @@ const handleSubmit = async () => {
     if (!submitData.effectiveness_score) delete submitData.effectiveness_score
     if (!submitData.delay_minutes) delete submitData.delay_minutes
     
+    // 确保medicine字段是数字类型
+    if (typeof submitData.medicine === 'string') {
+      submitData.medicine = parseInt(submitData.medicine, 10)
+    }
+    
+    console.log('提交数据:', submitData)
+    
     if (isEdit.value && props.record) {
       await updateRecord(props.record.id, submitData)
+      console.log('🟢 [RecordForm] 更新记录成功，触发success事件')
     } else {
-      await createRecord(submitData)
+      const result = await createRecord(submitData)
+      console.log('🟢 [RecordForm] 创建记录成功，结果:', result)
+      console.log('🟢 [RecordForm] 触发success事件')
     }
     
     emit('success')
@@ -409,7 +419,7 @@ const handleSubmit = async () => {
 // 生命周期
 onMounted(async () => {
   // 加载药品列表
-  if (medicines.value.length === 0) {
+  if (!medicines.value || medicines.value.length === 0) {
     await fetchMedicines()
   }
   

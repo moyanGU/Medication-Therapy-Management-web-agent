@@ -79,24 +79,28 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
         }
       })
       
+      console.log('[medicalRecords] fetchRecords params:', queryParams)
       const response = await apiClient.get('/records/medication-records/', {
         params: queryParams
       })
       
       if (response.success) {
-        records.value = response.data.results || response.data
+        // 按标准结构解包 { success, data: { results: [], count: number } }
+        const list = response.data?.results || []
+        const count = response.data?.count ?? 0
+        records.value = list
         
         // 更新分页信息
-        if (response.data.count !== undefined) {
-          pagination.value.total = response.data.count
-          pagination.value.totalPages = Math.ceil(response.data.count / pagination.value.pageSize)
-        }
+        pagination.value.total = count
+        pagination.value.totalPages = Math.ceil(count / pagination.value.pageSize)
+        console.log('[medicalRecords] fetchRecords success: size=', list.length, 'total=', count)
       } else {
         throw new Error(response.message || '获取病历列表失败')
       }
     } catch (err: any) {
       error.value = err.response?.data?.message || err.message || '获取病历列表失败'
       console.error('获取病历列表失败:', err)
+      throw err
     } finally {
       loading.value = false
     }
@@ -108,6 +112,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
       loading.value = true
       error.value = null
       
+      console.log('[medicalRecords] fetchRecord id=', id)
       const response = await apiClient.get(`/records/medication-records/${id}/`)
       
       if (response.success) {
@@ -131,6 +136,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
       loading.value = true
       error.value = null
       
+      console.log('[medicalRecords] createRecord payload:', recordData)
       const response = await apiClient.post('/records/medication-records/', recordData)
       
       if (response.success) {
@@ -155,6 +161,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
       loading.value = true
       error.value = null
       
+      console.log('[medicalRecords] updateRecord id=', id, 'payload:', recordData)
       const response = await apiClient.put(`/records/medication-records/${id}/`, recordData)
       
       if (response.success) {
@@ -166,7 +173,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
         // 更新列表中的记录
         const index = records.value.findIndex(record => record.id === id)
         if (index !== -1) {
-          records.value[index] = response.data
+          records.value[index] = response.data as any
         }
         
         return response.data
@@ -188,6 +195,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
       loading.value = true
       error.value = null
       
+      console.log('[medicalRecords] deleteRecord id=', id)
       const response = await apiClient.delete(`/records/medication-records/${id}/`)
       
       if (response.success) {
@@ -244,6 +252,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
   // 获取分类信息
   const fetchCategories = async () => {
     try {
+      console.log('[medicalRecords] fetchCategories')
       const response = await apiClient.get('/records/medication-records/categories/')
       
       if (response.success) {
@@ -257,6 +266,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
   // 获取统计信息
   const fetchStatistics = async (params: any = {}) => {
     try {
+      console.log('[medicalRecords] fetchStatistics params:', params)
       const response = await apiClient.get('/records/medication-records/statistics/', {
         params
       })
@@ -272,6 +282,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
   // 获取最近就诊记录
   const fetchRecentRecords = async (days: number = 30) => {
     try {
+      console.log('[medicalRecords] fetchRecentRecords days=', days)
       const response = await apiClient.get('/records/medication-records/recent/', {
         params: { days }
       })
@@ -287,6 +298,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
   // 获取复诊提醒
   const fetchFollowUpDue = async () => {
     try {
+      console.log('[medicalRecords] fetchFollowUpDue')
       const response = await apiClient.get('/records/medication-records/follow_up_due/')
       
       if (response.success) {

@@ -1,4 +1,4 @@
-import { http } from '@/utils/http'
+import { api } from '@/utils/api'
 import type { Medicine, MedicineCreateData, MedicineUpdateData, MedicineListParams } from '@/types/medicine'
 
 /**
@@ -8,136 +8,152 @@ export const medicineApi = {
   /**
    * 获取药品列表
    */
-  getMedicines(params?: MedicineListParams) {
-    return http.get('/api/medicines/', { params })
+  async getMedicines(params?: MedicineListParams) {
+    console.log('🔵 [Medicine API] getMedicines params:', params)
+    const res = await api.get('/medicines/', { params })
+    console.log('🟢 [Medicine API] getMedicines 响应:', res)
+    return res
   },
 
   /**
    * 获取单个药品详情
    */
-  getMedicine(id: number) {
-    return http.get(`/api/medicines/${id}/`)
+  async getMedicine(id: number) {
+    console.log('🔵 [Medicine API] getMedicine id:', id)
+    const res = await api.get(`/medicines/${id}/`)
+    console.log('🟢 [Medicine API] getMedicine 响应:', res)
+    return res
   },
 
   /**
    * 创建药品
    */
-  createMedicine(data: MedicineCreateData) {
+  async createMedicine(data: MedicineCreateData) {
     console.log('🔵 [Medicine API] createMedicine 开始调用', {
-      url: '/api/medicines/',
+      url: '/medicines/',
       method: 'POST',
       originalData: data,
       timestamp: new Date().toISOString()
     })
-    
-    // 智能处理image_url字段：如果为空则不发送，如果有值则发送
+
+    // 智能处理 image_path 字段：如果为空则不发送，如果有值则发送
     const cleanData = { ...data }
-    
-    console.log('🔵 [Medicine API] 原始数据包含image_url:', 'image_url' in data)
-    console.log('🔵 [Medicine API] image_url值:', data.image_url)
-    
-    // 如果image_url为空字符串、null或undefined，则删除该字段
-    if (!cleanData.image_url || cleanData.image_url.trim() === '') {
-      delete cleanData.image_url
-      console.log('🔵 [Medicine API] 删除空的image_url字段')
+
+    console.log('🔵 [Medicine API] 原始数据包含 image_path:', 'image_path' in data)
+    console.log('🔵 [Medicine API] image_path 值:', (data as any).image_path)
+
+    // 如果 image_path 为空字符串、null 或 undefined，则删除该字段
+    // @ts-ignore
+    if (!cleanData.image_path || String(cleanData.image_path).trim() === '') {
+      // @ts-ignore
+      delete cleanData.image_path
+      console.log('🔵 [Medicine API] 删除空的 image_path 字段')
     } else {
-      console.log('🔵 [Medicine API] 保留有效的image_url字段:', cleanData.image_url)
+      // @ts-ignore
+      console.log('🔵 [Medicine API] 保留有效的 image_path 字段:', cleanData.image_path)
     }
-    
+
     console.log('🔵 [Medicine API] 清理后的数据:', cleanData)
     console.log('🔵 [Medicine API] 发送的字段:', Object.keys(cleanData))
-    console.log('🔵 [Medicine API] 清理后包含image_url:', 'image_url' in cleanData)
-    
-    const request = http.post('/api/medicines/', cleanData)
-    
-    // 添加请求拦截日志
-    request.then(response => {
-      console.log('🟢 [Medicine API] createMedicine 请求成功', {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers,
-        data: response.data,
-        timestamp: new Date().toISOString()
-      })
-      return response
-    }).catch(error => {
-      console.error('🔴 [Medicine API] createMedicine 请求失败', {
-        error: error,
-        message: error.message,
-        response: error.response,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        timestamp: new Date().toISOString()
-      })
+    console.log('🔵 [Medicine API] 清理后包含 image_path:', 'image_path' in cleanData)
+
+    try {
+      const res = await api.post('/medicines/', cleanData)
+      console.log('🟢 [Medicine API] createMedicine 响应:', res)
+      return res
+    } catch (error) {
+      console.error('🔴 [Medicine API] createMedicine 请求异常:', error)
       throw error
-    })
-    
-    return request
+    }
   },
 
   /**
    * 更新药品信息
    */
-  updateMedicine(id: number, data: MedicineUpdateData) {
-    return http.put(`/api/medicines/${id}/`, data)
+  async updateMedicine(id: number, data: MedicineUpdateData) {
+    console.log('🔵 [Medicine API] updateMedicine id,data:', id, data)
+    const res = await api.put(`/medicines/${id}/`, data)
+    console.log('🟢 [Medicine API] updateMedicine 响应:', res)
+    return res
   },
 
   /**
    * 部分更新药品信息
    */
-  patchMedicine(id: number, data: Partial<MedicineUpdateData>) {
-    return http.patch(`/api/medicines/${id}/`, data)
+  async patchMedicine(id: number, data: Partial<MedicineUpdateData>) {
+    console.log('🔵 [Medicine API] patchMedicine id,data:', id, data)
+    const res = await api.patch(`/medicines/${id}/`, data)
+    console.log('🟢 [Medicine API] patchMedicine 响应:', res)
+    return res
   },
 
   /**
    * 删除药品
    */
-  deleteMedicine(id: number) {
-    return http.delete(`/api/medicines/${id}/`)
+  async deleteMedicine(id: number) {
+    console.log('🔵 [Medicine API] deleteMedicine id:', id)
+    const res = await api.delete(`/medicines/${id}/`)
+    console.log('🟢 [Medicine API] deleteMedicine 响应:', res)
+    return res
   },
 
   /**
    * 更新药品数量
    */
-  updateQuantity(id: number, quantity: number) {
-    return http.post(`/api/medicines/${id}/update_quantity/`, { quantity })
+  async updateQuantity(id: number, quantity: number) {
+    console.log('🔵 [Medicine API] updateQuantity id,quantity:', id, quantity)
+    const res = await api.post(`/medicines/${id}/update_quantity/`, { quantity })
+    console.log('🟢 [Medicine API] updateQuantity 响应:', res)
+    return res
   },
 
   /**
    * 获取已过期的药品列表
    */
-  getExpiredMedicines() {
-    return http.get('/api/medicines/expired/')
+  async getExpiredMedicines() {
+    console.log('🔵 [Medicine API] getExpiredMedicines')
+    const res = await api.get('/medicines/expired/')
+    console.log('🟢 [Medicine API] getExpiredMedicines 响应:', res)
+    return res
   },
 
   /**
    * 获取即将过期的药品列表
    */
-  getExpiringSoonMedicines() {
-    return http.get('/api/medicines/expiring_soon/')
+  async getExpiringSoonMedicines() {
+    console.log('🔵 [Medicine API] getExpiringSoonMedicines')
+    const res = await api.get('/medicines/expiring_soon/')
+    console.log('🟢 [Medicine API] getExpiringSoonMedicines 响应:', res)
+    return res
   },
 
   /**
    * 获取库存不足的药品列表
    */
-  getLowStockMedicines(threshold = 5) {
-    return http.get('/api/medicines/low_stock/', {
-      params: { threshold }
-    })
+  async getLowStockMedicines(threshold = 5) {
+    console.log('🔵 [Medicine API] getLowStockMedicines threshold:', threshold)
+    const res = await api.get('/medicines/low_stock/', { params: { threshold } })
+    console.log('🟢 [Medicine API] getLowStockMedicines 响应:', res)
+    return res
   },
 
   /**
    * 获取药品统计信息
    */
-  getStatistics() {
-    return http.get('/api/medicines/statistics/')
+  async getStatistics() {
+    console.log('🔵 [Medicine API] getStatistics')
+    const res = await api.get('/medicines/statistics/')
+    console.log('🟢 [Medicine API] getStatistics 响应:', res)
+    return res
   },
 
   /**
    * 获取药品类型列表
    */
-  getMedicineTypes() {
-    return http.get('/api/medicines/types/')
+  async getMedicineTypes() {
+    console.log('🔵 [Medicine API] getMedicineTypes')
+    const res = await api.get('/medicines/types/')
+    console.log('🟢 [Medicine API] getMedicineTypes 响应:', res)
+    return res
   }
 }

@@ -386,6 +386,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
+import { api } from '@/utils/api'
 import { debounce } from 'lodash-es'
 import {
   Bell,
@@ -443,7 +444,7 @@ interface Pagination {
 
 // 响应式数据
 const router = useRouter()
-const { showToast } = useToast()
+const { success, error, warning, info } = useToast()
 
 const loading = ref(false)
 const reminders = ref<Reminder[]>([])
@@ -487,65 +488,66 @@ const debouncedSearch = debounce(() => {
 }, 300)
 
 // 方法
+/**
+ * 获取提醒列表
+ */
+
 const fetchReminders = async () => {
   try {
     loading.value = true
-    
-    const params = new URLSearchParams({
-      page: pagination.page.toString(),
-      page_size: pagination.page_size.toString()
-    })
-    
-    if (searchQuery.value) {
-      params.append('search', searchQuery.value)
+    const params: Record<string, any> = {
+      page: pagination.page,
+      page_size: pagination.page_size,
     }
-    
-    if (filters.is_active !== '') {
-      params.append('is_active', filters.is_active.toString())
-    }
-    
-    if (filters.frequency) {
-      params.append('frequency', filters.frequency)
-    }
-    
-    if (filters.meal_timing) {
-      params.append('meal_timing', filters.meal_timing)
-    }
-    
-    if (quickFilter.value !== 'all') {
-      params.append('filter', quickFilter.value)
-    }
-    
-    const response = await fetch(`/api/reminders/?${params}`)
-    const data = await response.json()
-    
-    if (data.success) {
-      reminders.value = data.data.results
-      pagination.total = data.data.count
-      pagination.total_pages = Math.ceil(data.data.count / pagination.page_size)
-    } else {
-      showToast('获取提醒列表失败', 'error')
-    }
-  } catch (error) {
-    console.error('获取提醒列表失败:', error)
-    showToast('获取提醒列表失败', 'error')
-  } finally {
-    loading.value = false
-  }
-}
+    if (searchQuery.value) params.search = searchQuery.value
+    if (filters.is_active !== '') params.is_active = filters.is_active
+    if (filters.frequency) params.frequency = filters.frequency
+    if (filters.meal_timing) params.meal_timing = filters.meal_timing
+    if (quickFilter.value !== 'all') params.filter = quickFilter.value
 
+    console.log('[Reminders] 请求列表参数:', params)
+    const res = await api.get('/reminders/', { params })
+    console.log('[Reminders] 列表响应:', res)
+
+    if (res?.success) {
+      // 按后端标准结构 { success, data: { results, count } }
+      reminders.value = res.data?.results || []
+      pagination.total = res.data?.count || 0
+      pagination.total_pages = Math.ceil(pagination.total / pagination.page_size)
+    } else {
+      error(res?.message || '获取提醒列表失败')
+    }
+   } catch (err: any) {
+     console.error('获取提醒列表失败:', err)
+     error(err?.message || '获取提醒列表失败')
+   } finally {
+     loading.value = false
+   }
+ }
+
+/**
+ * 获取提醒统计
+ */
 const fetchStats = async () => {
   try {
-    const response = await fetch('/api/reminders/stats/')
-    const data = await response.json()
-    
-    if (data.success) {
-      stats.value = data.data
+    console.log('[Reminders] 请求统计数据')
+    const res = await api.get('/reminders/stats/')
+    console.log('[Reminders] 统计响应:', res)
+    if (res?.success) {
+      stats.value = res.data || {
+        total_reminders: 0,
+        active_reminders: 0,
+        today_reminders: 0,
+        response_rate: 0
+      }
+    } else {
+      error(res?.message || '获取统计数据失败')
     }
-  } catch (error) {
-    console.error('获取统计数据失败:', error)
+  } catch (err: any) {
+    console.error('获取统计数据失败:', err)
+    error(err?.message || '获取统计数据失败')
   }
-}
+ }
 
 const refreshData = () => {
   fetchReminders()
@@ -564,7 +566,7 @@ const changePage = (page: number) => {
 }
 
 const getPageNumbers = () => {
-  const pages = []
+  const pages = [] as number[]
   const start = Math.max(1, pagination.page - 2)
   const end = Math.min(pagination.total_pages, pagination.page + 2)
   
@@ -575,118 +577,98 @@ const getPageNumbers = () => {
   return pages
 }
 
+/**
+ * 启用/停用提醒
+ */
 const toggleReminderActive = async (reminder: Reminder) => {
   try {
-    const response = await fetch(`/api/reminders/${reminder.id}/`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        is_active: !reminder.is_active
-      })
+    console.log('[Reminders] 切换提醒状态:', reminder.id, '=>', !reminder.is_active)
+    const res = await api.patch(`/reminders/${reminder.id}/`, {
+      is_active: !reminder.is_active,
     })
-    
-    const data = await response.json()
-    
-    if (data.success) {
+    console.log('[Reminders] 切换状态响应:', res)
+    if (res?.success) {
       reminder.is_active = !reminder.is_active
-      showToast(`提醒已${reminder.is_active ? '启用' : '停用'}`, 'success')
+      success(`提醒已${reminder.is_active ? '启用' : '停用'}`)
       fetchStats()
     } else {
-      showToast('操作失败', 'error')
+      error(res?.message || '操作失败')
     }
-  } catch (error) {
-    console.error('切换提醒状态失败:', error)
-    showToast('操作失败', 'error')
+  } catch (err: any) {
+    console.error('切换提醒状态失败:', err)
+    error(err?.message || '操作失败')
   }
-}
+ }
 
+/**
+ * 删除提醒
+ */
 const deleteReminder = async (reminder: Reminder) => {
-  if (!confirm(`确定要删除提醒"${reminder.title || reminder.medicine.name}"吗？`)) {
-    return
-  }
-  
+  if (!confirm(`确定要删除提醒"${reminder.title || reminder.medicine.name}"吗？`)) return
   try {
-    const response = await fetch(`/api/reminders/${reminder.id}/`, {
-      method: 'DELETE'
-    })
-    
-    if (response.ok) {
-      showToast('提醒已删除', 'success')
+    const res = await api.delete(`/reminders/${reminder.id}/`)
+    console.log('[Reminders] 删除响应:', res)
+    if (res?.success) {
+      success('提醒已删除')
       fetchReminders()
       fetchStats()
     } else {
-      showToast('删除失败', 'error')
+      error(res?.message || '删除失败')
     }
-  } catch (error) {
-    console.error('删除提醒失败:', error)
-    showToast('删除失败', 'error')
+  } catch (err: any) {
+    console.error('删除提醒失败:', err)
+    error(err?.message || '删除失败')
   }
 }
 
+/**
+ * 批量启停
+ */
 const batchToggleActive = async (isActive: boolean) => {
   if (selectedReminders.value.length === 0) return
-  
   try {
-    const response = await fetch('/api/reminders/batch_update/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        reminder_ids: selectedReminders.value,
-        is_active: isActive
-      })
+    const { success: ok, data, message } = await api.post('/reminders/batch_toggle/', {
+      reminder_ids: selectedReminders.value,
+      is_active: isActive
     })
-    
-    const data = await response.json()
-    
-    if (data.success) {
-      showToast(`已${isActive ? '启用' : '停用'} ${selectedReminders.value.length} 个提醒`, 'success')
+    console.log('[Reminders] 批量启停响应:', { ok, data, message })
+    if (ok) {
+      success(`已${isActive ? '启用' : '停用'} ${selectedReminders.value.length} 个提醒`)
       selectedReminders.value = []
       fetchReminders()
       fetchStats()
     } else {
-      showToast('批量操作失败', 'error')
+      error(message || '批量操作失败')
     }
-  } catch (error) {
-    console.error('批量操作失败:', error)
-    showToast('批量操作失败', 'error')
+  } catch (err: any) {
+    console.error('批量操作失败:', err)
+    error(err?.message || '批量操作失败')
   }
 }
 
+/**
+ * 批量删除
+ */
 const batchDelete = async () => {
   if (selectedReminders.value.length === 0) return
-  
-  if (!confirm(`确定要删除选中的 ${selectedReminders.value.length} 个提醒吗？`)) {
-    return
-  }
-  
+  if (!confirm(`确定要删除选中的 ${selectedReminders.value.length} 个提醒吗？`)) return
   try {
-    const response = await fetch('/api/reminders/batch_delete/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        reminder_ids: selectedReminders.value
-      })
+    const { success: ok, data, message } = await api.post('/reminders/batch_delete/', {
+      reminder_ids: selectedReminders.value
     })
-    
-    const data = await response.json()
-    
-    if (data.success) {
-      showToast(`已删除 ${selectedReminders.value.length} 个提醒`, 'success')
+    console.log('[Reminders] 批量删除响应:', { ok, data, message })
+    if (ok) {
+      const deleted = (data as any)?.deleted_count ?? selectedReminders.value.length
+      success(`已删除 ${deleted} 个提醒`)
       selectedReminders.value = []
       fetchReminders()
       fetchStats()
     } else {
-      showToast('批量删除失败', 'error')
+      error(message || '批量删除失败')
     }
-  } catch (error) {
-    console.error('批量删除失败:', error)
-    showToast('批量删除失败', 'error')
+  } catch (err: any) {
+    console.error('批量删除失败:', err)
+    error(err?.message || '批量删除失败')
   }
 }
 

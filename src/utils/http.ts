@@ -2,6 +2,7 @@ import axios from 'axios'
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/auth'
 import router from '@/router'
+import { api, type ApiResponse } from '@/utils/api'
 
 /**
  * HTTP请求工具类
@@ -9,6 +10,7 @@ import router from '@/router'
  */
 class HttpClient {
   private instance: AxiosInstance
+  private useApiProxy = true
 
   constructor() {
     // 创建axios实例
@@ -25,6 +27,153 @@ class HttpClient {
     
     // 设置响应拦截器
     this.setupResponseInterceptor()
+  }
+
+  /**
+   * 归一化接口地址：
+   * - 兼容老代码传入 '/api/xxx'，统一移除 '/api' 前缀后交给新 api 客户端（其 baseURL 已包含 /api）
+   */
+  private normalizeEndpoint(url: string): string {
+    if (!url) return url
+    try {
+      if (url.startsWith('http://') || url.startsWith('https://')) return url
+      return url.startsWith('/api/') ? url.slice(4) : url
+    } catch {
+      return url
+    }
+  }
+
+  /**
+   * 将 ApiResponse 包装为 AxiosResponse 兼容结构
+   */
+  private toAxiosResponse<T>(resp: ApiResponse<T>, config?: AxiosRequestConfig): AxiosResponse<ApiResponse<T>> {
+    return {
+      data: resp,
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: (config || {}) as any,
+      request: {}
+    }
+  }
+
+  /**
+   * GET请求
+   */
+  get<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>>
+  async get<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> {
+    if (!this.useApiProxy) {
+      return this.instance.get(url, config) as any
+    }
+    const endpoint = this.normalizeEndpoint(url)
+    console.log('🔵 [http->api] GET', { url, endpoint, params: config?.params })
+    const resp = await api.get<T>(endpoint, { params: config?.params, headers: config?.headers })
+    return this.toAxiosResponse<T>(resp, config)
+  }
+
+  /**
+   * POST请求
+   */
+  post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<T>>
+  async post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> {
+    if (!this.useApiProxy) {
+      return this.instance.post(url, data, config) as any
+    }
+    const endpoint = this.normalizeEndpoint(url)
+    console.log('🔵 [http->api] POST', { url, endpoint, data })
+    const resp = await api.post<T>(endpoint, data, { headers: config?.headers })
+    return this.toAxiosResponse<T>(resp, config)
+  }
+
+  /**
+   * PUT请求
+   */
+  put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<T>>
+  async put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> {
+    if (!this.useApiProxy) {
+      return this.instance.put(url, data, config) as any
+    }
+    const endpoint = this.normalizeEndpoint(url)
+    console.log('🔵 [http->api] PUT', { url, endpoint, data })
+    const resp = await api.put<T>(endpoint, data, { headers: config?.headers })
+    return this.toAxiosResponse<T>(resp, config)
+  }
+
+  /**
+   * PATCH请求
+   */
+  patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<T>>
+  async patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> {
+    if (!this.useApiProxy) {
+      return this.instance.patch(url, data, config) as any
+    }
+    const endpoint = this.normalizeEndpoint(url)
+    console.log('🔵 [http->api] PATCH', { url, endpoint, data })
+    const resp = await api.patch<T>(endpoint, data, { headers: config?.headers })
+    return this.toAxiosResponse<T>(resp, config)
+  }
+
+  /**
+   * DELETE请求
+   */
+  delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>>
+  async delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> {
+    if (!this.useApiProxy) {
+      return this.instance.delete(url, config) as any
+    }
+    const endpoint = this.normalizeEndpoint(url)
+    console.log('🔵 [http->api] DELETE', { url, endpoint })
+    const resp = await api.delete<T>(endpoint, { headers: config?.headers })
+    return this.toAxiosResponse<T>(resp, config)
+  }
+
+  /**
+   * 上传文件
+   */
+  upload<T = any>(url: string, file: File, config?: AxiosRequestConfig): Promise<AxiosResponse<T>>
+  async upload<T = any>(url: string, file: File, config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> {
+    if (!this.useApiProxy) {
+      // 回退到 axios 处理
+      const formData = new FormData()
+      formData.append('file', file)
+      return this.instance.post(url, formData, {
+        ...config,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          ...config?.headers
+        }
+      }) as any
+    }
+    const endpoint = this.normalizeEndpoint(url)
+    console.log('🔵 [http->api] UPLOAD', { url, endpoint })
+    const resp = await api.upload<T>(endpoint, file, { headers: config?.headers })
+    return this.toAxiosResponse<T>(resp, config)
+  }
+
+  /**
+   * 下载文件
+   */
+  download(url: string, filename?: string, config?: AxiosRequestConfig): Promise<void>
+  async download(url: string, filename?: string, config?: AxiosRequestConfig): Promise<void> {
+    if (!this.useApiProxy) {
+      return this.instance.get(url, {
+        ...config,
+        responseType: 'blob'
+      }).then(response => {
+        const blob = new Blob([response.data])
+        const downloadUrl = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = downloadUrl
+        link.download = filename || 'download'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(downloadUrl)
+      })
+    }
+    const endpoint = this.normalizeEndpoint(url)
+    console.log('🔵 [http->api] DOWNLOAD', { url, endpoint })
+    return api.download(endpoint, filename)
   }
 
   /**
@@ -169,76 +318,6 @@ class HttpClient {
     }
   }
 
-  /**
-   * GET请求
-   */
-  get<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
-    return this.instance.get(url, config)
-  }
-
-  /**
-   * POST请求
-   */
-  post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
-    return this.instance.post(url, data, config)
-  }
-
-  /**
-   * PUT请求
-   */
-  put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
-    return this.instance.put(url, data, config)
-  }
-
-  /**
-   * PATCH请求
-   */
-  patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
-    return this.instance.patch(url, data, config)
-  }
-
-  /**
-   * DELETE请求
-   */
-  delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
-    return this.instance.delete(url, config)
-  }
-
-  /**
-   * 上传文件
-   */
-  upload<T = any>(url: string, file: File, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
-    const formData = new FormData()
-    formData.append('file', file)
-    
-    return this.instance.post(url, formData, {
-      ...config,
-      headers: {
-        'Content-Type': 'multipart/form-data',
-        ...config?.headers
-      }
-    })
-  }
-
-  /**
-   * 下载文件
-   */
-  download(url: string, filename?: string, config?: AxiosRequestConfig): Promise<void> {
-    return this.instance.get(url, {
-      ...config,
-      responseType: 'blob'
-    }).then(response => {
-      const blob = new Blob([response.data])
-      const downloadUrl = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = downloadUrl
-      link.download = filename || 'download'
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(downloadUrl)
-    })
-  }
 }
 
 // 创建并导出HTTP客户端实例

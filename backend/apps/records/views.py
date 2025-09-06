@@ -19,6 +19,7 @@ from .serializers import (
 from .filters import MedicationRecordFilter
 from apps.core.pagination import StandardResultsSetPagination
 from apps.core.permissions import IsOwnerOrReadOnly
+from apps.core.response import APIResponse
 
 
 class MedicationRecordViewSet(viewsets.ModelViewSet):
@@ -57,6 +58,23 @@ class MedicationRecordViewSet(viewsets.ModelViewSet):
         创建用药记录时自动设置用户
         """
         serializer.save(user=self.request.user)
+    
+    def create(self, request, *args, **kwargs):
+        """
+        创建用药记录
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        # 使用详细序列化器返回完整数据
+        response_serializer = MedicationRecordSerializer(serializer.instance)
+        
+        return APIResponse.success(
+            data=response_serializer.data,
+            message="用药记录创建成功",
+            status_code=status.HTTP_201_CREATED
+        )
     
     @action(detail=False, methods=['get'])
     def statistics(self, request):

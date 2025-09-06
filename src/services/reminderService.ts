@@ -1,5 +1,5 @@
 import { http } from '@/utils/http'
-import type { ApiResponse, PaginatedResponse } from '@/types/api'
+import type { ApiResponse, PaginatedResponse } from '@/types/medicine'
 
 // 提醒相关接口
 export interface Reminder {
@@ -130,7 +130,7 @@ export interface ReminderHistoryFilters {
 }
 
 class ReminderService {
-  private baseUrl = '/api/reminders'
+  private baseUrl = '/api'
 
   // 提醒CRUD操作
   async getReminders(filters?: ReminderFilters): Promise<PaginatedResponse<Reminder>> {

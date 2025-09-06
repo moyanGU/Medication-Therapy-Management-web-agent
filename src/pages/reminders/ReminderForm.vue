@@ -84,7 +84,7 @@
                 />
                 <select
                   v-model="form.dosage_unit"
-                  class="input-field w-24"
+                  class="input-field w-32"
                   :class="{ 'border-red-500': errors.dosage_unit }"
                   required
                 >
@@ -336,6 +336,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from '@/composables/useToast'
+import { api } from '@/utils/api'
 import {
   ArrowLeft,
   Pill,
@@ -371,7 +372,7 @@ interface ReminderForm {
 // 响应式数据
 const router = useRouter()
 const route = useRoute()
-const { showToast } = useToast()
+const { success: showSuccess, error: showError, warning: showWarning, info: showInfo } = useToast()
 
 const loading = ref(false)
 const medicines = ref<Medicine[]>([])
@@ -405,28 +406,28 @@ const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '�
 // 方法
 const fetchMedicines = async () => {
   try {
-    const response = await fetch('/api/medicines/')
-    const data = await response.json()
+    const response = await api.get('/medicines/')
     
-    if (data.success) {
-      medicines.value = data.data.results || data.data
+    if (response.success) {
+      medicines.value = (response.data as any).results || response.data
+      console.log('获取到药品列表:', medicines.value)
     } else {
-      showToast('获取药品列表失败', 'error')
+      console.error('获取药品列表失败:', response)
+      showError('获取药品列表失败')
     }
   } catch (error) {
     console.error('获取药品列表失败:', error)
-    showToast('获取药品列表失败', 'error')
+    showError('获取药品列表失败')
   }
 }
 
 const fetchReminder = async (id: string) => {
   try {
     loading.value = true
-    const response = await fetch(`/api/reminders/${id}/`)
-    const data = await response.json()
+    const response = await api.get(`/reminders/${id}/`)
     
-    if (data.success) {
-      const reminder = data.data
+    if (response.success) {
+      const reminder = response.data as any
       Object.assign(form, {
         medicine_id: reminder.medicine.id,
         title: reminder.title,
@@ -455,12 +456,12 @@ const fetchReminder = async (id: string) => {
         selectedWeekDays.value = reminder.week_days
       }
     } else {
-      showToast('获取提醒信息失败', 'error')
+      showError('获取提醒信息失败')
       goBack()
     }
   } catch (error) {
     console.error('获取提醒信息失败:', error)
-    showToast('获取提醒信息失败', 'error')
+    showError('获取提醒信息失败')
     goBack()
   } finally {
     loading.value = false
@@ -540,7 +541,7 @@ const validateForm = () => {
 
 const handleSubmit = async () => {
   if (!validateForm()) {
-    showToast('请检查表单信息', 'error')
+    showError('请检查表单信息')
     return
   }
   
@@ -554,31 +555,23 @@ const handleSubmit = async () => {
       week_days: form.frequency === 'weekly' ? selectedWeekDays.value : null
     }
     
-    const url = isEdit.value ? `/api/reminders/${route.params.id}/` : '/api/reminders/'
-    const method = isEdit.value ? 'PUT' : 'POST'
+    const response = isEdit.value 
+      ? await api.put(`/reminders/${route.params.id}/`, submitData)
+      : await api.post('/reminders/', submitData)
     
-    const response = await fetch(url, {
-      method,
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(submitData)
-    })
-    
-    const data = await response.json()
-    
-    if (data.success) {
-      showToast(`提醒${isEdit.value ? '更新' : '创建'}成功`, 'success')
+    if (response.success) {
+      showSuccess(`提醒${isEdit.value ? '更新' : '创建'}成功`)
       router.push('/reminders')
     } else {
-      if (data.errors) {
-        Object.assign(errors, data.errors)
+      const anyResp = response as any
+      if (anyResp?.errors) {
+        Object.assign(errors, anyResp.errors)
       }
-      showToast(data.message || `${isEdit.value ? '更新' : '创建'}失败`, 'error')
+      showError(response.message || `${isEdit.value ? '更新' : '创建'}失败`)
     }
   } catch (error) {
     console.error('提交失败:', error)
-    showToast('提交失败', 'error')
+    showError('提交失败')
   } finally {
     loading.value = false
   }

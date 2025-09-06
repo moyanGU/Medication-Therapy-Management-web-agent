@@ -157,7 +157,7 @@ const emit = defineEmits<{
   notificationTest: [success: boolean]
 }>()
 
-const { showToast } = useToast()
+const { success: showSuccess, error: showError, warning: showWarning, info: showInfo } = useToast()
 
 // 响应式数据
 const permission = ref<NotificationPermission>('default')
@@ -242,13 +242,13 @@ const updateStatus = () => {
 // 刷新状态
 const refreshStatus = () => {
   updateStatus()
-  showToast('状态已刷新', 'info')
+  showInfo('状态已刷新')
 }
 
 // 申请权限
 const requestPermission = async () => {
   if (!supported.value) {
-    showToast('您的浏览器不支持通知功能', 'error')
+    showError('您的浏览器不支持通知功能')
     return
   }
   
@@ -260,18 +260,18 @@ const requestPermission = async () => {
     message.value = result.message
     
     if (result.permission === 'granted') {
-      showToast('通知权限申请成功', 'success')
+      showSuccess('通知权限申请成功')
     } else if (result.permission === 'denied') {
-      showToast('通知权限被拒绝', 'error')
+      showError('通知权限被拒绝')
     } else {
-      showToast('通知权限申请被忽略', 'warning')
+      showWarning('通知权限申请被忽略')
     }
     
     emit('permissionChange', result.permission)
     updateStatus()
   } catch (error) {
     console.error('申请通知权限失败:', error)
-    showToast('申请通知权限失败', 'error')
+    showError('申请通知权限失败')
   } finally {
     requesting.value = false
   }
@@ -280,7 +280,7 @@ const requestPermission = async () => {
 // 测试通知
 const testNotification = async () => {
   if (permission.value !== 'granted') {
-    showToast('请先授权通知权限', 'warning')
+    showWarning('请先授权通知权限')
     return
   }
   
@@ -289,17 +289,17 @@ const testNotification = async () => {
     const result = await notificationService.showTestNotification()
     
     if (result.success) {
-      showToast('测试通知发送成功', 'success')
+      showSuccess('测试通知发送成功')
       emit('notificationTest', true)
     } else {
-      showToast(result.error || '测试通知发送失败', 'error')
+      showError(result.error || '测试通知发送失败')
       emit('notificationTest', false)
     }
     
     updateStatus()
   } catch (error) {
     console.error('测试通知失败:', error)
-    showToast('测试通知失败', 'error')
+    showError('测试通知失败')
     emit('notificationTest', false)
   } finally {
     testing.value = false
