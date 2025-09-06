@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 .vite
+# temp files (maintenance)\r\n*.tmp
+*.vue.tmp
+
