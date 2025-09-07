@@ -408,10 +408,14 @@ const handleSubmit = async () => {
     
     emit('success')
   } catch (error: any) {
-    console.error('提交失败:', error)
-    // 处理服务器验证错误
-    if (error.response?.data?.errors) {
-      errors.value = error.response.data.errors
+    console.error('🔴 [RecordForm] 提交失败:', error)
+    // 规范化错误对象：优先使用结构化 errors 字段；其次 message；最后使用兜底提示
+    if (error?.errors && typeof error.errors === 'object') {
+      errors.value = error.errors
+    } else if (error?.message) {
+      errors.value = { general: error.message }
+    } else {
+      errors.value = { general: '提交失败，请稍后重试' }
     }
   }
 }

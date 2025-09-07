@@ -222,7 +222,7 @@ class ApiClient {
   /**
    * GET请求
    */
-  async get<T>(endpoint: string, config: RequestConfig = {}): Promise<ApiResponse<T>> {
+  async get<T = any>(endpoint: string, config: RequestConfig = {}): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, {
       ...config,
       method: 'GET',
@@ -232,7 +232,7 @@ class ApiClient {
   /**
    * POST请求
    */
-  async post<T>(
+  async post<T = any>(
     endpoint: string,
     data?: any,
     config: RequestConfig = {}
@@ -249,37 +249,41 @@ class ApiClient {
   /**
    * PUT请求
    */
-  async put<T>(
+  async put<T = any>(
     endpoint: string,
     data?: any,
     config: RequestConfig = {}
   ): Promise<ApiResponse<T>> {
+    const isForm = typeof FormData !== 'undefined' && data instanceof FormData
     return this.request<T>(endpoint, {
       ...config,
       method: 'PUT',
-      body: data ? JSON.stringify(data) : undefined,
+      isFormData: isForm || config.isFormData,
+      body: isForm ? data : (data ? JSON.stringify(data) : undefined),
     })
   }
 
   /**
    * PATCH请求
    */
-  async patch<T>(
+  async patch<T = any>(
     endpoint: string,
     data?: any,
     config: RequestConfig = {}
   ): Promise<ApiResponse<T>> {
+    const isForm = typeof FormData !== 'undefined' && data instanceof FormData
     return this.request<T>(endpoint, {
       ...config,
       method: 'PATCH',
-      body: data ? JSON.stringify(data) : undefined,
+      isFormData: isForm || config.isFormData,
+      body: isForm ? data : (data ? JSON.stringify(data) : undefined),
     })
   }
 
   /**
    * DELETE请求
    */
-  async delete<T>(endpoint: string, config: RequestConfig = {}): Promise<ApiResponse<T>> {
+  async delete<T = any>(endpoint: string, config: RequestConfig = {}): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, {
       ...config,
       method: 'DELETE',
@@ -287,9 +291,9 @@ class ApiClient {
   }
 
   /**
-   * 上传文件
+   * 文件上传
    */
-  async upload<T>(
+  async upload<T = any>(
     endpoint: string,
     file: File,
     config: RequestConfig = {}
@@ -302,9 +306,6 @@ class ApiClient {
       method: 'POST',
       isFormData: true,
       body: formData,
-      headers: {
-        ...config.headers,
-      },
     })
   }
 
@@ -316,17 +317,36 @@ class ApiClient {
     filename?: string,
     config: RequestConfig = {}
   ): Promise<void> {
-    const url = this.buildURL(endpoint)
+    // 对下载场景特殊处理：
+    // 1) http(s) 绝对URL：直接使用
+    // 2) 以 '/' 开头：按后端根域拼接，避免叠加 /api 前缀导致 404
+    // 3) 其他：按 buildURL 常规拼接到 baseURL 之下
+    let url: string
+    try {
+      const base = new URL(this.baseURL)
+      if (endpoint.startsWith('http')) {
+        url = endpoint
+      } else if (endpoint.startsWith('/')) {
+        url = `${base.protocol}//${base.host}${endpoint}`
+      } else {
+        url = this.buildURL(endpoint)
+      }
+    } catch (e) {
+      // 回退策略：在极端情况下仍使用旧逻辑
+      url = this.buildURL(endpoint)
+    }
+
     const headers = this.buildHeaders(config)
 
     try {
+      console.log('🔵 [ApiClient.download] 开始下载', { url, filename })
       const response = await fetch(url, {
         ...config,
         headers,
       })
 
       if (!response.ok) {
-        throw new ApiError(`下载失败: ${response.statusText}`, response.status, response)
+        throw new ApiError(`下载失败: ${response.status} ${response.statusText}`, response.status, response)
       }
 
       const blob = await response.blob()
@@ -340,7 +360,9 @@ class ApiClient {
       document.body.removeChild(link)
       
       window.URL.revokeObjectURL(downloadUrl)
+      console.log('🟢 [ApiClient.download] 下载完成')
     } catch (error) {
+      console.error('🔴 [ApiClient.download] 下载异常', error)
       this.handleError(error, config)
     }
   }

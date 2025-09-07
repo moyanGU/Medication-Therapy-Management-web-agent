@@ -121,7 +121,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import { useMedicalRecordStore } from '@/stores/medicalRecords'
-import { toast } from 'sonner'
+import { toast } from 'vue-sonner'
 import { X } from 'lucide-vue-next'
 
 interface Props {
@@ -174,8 +174,8 @@ watch(() => props.record, (newRecord) => {
       present_illness: newRecord.present_illness || '',
       diagnosis: newRecord.diagnosis || '',
       treatment_plan: newRecord.treatment_plan || '',
-      total_cost: newRecord.total_cost || 0,
-      satisfaction_score: newRecord.satisfaction_score || 5,
+      total_cost: newRecord.total_cost ?? 0,
+      satisfaction_score: newRecord.satisfaction_score ?? 5,
       status: newRecord.status || 'active',
       notes: newRecord.notes || ''
     })
@@ -202,22 +202,20 @@ watch(() => props.record, (newRecord) => {
 const handleSubmit = async () => {
   try {
     isSubmitting.value = true
-    
-    let response
+
     if (isEdit.value) {
-      response = await medicalRecordsStore.updateRecord(props.record.id, form)
+      await medicalRecordsStore.updateRecord(props.record!.id, form)
     } else {
-      response = await medicalRecordsStore.createRecord(form)
+      await medicalRecordsStore.createRecord(form)
     }
-    
-    if (response.success) {
-      emit('success')
-    } else {
-      throw new Error(response.message || '保存失败')
-    }
-  } catch (err) {
+
+    // 成功即触发事件与提示
+    emit('success')
+    toast.success(isEdit.value ? '更新成功' : '保存成功')
+  } catch (err: unknown) {
     console.error('Error saving medical record:', err)
-    toast.error(err.message || '保存失败')
+    const message = err instanceof Error ? err.message : '保存失败'
+    toast.error(message)
   } finally {
     isSubmitting.value = false
   }

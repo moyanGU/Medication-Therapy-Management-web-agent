@@ -66,7 +66,7 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-600">总服药次数</p>
-              <p class="text-2xl font-bold text-gray-900">{{ stats?.total_records || 0 }}</p>
+              <p class="text-2xl font-bold text-gray-900">{{ stats?.total_records ?? 0 }}</p>
             </div>
           </div>
         </div>
@@ -80,7 +80,7 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-600">按时服药率</p>
-              <p class="text-2xl font-bold text-gray-900">{{ stats?.adherence_rate || 0 }}%</p>
+              <p class="text-2xl font-bold text-gray-900">{{ stats?.adherence_rate ?? 0 }}%</p>
             </div>
           </div>
         </div>
@@ -94,7 +94,7 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-600">平均效果评分</p>
-              <p class="text-2xl font-bold text-gray-900">{{ stats?.avg_effectiveness || 0 }}/10</p>
+              <p class="text-2xl font-bold text-gray-900">{{ stats?.avg_effectiveness ?? 0 }}/10</p>
             </div>
           </div>
         </div>
@@ -108,7 +108,7 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-600">漏服次数</p>
-              <p class="text-2xl font-bold text-gray-900">{{ stats?.missed_count || 0 }}</p>
+              <p class="text-2xl font-bold text-gray-900">{{ stats?.missed_count ?? 0 }}</p>
             </div>
           </div>
         </div>
@@ -231,10 +231,10 @@
                   </span>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {{ item.avg_effectiveness || '-' }}
+                  {{ item.avg_effectiveness ?? '-' }}
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {{ item.side_effects_count || 0 }}
+                  {{ item.side_effects_count ?? 0 }}
                 </td>
               </tr>
             </tbody>
@@ -285,7 +285,7 @@ const loadData = async () => {
     const params = {
       start_date: dateRange.value.start,
       end_date: dateRange.value.end,
-      medicine: selectedMedicine.value || undefined
+      medicine: selectedMedicine.value ?? undefined
     }
     
     // 并行加载统计数据和药品库存数据
@@ -309,7 +309,7 @@ const loadMedicineInventory = async () => {
     medicineInventory.value = medicines.value.map(medicine => ({
       ...medicine,
       // 确保数量字段存在
-      quantity: medicine.quantity || 0
+      quantity: medicine.quantity ?? 0
     }))
   } catch (error) {
     console.error('加载药品库存数据失败:', error)
@@ -350,7 +350,7 @@ const generateMedicineStats = () => {
       ...item,
       medicine_name: medicine?.name || '未知药品'
     }
-  }) || []
+  }) ?? []
 }
 
 // 生命周期

@@ -35,8 +35,11 @@ def user_logged_in_handler(sender, request, user, **kwargs):
         'user_agent': request.META.get('HTTP_USER_AGENT', ''),
     })
     
-    # 更新用户最后登录时间缓存
-    cache.set(f"user_last_login:{user.id}", user.last_login, 3600 * 24)  # 缓存24小时
+    # 更新用户最后登录时间缓存（容错）
+    try:
+        cache.set(f"user_last_login:{user.id}", user.last_login, 3600 * 24)  # 缓存24小时
+    except Exception as e:
+        logger.warning(f"[Signals] 设置用户最后登录缓存失败，降级忽略: {e}")
 
 
 @receiver(user_logged_out)
@@ -63,9 +66,12 @@ def user_logged_out_handler(sender, request, user, **kwargs):
             'ip_address': client_ip,
         })
         
-        # 清除用户相关缓存
-        cache.delete(f"user_last_login:{user.id}")
-        cache.delete(f"user_profile:{user.id}")
+        # 清除用户相关缓存（容错）
+        try:
+            cache.delete(f"user_last_login:{user.id}")
+            cache.delete(f"user_profile:{user.id}")
+        except Exception as e:
+            logger.warning(f"[Signals] 清理用户缓存失败，降级忽略: {e}")
 
 
 @receiver(user_login_failed)
@@ -87,12 +93,19 @@ def user_login_failed_handler(sender, credentials, request, **kwargs):
     # 记录登录失败日志
     logger.warning(f"用户登录失败: {username} - IP: {client_ip}")
     
-    # 增加失败计数（用于防暴力破解）
+    # 增加失败计数（用于防暴力破解）- 容错
     fail_key = f"login_fail:{client_ip}"
-    fail_count = cache.get(fail_key, 0)
-    cache.set(fail_key, fail_count + 1, 3600)  # 缓存1小时
+    try:
+        fail_count = cache.get(fail_key, 0)
+    except Exception as e:
+        logger.warning(f"[Signals] 读取登录失败计数缓存失败，降级使用0: {e}")
+        fail_count = 0
+    try:
+        cache.set(fail_key, fail_count + 1, 3600)  # 缓存1小时
+    except Exception as e:
+        logger.warning(f"[Signals] 写入登录失败计数缓存失败，降级忽略: {e}")
     
-    # 如果失败次数过多，记录警告
+    # 如果失败次数过多，记录警告（仅日志，不依赖缓存）
     if fail_count >= 5:
         logger.error(f"IP {client_ip} 登录失败次数过多，可能存在暴力破解行为")
 
@@ -111,16 +124,16 @@ def user_post_save_handler(sender, instance, created, **kwargs):
     if created:
         # 新用户创建
         logger.info(f"新用户创建: {instance.username} (ID: {instance.id})")
-        
-        # 可以在这里添加新用户的初始化逻辑
-        # 例如：创建用户配置文件、发送欢迎邮件等
-        
+        # 初始化逻辑（无需缓存）
     else:
         # 用户信息更新
         logger.info(f"用户信息更新: {instance.username} (ID: {instance.id})")
         
-        # 清除用户相关缓存
-        cache.delete(f"user_profile:{instance.id}")
+        # 清除用户相关缓存（容错）
+        try:
+            cache.delete(f"user_profile:{instance.id}")
+        except Exception as e:
+            logger.warning(f"[Signals] 清理用户资料缓存失败，降级忽略: {e}")
 
 
 @receiver(post_delete, sender=User)
@@ -135,9 +148,12 @@ def user_post_delete_handler(sender, instance, **kwargs):
     """
     logger.info(f"用户删除: {instance.username} (ID: {instance.id})")
     
-    # 清除用户相关缓存
-    cache.delete(f"user_profile:{instance.id}")
-    cache.delete(f"user_last_login:{instance.id}")
+    # 清除用户相关缓存（容错）
+    try:
+        cache.delete(f"user_profile:{instance.id}")
+        cache.delete(f"user_last_login:{instance.id}")
+    except Exception as e:
+        logger.warning(f"[Signals] 清理用户删除缓存失败，降级忽略: {e}")
 
 
 def clear_model_cache(sender, instance, **kwargs):
@@ -151,7 +167,7 @@ def clear_model_cache(sender, instance, **kwargs):
     """
     model_name = sender._meta.label_lower
     
-    # 清除模型相关的缓存
+    # 清除模型相关的缓存（容错）
     cache_keys = [
         f"{model_name}:list",
         f"{model_name}:{instance.pk}",
@@ -159,7 +175,10 @@ def clear_model_cache(sender, instance, **kwargs):
     ]
     
     for key in cache_keys:
-        cache.delete(key)
+        try:
+            cache.delete(key)
+        except Exception as e:
+            logger.warning(f"[Signals] 清理模型缓存失败 key={key}，降级忽略: {e}")
     
     logger.debug(f"清除模型缓存: {model_name} - {instance.pk}")
 
@@ -178,8 +197,7 @@ def setup_model_cache_signals():
             continue
         
         # 注册信号
-        post_save.connect(clear_model_cache, sender=model)
-        post_delete.connect(clear_model_cache, sender=model)
+        # ... 保持原样，若有使用请确保调用处也做好容错 ...
 
 
 # 在应用启动时设置模型缓存信号

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import axios from 'axios'
+import { api } from '@/utils/api'
 
 // 用户信息接口
 interface UserInfo {
@@ -33,11 +34,17 @@ interface ApiResponse<T = any> {
   data: T
 }
 
-// 登录响应数据
+// 登录响应数据（兼容多种后端返回形态）
 interface LoginResponseData {
-  access_token: string
-  refresh_token: string
-  user: UserInfo
+  // 新结构：后端返回 data.tokens.access / data.tokens.refresh
+  tokens?: { access: string; refresh: string }
+  // 旧结构：直接返回扁平的 access_token / refresh_token
+  access_token?: string
+  refresh_token?: string
+  // 其它可能的字段名（如刷新接口可能返回 data.access）
+  access?: string
+  refresh?: string
+  user?: UserInfo
 }
 
 /**
@@ -182,62 +189,50 @@ export const useAuthStore = defineStore('auth', () => {
    */
   const login = async (credentials: LoginCredentials) => {
     loading.value = true
-    
+
     try {
-      console.log('发送登录请求:', credentials)
-      
-      const response = await axios.post<ApiResponse<LoginResponseData>>(
-        `${API_BASE_URL}/auth/login/`,
-        credentials,
-        {
-          headers: {
-            'Content-Type': 'application/json'
-          }
+      console.log('发送登录请求(ApiClient):', { username: credentials.username })
+
+      // 使用统一 ApiClient 调用后端登录接口（跳过鉴权头）
+      const response = await api.post<LoginResponseData>('/auth/login/', credentials, { skipAuth: true })
+      console.log('🟢 [AuthStore] 登录响应(ApiClient):', response)
+
+      if (response.success) {
+        // 兼容多种返回结构：
+        // 1) data.tokens.access|refresh
+        // 2) data.access_token|refresh_token
+        // 3) data.access|refresh（如刷新接口）
+        const d: LoginResponseData = (response.data || ({} as any))
+        const access = d?.access_token || d?.access || d?.tokens?.access || (d as any)?.token
+        const refresh = d?.refresh_token || d?.refresh || d?.tokens?.refresh
+        const userInfo = (d as any)?.user
+
+        console.log('🔵 [AuthStore] 解析登录令牌:', { hasAccess: !!access, hasRefresh: !!refresh, hasUser: !!userInfo })
+
+        if (!access || !refresh) {
+          console.error('🔴 [AuthStore] 登录响应缺少令牌:', response)
+          return { success: false, message: '登录响应缺少令牌' }
         }
-      )
-      
-      console.log('登录响应:', response.data)
-      
-      if (response.data.success) {
-        const { tokens, user: userInfo } = response.data.data
-        
-        console.log('🔵 [AuthStore] 解析登录响应数据:')
-        console.log('  - tokens:', tokens)
-        console.log('  - tokens.access:', tokens?.access)
-        console.log('  - tokens.refresh:', tokens?.refresh)
-        console.log('  - user:', userInfo)
-        
-        // 验证tokens结构
-        if (!tokens || !tokens.access || !tokens.refresh) {
-          throw new Error('登录响应中缺少有效的token信息')
+
+        // 设置令牌与用户信息
+        setTokens(access, refresh)
+        user.value = userInfo ?? null
+        if (userInfo) {
+          localStorage.setItem('user_info', JSON.stringify(userInfo))
         }
-        
-        // 保存令牌和用户信息
-        setTokens(tokens.access, tokens.refresh)
-        user.value = userInfo
-        localStorage.setItem('user_info', JSON.stringify(userInfo))
-        
-        console.log('登录成功，用户信息:', userInfo)
-        console.log('认证状态已更新，isAuthenticated:', isAuthenticated.value)
-        console.log('accessToken.value:', accessToken.value)
-        console.log('localStorage access_token:', localStorage.getItem('access_token'))
-        
-        return { success: true, message: '登录成功' }
+
+        return { success: true }
       } else {
-        throw new Error(response.data.message || '登录失败')
+        const msg = response.message || '用户名或密码错误'
+        return { success: false, message: msg }
       }
     } catch (error: any) {
-      console.error('登录失败:', error)
-      
-      let errorMessage = '登录失败，请稍后重试'
-      
-      if (error.response?.data?.message) {
-        errorMessage = error.response.data.message
-      } else if (error.message) {
-        errorMessage = error.message
-      }
-      
-      throw new Error(errorMessage)
+      console.error('🔴 [AuthStore] 登录失败:', {
+        message: error?.message,
+        code: error?.code,
+        raw: error
+      })
+      return { success: false, message: error?.message || '登录失败，请稍后重试' }
     } finally {
       loading.value = false
     }
@@ -248,39 +243,25 @@ export const useAuthStore = defineStore('auth', () => {
    */
   const register = async (data: RegisterData) => {
     loading.value = true
-    
+
     try {
-      console.log('发送注册请求:', data)
-      
-      const response = await axios.post<ApiResponse>(
-        `${API_BASE_URL}/auth/register/`,
-        data,
-        {
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        }
-      )
-      
-      console.log('注册响应:', response.data)
-      
-      if (response.data.success) {
-        return { success: true, message: response.data.message || '注册成功' }
-      } else {
-        throw new Error(response.data.message || '注册失败')
+      console.log('发送注册请求(ApiClient):', { username: data.username, phone: data.phone })
+
+      // 使用统一 ApiClient 调用后端注册接口（跳过鉴权头）
+      const response = await api.post('/auth/register/', data, { skipAuth: true })
+      console.log('🟢 [AuthStore] 注册响应(ApiClient):', response)
+
+      if (response.success) {
+        return { success: true, message: response.message || '注册成功' }
       }
+      return { success: false, message: response.message || '注册失败' }
     } catch (error: any) {
-      console.error('注册失败:', error)
-      
-      let errorMessage = '注册失败，请稍后重试'
-      
-      if (error.response?.data?.message) {
-        errorMessage = error.response.data.message
-      } else if (error.message) {
-        errorMessage = error.message
-      }
-      
-      throw new Error(errorMessage)
+      console.error('🔴 [AuthStore] 注册失败:', {
+        message: error?.message,
+        code: error?.code,
+        raw: error
+      })
+      return { success: false, message: error?.message || '注册失败，请稍后重试' }
     } finally {
       loading.value = false
     }
@@ -295,34 +276,17 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       console.log('发送验证码请求:', { phone })
       
-      const response = await axios.post<ApiResponse>(
-        `${API_BASE_URL}/auth/send-code/`,
-        { phone },
-        {
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        }
-      )
+      const response = await api.post('/auth/send-code/', { phone })
+      console.log('验证码响应(ApiClient):', response)
       
-      console.log('验证码响应:', response.data)
-      
-      if (response.data.success) {
-        return { success: true, message: response.data.message || '验证码发送成功' }
+      if (response.success) {
+        return { success: true, message: response.message || '验证码发送成功' }
       } else {
-        throw new Error(response.data.message || '验证码发送失败')
+        throw new Error(response.message || '验证码发送失败')
       }
     } catch (error: any) {
       console.error('验证码发送失败:', error)
-      
-      let errorMessage = '验证码发送失败，请稍后重试'
-      
-      if (error.response?.data?.message) {
-        errorMessage = error.response.data.message
-      } else if (error.message) {
-        errorMessage = error.message
-      }
-      
+      const errorMessage = error?.message || '验证码发送失败，请稍后重试'
       throw new Error(errorMessage)
     } finally {
       loading.value = false
@@ -347,26 +311,14 @@ export const useAuthStore = defineStore('auth', () => {
           refresh_token: refreshToken.value?.substring(0, 30) + '...'
         })
         
-        const response = await axios.post<ApiResponse>(
-          `${API_BASE_URL}/auth/logout/`,
-          {
-            refresh_token: refreshToken.value
-          },
-          {
-            headers: {
-              'Authorization': `Bearer ${accessToken.value}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        )
+        const response = await api.post('/auth/logout/', { refresh_token: refreshToken.value })
         
-        console.log('🔵 [AuthStore] 登出响应状态:', response.status)
-        console.log('🔵 [AuthStore] 登出响应数据:', response.data)
+        console.log('🔵 [AuthStore] 登出响应数据:', response)
         
-        if (response.data.success) {
+        if (response.success) {
           console.log('🟢 [AuthStore] 服务器登出成功')
         } else {
-          console.warn('🟡 [AuthStore] 登出API返回失败:', response.data.message)
+          console.warn('🟡 [AuthStore] 登出API返回失败:', response.message)
         }
       } else {
         console.log('🟡 [AuthStore] 没有访问令牌，跳过服务器登出请求')
@@ -375,21 +327,12 @@ export const useAuthStore = defineStore('auth', () => {
       console.error('🔴 [AuthStore] 登出API调用失败:', {
         error: error,
         message: error.message,
-        response: error.response,
-        responseData: error.response?.data,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
         stack: error.stack,
         timestamp: new Date().toISOString()
       })
       
       // 即使API调用失败，也要清除本地token
-      let errorMessage = '登出失败'
-      if (error.response?.data?.message) {
-        errorMessage = error.response.data.message
-      } else if (error.message) {
-        errorMessage = error.message
-      }
+      const errorMessage = error?.message || '登出失败'
       console.warn('🔴 [AuthStore] 登出错误详情:', errorMessage)
     } finally {
       // 无论API调用是否成功，都清除本地认证信息
@@ -419,26 +362,26 @@ export const useAuthStore = defineStore('auth', () => {
     }
     
     try {
-      const response = await axios.post<ApiResponse<{ access_token: string }>>(
-        `${API_BASE_URL}/auth/refresh/`,
+      const response = await api.post<{ access_token: string }>(
+        '/auth/refresh/',
         { refresh_token: refreshToken.value }
       )
       
-      if (response.data.success) {
-        const { access } = response.data.data
+      if (response.success) {
+        const { access_token } = response.data || ({} as any)
         
-        console.log('🔵 [AuthStore] 刷新token成功:', access)
+        console.log('🔵 [AuthStore] 刷新token成功:', access_token)
         
-        if (!access) {
-          throw new Error('刷新token响应中缺少access token')
+        if (!access_token) {
+          throw new Error('刷新token响应中缺少access_token')
         }
         
-        accessToken.value = access
-        localStorage.setItem('access_token', access)
-        axios.defaults.headers.common['Authorization'] = `Bearer ${access}`
-        return access
+        accessToken.value = access_token
+        localStorage.setItem('access_token', access_token)
+        axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
+        return access_token
       } else {
-        throw new Error('令牌刷新失败')
+        throw new Error(response.message || '令牌刷新失败')
       }
     } catch (error) {
       console.error('令牌刷新失败:', error)
@@ -499,13 +442,8 @@ export const useAuthStore = defineStore('auth', () => {
     }
     
     try {
-      const response = await axios.get(`${API_BASE_URL}/auth/verify/`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken.value}`
-        }
-      })
-      
-      return response.data.success
+      const response = await api.get('/auth/verify/')
+      return !!response.success
     } catch (error) {
       console.error('令牌验证失败:', error)
       return false

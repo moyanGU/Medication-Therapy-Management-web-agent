@@ -75,7 +75,7 @@
       <!-- 搜索和筛选 -->
       <div class="bg-white rounded-lg shadow p-6 mb-6">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <!-- 搜索框 -->
+          <!-- 搜索框：保留输入防抖，不新增多余按钮 -->
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">搜索</label>
             <input
@@ -84,6 +84,7 @@
               placeholder="搜索药品名称、备注..."
               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               @input="debouncedSearch"
+              @keyup.enter="applyFilters"
             />
           </div>
           
@@ -125,6 +126,12 @@
         </div>
         
         <div class="flex justify-end mt-4">
+          <button
+            @click="applyFilters"
+            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors mr-2"
+          >
+            确认搜索
+          </button>
           <button
             @click="resetFilters"
             class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
@@ -222,22 +229,22 @@
                     <div class="w-16 bg-gray-200 rounded-full h-2 mr-2">
                       <div
                         class="h-2 rounded-full"
-                        :class="getAdherenceColor(record.adherence_score || 0)"
-                        :style="{ width: `${record.adherence_score || 0}%` }"
+                        :class="getAdherenceColor(record.adherence_score ?? 0)"
+                        :style="{ width: `${record.adherence_score ?? 0}%` }"
                       ></div>
                     </div>
-                    <span class="text-xs text-gray-600">{{ record.adherence_score || 0 }}%</span>
+                    <span class="text-xs text-gray-600">{{ record.adherence_score ?? 0 }}%</span>
                   </div>
                 </div>
                 
-                <!-- 效果评分 -->
+                <!-- 效果评分（修复：支持0分显示，使用星级+数值） -->
                 <div>
-                  <div v-if="record.effectiveness_score" class="flex items-center">
+                  <div v-if="record.effectiveness_score !== undefined && record.effectiveness_score !== null" class="flex items-center">
                     <div class="flex text-yellow-400">
                       <i
-                        v-for="i in 5"
+                        v-for="i in 10"
                         :key="i"
-                        :class="i <= record.effectiveness_score ? 'fas fa-star' : 'far fa-star'"
+                        :class="i <= (Number(record.effectiveness_score) || 0) ? 'fas fa-star' : 'far fa-star'"
                         class="text-xs"
                       ></i>
                     </div>
@@ -246,7 +253,7 @@
                   <span v-else class="text-xs text-gray-400">未评分</span>
                 </div>
                 
-                <!-- 操作 -->
+                <!-- 操作（包含删除按钮） -->
                 <div class="flex space-x-2">
                   <button
                     @click="viewRecord(record)"
@@ -290,7 +297,7 @@
           <button
             v-for="page in getPageNumbers()"
             :key="page"
-            @click="changePage(page)"
+            @click="changePage(page as number)"
             :class="{
               'bg-blue-600 text-white': page === pagination.page,
               'bg-white text-gray-700 hover:bg-gray-50': page !== pagination.page
@@ -328,7 +335,7 @@
       @delete="confirmDelete"
     />
 
-    <!-- 删除确认模态框 -->
+    <!-- 删除确认模态框（单条） -->
     <div v-if="showDeleteModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
         <h3 class="text-lg font-medium text-gray-900 mb-4">确认删除</h3>
@@ -354,7 +361,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, watchEffect } from 'vue'
+import { ref, computed, onMounted, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRecordStore } from '../stores/record'
 import { useAuthStore } from '../stores/auth'
@@ -363,43 +370,13 @@ import type { MedicationRecord } from '../types/record'
 import RecordForm from '../components/RecordForm.vue'
 import RecordDetail from '../components/RecordDetail.vue'
 import { debounce } from 'lodash-es'
+import { recordApi } from '../api/record'
+import { storeToRefs } from 'pinia'
 
-// 路由和认证
-const router = useRouter()
-const authStore = useAuthStore()
-
-// 状态管理
-const recordStore = useRecordStore()
-const {
-  records,
-  statistics,
-  loading,
-  error,
-  pagination,
-  hasRecords,
-  fetchRecords,
-  fetchStatistics,
-  deleteRecord,
-  exportRecords: storeExportRecords
-} = recordStore
-
-// 计算属性
-const todayMedicineTypes = computed(() => {
-  if (!records.value || !Array.isArray(records.value)) {
-    return 0
-  }
-  
-  const today = new Date().toISOString().split('T')[0]
-  const todayRecords = records.value.filter(record => {
-    if (!record || !record.taken_at) return false
-    const recordDate = new Date(record.taken_at).toISOString().split('T')[0]
-    return recordDate === today
-  })
-  
-  // 获取今日用药的唯一药品ID
-  const uniqueMedicineIds = new Set(todayRecords.map(record => record.medicine).filter(Boolean))
-  return uniqueMedicineIds.size
-})
+// 当日用药种类（修复：从独立查询计算）
+// 保留唯一定义，删除重复定义
+const todayMedicineTypesCount = ref(0)
+const todayMedicineTypes = computed(() => todayMedicineTypesCount.value)
 
 // 本地状态
 const searchQuery = ref('')
@@ -414,6 +391,7 @@ const showCreateForm = ref(false)
 const showEditForm = ref(false)
 const showDetailModal = ref(false)
 const showDeleteModal = ref(false)
+const showDeleteAllModal = ref(false)
 
 // 选中的记录
 const selectedRecord = ref<MedicationRecord | null>(null)
@@ -422,6 +400,110 @@ const deletingRecord = ref<MedicationRecord | null>(null)
 
 // 状态选项
 const statusOptions = MEDICATION_STATUS_OPTIONS
+
+/**
+ * 格式化日期时间为本地化字符串（zh-CN）
+ * @param dateTime ISO 日期时间字符串
+ * @returns 本地化的日期时间，如 2025/01/01 12:30:00
+ */
+const formatDateTime = (dateTime: string) => {
+  try {
+    const d = new Date(dateTime)
+    if (isNaN(d.getTime())) return '-'
+    const result = d.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+    return result
+  } catch (e) {
+    console.warn('[RecordsPage] formatDateTime 解析失败:', dateTime, e)
+    return '-'
+  }
+}
+
+/**
+ * 将时间转换为相对时间描述（如“5分钟前”）
+ * @param dateTime ISO 日期时间字符串
+ * @returns 相对时间文本
+ */
+const formatTimeAgo = (dateTime: string) => {
+  try {
+    const now = new Date().getTime()
+    const t = new Date(dateTime).getTime()
+    if (isNaN(t)) return ''
+    const diff = Math.max(0, now - t)
+
+    const sec = Math.floor(diff / 1000)
+    if (sec < 60) return `${sec}秒前`
+
+    const min = Math.floor(sec / 60)
+    if (min < 60) return `${min}分钟前`
+
+    const hour = Math.floor(min / 60)
+    if (hour < 24) return `${hour}小时前`
+
+    const day = Math.floor(hour / 24)
+    if (day < 30) return `${day}天前`
+
+    const month = Math.floor(day / 30)
+    if (month < 12) return `${month}个月前`
+
+    const year = Math.floor(month / 12)
+    return `${year}年前`
+  } catch (e) {
+    console.warn('[RecordsPage] formatTimeAgo 解析失败:', dateTime, e)
+    return ''
+  }
+}
+
+/**
+ * 获取状态标签
+ * 复用全局 MEDICATION_STATUS_OPTIONS 以保证一致性
+ */
+const getStatusLabel = (status: string) => {
+  const opt = MEDICATION_STATUS_OPTIONS.find(o => o.value === status)
+  return opt?.label || status || '-'
+}
+
+/**
+ * 根据状态返回样式类
+ * taken: 绿色；missed: 红色；delayed: 黄色；partial: 橙色；其他：灰色
+ */
+const getStatusClass = (status: string) => {
+  const map: Record<string, string> = {
+    taken: 'bg-green-100 text-green-800',
+    missed: 'bg-red-100 text-red-800',
+    delayed: 'bg-yellow-100 text-yellow-800',
+    partial: 'bg-orange-100 text-orange-800'
+  }
+  return map[status] || 'bg-gray-100 text-gray-800'
+}
+
+/**
+ * 根据依从性分数返回进度条颜色
+ * >=80: 绿色；>=50: 黄色；否则红色
+ */
+const getAdherenceColor = (score: number) => {
+  const s = Number(score) || 0
+  if (s >= 80) return 'bg-green-500'
+  if (s >= 50) return 'bg-yellow-500'
+  return 'bg-red-500'
+}
+
+// 路由和认证
+const router = useRouter()
+const authStore = useAuthStore()
+
+// 状态管理
+const recordStore = useRecordStore()
+// 使用 storeToRefs 保持状态/计算属性的响应性，避免直接解构导致的响应性丢失
+const { records, statistics, loading, error, pagination, hasRecords } = storeToRefs(recordStore)
+// 方法可直接从 store 解构
+const { fetchRecords, fetchStatistics, deleteRecord, exportRecords: storeExportRecords } = recordStore
 
 // 防抖搜索
 const debouncedSearch = debounce(() => {
@@ -432,8 +514,8 @@ const debouncedSearch = debounce(() => {
 const loadRecords = async () => {
   console.log('🔵 [RecordsPage] loadRecords被调用')
   const params: any = {
-    page: pagination.page,
-    page_size: pagination.pageSize
+    page: pagination.value.page,
+    page_size: pagination.value.pageSize
   }
   
   if (searchQuery.value) {
@@ -454,12 +536,12 @@ const loadRecords = async () => {
   
   console.log('🔵 [RecordsPage] 调用fetchRecords，参数:', params)
   await fetchRecords(params)
-  console.log('🔵 [RecordsPage] fetchRecords完成，当前records数量:', records.value?.length || 0)
+  console.log('🔵 [RecordsPage] fetchRecords完成，当前records数量:', records.value?.length ?? 0)
 }
 
 // 应用筛选
 const applyFilters = () => {
-  pagination.page = 1
+  pagination.value.page = 1
   loadRecords()
 }
 
@@ -471,22 +553,22 @@ const resetFilters = () => {
     start_date: '',
     end_date: ''
   }
-  pagination.page = 1
+  pagination.value.page = 1
   loadRecords()
 }
 
 // 分页
 const changePage = (page: number) => {
-  if (page >= 1 && page <= pagination.totalPages) {
-    pagination.page = page
+  if (page >= 1 && page <= pagination.value.totalPages) {
+    pagination.value.page = page
     loadRecords()
   }
 }
 
 const getPageNumbers = () => {
-  const pages = []
-  const total = pagination.totalPages
-  const current = pagination.page
+  const pages: Array<number | string> = []
+  const total = pagination.value.totalPages
+  const current = pagination.value.page
   
   if (total <= 7) {
     for (let i = 1; i <= total; i++) {
@@ -541,86 +623,94 @@ const handleDelete = async () => {
       deletingRecord.value = null
       // 重新加载当前页数据
       await loadRecords()
+      await updateTodayMedicineTypes()
     } catch (error) {
       console.error('删除失败:', error)
     }
   }
 }
 
-// 表单操作
-const closeForm = () => {
-  showCreateForm.value = false
-  showEditForm.value = false
-  editingRecord.value = null
+// 批量删除（当前筛选结果，最多1000条）
+const confirmDeleteAll = () => {
+  showDeleteAllModal.value = true
 }
 
-const handleFormSuccess = () => {
-  console.log('🟢 [RecordsPage] handleFormSuccess被调用')
-  closeForm()
-  console.log('🟢 [RecordsPage] 表单已关闭，开始重新加载记录')
-  loadRecords()
-}
-
-// 导出记录
-const exportRecords = async () => {
+/**
+ * 批量删除（分页抓取，page_size=100，直到取完）
+ */
+const handleDeleteAll = async () => {
   try {
-    const params: any = {}
-    
-    if (filters.value.start_date) {
-      params.start_date = filters.value.start_date
+    console.log('🔵 [RecordsPage] 开始批量删除（分页抓取）')
+
+    const baseParams: any = {}
+    if (searchQuery.value) baseParams.search = searchQuery.value
+    if (filters.value.status) baseParams.status = filters.value.status
+    if (filters.value.start_date) baseParams.start_date = filters.value.start_date
+    if (filters.value.end_date) baseParams.end_date = filters.value.end_date
+
+    const pageSize = 100
+    let page = 1
+    let totalDeleted = 0
+
+    while (true) {
+      const params = { ...baseParams, page, page_size: pageSize }
+      console.log('🔵 [RecordsPage] 批量删除抓取页:', params)
+      const resp = await recordApi.getRecords(params)
+      const rawData: any = resp?.data ?? {}
+      const results: any[] = Array.isArray(rawData.results)
+        ? rawData.results
+        : Array.isArray(rawData)
+          ? rawData
+          : []
+
+      console.log(`🔵 [RecordsPage] 第${page}页记录数量:`, results.length)
+      if (!results.length) break
+
+      const ids: number[] = results
+        .map((r: any) => r?.id)
+        .filter((id: any) => typeof id === 'number')
+
+      for (const id of ids) {
+        try {
+          await deleteRecord(id)
+          totalDeleted += 1
+        } catch (e) {
+          console.error('🔴 [RecordsPage] 删除记录失败，ID:', id, e)
+        }
+      }
+
+      if (results.length < pageSize) break
+      page += 1
     }
-    
-    if (filters.value.end_date) {
-      params.end_date = filters.value.end_date
-    }
-    
-    await storeExportRecords(params)
-  } catch (error) {
-    console.error('导出失败:', error)
+
+    showDeleteAllModal.value = false
+    await loadRecords()
+    await fetchStatistics()
+    await updateTodayMedicineTypes()
+    console.log('🟢 [RecordsPage] 批量删除完成，总计删除:', totalDeleted)
+  } catch (e) {
+    console.error('🔴 [RecordsPage] 批量删除异常:', e)
   }
 }
 
-// 工具函数
-const formatDateTime = (dateTime: string) => {
-  return new Date(dateTime).toLocaleString('zh-CN')
-}
+/**
+ * 计算当日用药种类（改为调用后端聚合接口）
+ */
+const updateTodayMedicineTypes = async () => {
+  try {
+    const today = new Date().toISOString().split('T')[0]
+    console.log('🔵 [RecordsPage] 调用后端聚合接口获取当日用药种类，日期:', today)
+    const resp = await recordApi.getTodayMedicineTypes(today)
 
-const formatTimeAgo = (dateTime: string) => {
-  const now = new Date()
-  const date = new Date(dateTime)
-  const diff = now.getTime() - date.getTime()
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-  
-  if (days === 0) {
-    return '今天'
-  } else if (days === 1) {
-    return '昨天'
-  } else if (days < 7) {
-    return `${days}天前`
-  } else {
-    return `${Math.floor(days / 7)}周前`
+    const data: any = resp?.data ?? {}
+    const count = (data?.data?.count ?? data?.count ?? 0) as number
+
+    todayMedicineTypesCount.value = Number(count) || 0
+    console.log('🟢 [RecordsPage] 当日用药种类（来自后端聚合）:', todayMedicineTypesCount.value)
+  } catch (e) {
+    console.error('🔴 [RecordsPage] 获取当日用药种类失败:', e)
+    todayMedicineTypesCount.value = 0
   }
-}
-
-const getStatusLabel = (status: string) => {
-  const option = statusOptions.find(opt => opt.value === status)
-  return option?.label || status
-}
-
-const getStatusClass = (status: string) => {
-  const classes = {
-    taken: 'bg-green-100 text-green-800',
-    missed: 'bg-red-100 text-red-800',
-    delayed: 'bg-yellow-100 text-yellow-800',
-    partial: 'bg-blue-100 text-blue-800'
-  }
-  return classes[status as keyof typeof classes] || 'bg-gray-100 text-gray-800'
-}
-
-const getAdherenceColor = (score: number) => {
-  if (score >= 90) return 'bg-green-500'
-  if (score >= 70) return 'bg-yellow-500'
-  return 'bg-red-500'
 }
 
 // 生命周期
@@ -647,6 +737,7 @@ watchEffect(async () => {
     try {
       await loadRecords()
       await fetchStatistics()
+      await updateTodayMedicineTypes()
       console.log('🔵 [RecordsPage] 数据加载完成')
     } catch (error) {
       console.error('🔴 [RecordsPage] 数据加载失败:', error)

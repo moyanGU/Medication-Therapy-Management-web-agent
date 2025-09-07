@@ -23,6 +23,12 @@ class ReminderHistoryFilter(django_filters.FilterSet):
         label='药品名称'
     )
     
+    # 新增：按提醒ID过滤（支持前端以 ?reminder=123 传参）
+    reminder = django_filters.NumberFilter(
+        field_name='reminder__id',
+        label='提醒ID'
+    )
+    
     # 提醒状态过滤
     status = django_filters.ChoiceFilter(
         choices=ReminderHistory.STATUS_CHOICES,
@@ -148,7 +154,7 @@ class ReminderHistoryFilter(django_filters.FilterSet):
     class Meta:
         model = ReminderHistory
         fields = [
-            'medicine', 'medicine_name', 'status', 'response_type',
+            'medicine', 'medicine_name', 'reminder', 'status', 'response_type',
             'reminder_type', 'sent_date', 'sent_date_after', 'sent_date_before',
             'sent_time_after', 'sent_time_before', 'responded_date',
             'responded_date_after', 'responded_date_before',
@@ -258,23 +264,21 @@ class ReminderHistoryFilter(django_filters.FilterSet):
                 end_of_last_month = today.replace(year=today.year - 1, month=12, day=31)
             else:
                 import calendar
-                last_day = calendar.monthrange(today.year, today.month - 1)[1]
-                end_of_last_month = today.replace(month=today.month - 1, day=last_day)
+                end_day = calendar.monthrange(today.year, today.month - 1)[1]
+                end_of_last_month = today.replace(month=today.month - 1, day=end_day)
             
             return queryset.filter(
                 sent_at__date__gte=last_month,
                 sent_at__date__lte=end_of_last_month
             )
         elif value == 'last_7_days':
-            # 最近7天
-            start_date = today - timedelta(days=6)
+            start_date = today - timedelta(days=7)
             return queryset.filter(
                 sent_at__date__gte=start_date,
                 sent_at__date__lte=today
             )
         elif value == 'last_30_days':
-            # 最近30天
-            start_date = today - timedelta(days=29)
+            start_date = today - timedelta(days=30)
             return queryset.filter(
                 sent_at__date__gte=start_date,
                 sent_at__date__lte=today
@@ -287,7 +291,6 @@ class ReminderStatsFilter(django_filters.FilterSet):
     """
     提醒统计过滤器
     """
-    # 日期范围过滤
     date = django_filters.DateFilter(
         field_name='date',
         label='统计日期'
@@ -305,7 +308,6 @@ class ReminderStatsFilter(django_filters.FilterSet):
         label='统计日期（结束）'
     )
     
-    # 响应率范围过滤
     response_rate_min = django_filters.NumberFilter(
         field_name='response_rate',
         lookup_expr='gte',
@@ -318,7 +320,6 @@ class ReminderStatsFilter(django_filters.FilterSet):
         label='响应率（最大%）'
     )
     
-    # 服药率范围过滤
     adherence_rate_min = django_filters.NumberFilter(
         field_name='adherence_rate',
         lookup_expr='gte',
@@ -331,7 +332,6 @@ class ReminderStatsFilter(django_filters.FilterSet):
         label='服药率（最大%）'
     )
     
-    # 提醒数量范围过滤
     sent_count_min = django_filters.NumberFilter(
         field_name='sent_count',
         lookup_expr='gte',
@@ -344,7 +344,6 @@ class ReminderStatsFilter(django_filters.FilterSet):
         label='发送数量（最大）'
     )
     
-    # 平均响应时间范围过滤
     avg_response_time_min = django_filters.NumberFilter(
         field_name='avg_response_time',
         lookup_expr='gte',
@@ -357,7 +356,6 @@ class ReminderStatsFilter(django_filters.FilterSet):
         label='平均响应时间（最大分钟）'
     )
     
-    # 预设时间范围过滤
     time_range = django_filters.ChoiceFilter(
         method='filter_time_range',
         choices=[
@@ -372,7 +370,6 @@ class ReminderStatsFilter(django_filters.FilterSet):
         label='时间范围'
     )
     
-    # 统计质量过滤
     quality_level = django_filters.ChoiceFilter(
         method='filter_quality_level',
         choices=[
@@ -397,94 +394,57 @@ class ReminderStatsFilter(django_filters.FilterSet):
     
     def filter_time_range(self, queryset, name, value):
         """
-        过滤预设时间范围
+        根据时间范围过滤
         """
-        now = timezone.now()
-        today = now.date()
+        now = timezone.now().date()
         
         if value == 'this_week':
-            # 本周（周一到今天）
-            start_of_week = today - timedelta(days=today.weekday())
-            return queryset.filter(
-                date__gte=start_of_week,
-                date__lte=today
-            )
+            start_of_week = now - timedelta(days=now.weekday())
+            return queryset.filter(date__gte=start_of_week, date__lte=now)
         elif value == 'last_week':
-            # 上周（上周一到上周日）
-            start_of_this_week = today - timedelta(days=today.weekday())
+            start_of_this_week = now - timedelta(days=now.weekday())
             start_of_last_week = start_of_this_week - timedelta(days=7)
             end_of_last_week = start_of_this_week - timedelta(days=1)
-            return queryset.filter(
-                date__gte=start_of_last_week,
-                date__lte=end_of_last_week
-            )
+            return queryset.filter(date__gte=start_of_last_week, date__lte=end_of_last_week)
         elif value == 'this_month':
-            # 本月
-            start_of_month = today.replace(day=1)
-            return queryset.filter(
-                date__gte=start_of_month,
-                date__lte=today
-            )
+            start_of_month = now.replace(day=1)
+            return queryset.filter(date__gte=start_of_month, date__lte=now)
         elif value == 'last_month':
-            # 上月
-            if today.month == 1:
-                last_month = today.replace(year=today.year - 1, month=12, day=1)
+            if now.month == 1:
+                last_month = now.replace(year=now.year - 1, month=12, day=1)
             else:
-                last_month = today.replace(month=today.month - 1, day=1)
+                last_month = now.replace(month=now.month - 1, day=1)
             
-            # 上月的最后一天
-            if today.month == 1:
-                end_of_last_month = today.replace(year=today.year - 1, month=12, day=31)
+            if now.month == 1:
+                end_of_last_month = now.replace(year=now.year - 1, month=12, day=31)
             else:
                 import calendar
-                last_day = calendar.monthrange(today.year, today.month - 1)[1]
-                end_of_last_month = today.replace(month=today.month - 1, day=last_day)
+                end_day = calendar.monthrange(now.year, now.month - 1)[1]
+                end_of_last_month = now.replace(month=now.month - 1, day=end_day)
             
-            return queryset.filter(
-                date__gte=last_month,
-                date__lte=end_of_last_month
-            )
+            return queryset.filter(date__gte=last_month, date__lte=end_of_last_month)
         elif value == 'last_7_days':
-            # 最近7天
-            start_date = today - timedelta(days=6)
-            return queryset.filter(
-                date__gte=start_date,
-                date__lte=today
-            )
+            start_date = now - timedelta(days=7)
+            return queryset.filter(date__gte=start_date, date__lte=now)
         elif value == 'last_30_days':
-            # 最近30天
-            start_date = today - timedelta(days=29)
-            return queryset.filter(
-                date__gte=start_date,
-                date__lte=today
-            )
+            start_date = now - timedelta(days=30)
+            return queryset.filter(date__gte=start_date, date__lte=now)
         elif value == 'last_90_days':
-            # 最近90天
-            start_date = today - timedelta(days=89)
-            return queryset.filter(
-                date__gte=start_date,
-                date__lte=today
-            )
+            start_date = now - timedelta(days=90)
+            return queryset.filter(date__gte=start_date, date__lte=now)
         
         return queryset
     
     def filter_quality_level(self, queryset, name, value):
         """
-        过滤统计质量等级
+        根据质量等级过滤
         """
         if value == 'excellent':
             return queryset.filter(response_rate__gte=90)
         elif value == 'good':
-            return queryset.filter(
-                response_rate__gte=80,
-                response_rate__lt=90
-            )
+            return queryset.filter(response_rate__gte=80)
         elif value == 'average':
-            return queryset.filter(
-                response_rate__gte=70,
-                response_rate__lt=80
-            )
+            return queryset.filter(response_rate__gte=70)
         elif value == 'poor':
             return queryset.filter(response_rate__lt=70)
-        
         return queryset

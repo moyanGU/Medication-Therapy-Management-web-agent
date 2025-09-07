@@ -29,7 +29,7 @@
             ]"
             :disabled="loading"
           >
-            <component :is="reminder.is_active ? PauseCircle : PlayCircle" class="w-4 h-4 mr-2" />
+            <component :is="reminder.is_active ? PauseCircleIcon : PlayCircleIcon" class="w-4 h-4 mr-2" />
             {{ reminder.is_active ? '停用提醒' : '启用提醒' }}
           </button>
           <router-link
@@ -90,7 +90,7 @@
                   {{ reminder.medicine.specification || '无规格信息' }}
                 </div>
                 <div class="text-sm text-gray-600">
-                  {{ reminder.medicine.manufacturer || '无厂商信息' }}
+                  {{ getMedicineTypeText(reminder.medicine.medicine_type) || '无类型信息' }}
                 </div>
               </div>
             </div>
@@ -215,11 +215,11 @@
         <div class="card-content">
           <div class="stats-grid">
             <div class="stat-item">
-              <div class="stat-value">{{ reminder.reminder_count || 0 }}</div>
+              <div class="stat-value">{{ reminder.reminder_count ?? 0 }}</div>
               <div class="stat-label">总提醒次数</div>
             </div>
             <div class="stat-item">
-              <div class="stat-value">{{ reminder.response_count || 0 }}</div>
+              <div class="stat-value">{{ reminder.response_count ?? 0 }}</div>
               <div class="stat-label">响应次数</div>
             </div>
             <div class="stat-item">
@@ -391,18 +391,17 @@ import { useRouter, useRoute } from 'vue-router'
 import { useReminderStore } from '@/stores/reminder'
 import { useToast } from '@/composables/useToast'
 import {
-  ArrowLeft, Bell, Edit, Volume2, PauseCircle, PlayCircle,
+  ArrowLeft, Bell, Edit, Volume2, PauseCircle as PauseCircleIcon, PlayCircle as PlayCircleIcon,
   Pill, Calculator, Clock, Repeat, Utensils, Calendar,
   Settings, FileText, MessageSquare, BarChart3, History,
   RefreshCw, Check, ChevronLeft, ChevronRight, AlertCircle,
-  CheckCircle, XCircle, Clock3
-} from 'lucide-vue-next'
+  CheckCircle, XCircle, Clock3 } from 'lucide-vue-next'
 import type { Reminder, ReminderHistory } from '@/services/reminderService'
 
 const router = useRouter()
 const route = useRoute()
 const reminderStore = useReminderStore()
-const { showToast, showConfirm } = useToast()
+const toast = useToast()
 
 // 响应式数据
 const loading = ref(false)
@@ -473,7 +472,7 @@ const loadReminderData = async () => {
     const data = await reminderStore.fetchReminder(reminderId.value)
     reminder.value = data
   } catch (error) {
-    showToast('加载提醒详情失败', 'error')
+    toast.error('加载提醒详情失败')
   } finally {
     loading.value = false
   }
@@ -483,12 +482,12 @@ const loadHistoryData = async () => {
   try {
     historyLoading.value = true
     await reminderStore.fetchReminderHistory({
-      reminder_id: reminderId.value,
+      reminder: reminderId.value,
       page: 1,
       page_size: 20
     })
   } catch (error) {
-    showToast('加载执行历史失败', 'error')
+    toast.error('加载执行历史失败')
   } finally {
     historyLoading.value = false
   }
@@ -501,7 +500,7 @@ const refreshHistory = () => {
 const changeHistoryPage = (page: number) => {
   if (page >= 1 && page <= historyPagination.value.totalPages) {
     reminderStore.fetchReminderHistory({
-      reminder_id: reminderId.value,
+      reminder: reminderId.value,
       page,
       page_size: 20
     })
@@ -519,13 +518,10 @@ const toggleActive = async () => {
     const result = await reminderStore.toggleReminderActive(reminder.value.id)
     if (result) {
       reminder.value = result
-      showToast(
-        `提醒已${result.is_active ? '启用' : '停用'}`,
-        'success'
-      )
+      toast.success(`提醒已${result.is_active ? '启用' : '停用'}`)
     }
   } catch (error) {
-    showToast('切换提醒状态失败', 'error')
+    toast.error('切换提醒状态失败')
   }
 }
 
@@ -534,23 +530,22 @@ const testNotification = async () => {
   
   try {
     await reminderStore.testNotification(reminder.value.id)
-    showToast('测试通知已发送', 'success')
+    toast.success('测试通知已发送')
   } catch (error) {
-    showToast('发送测试通知失败', 'error')
+    toast.error('发送测试通知失败')
   }
 }
 
 const markAsResponded = async (record: ReminderHistory) => {
   try {
     await reminderStore.respondToReminder(record.id, {
-      is_responded: true,
-      responded_at: new Date().toISOString(),
+      response_type: 'taken',
       notes: '手动标记'
     })
-    showToast('已标记为已服用', 'success')
+    toast.success('已标记为已服用')
     loadHistoryData()
   } catch (error) {
-    showToast('标记失败', 'error')
+    toast.error('标记失败')
   }
 }
 
@@ -568,6 +563,20 @@ const formatDate = (date: string) => {
 
 const formatDateTime = (datetime: string) => {
   return new Date(datetime).toLocaleString('zh-CN')
+}
+
+// 获取药品类型文本
+const getMedicineTypeText = (type: string) => {
+  const typeMap: Record<string, string> = {
+    tablet: '片剂',
+    capsule: '胶囊',
+    liquid: '液体',
+    injection: '注射剂',
+    ointment: '软膏',
+    powder: '粉剂',
+    other: '其他'
+  }
+  return typeMap[type] || type
 }
 
 const getDosageUnitLabel = (unit: string) => {

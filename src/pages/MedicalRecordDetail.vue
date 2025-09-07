@@ -373,12 +373,28 @@ const exportToPDF = async () => {
 
 const downloadAttachment = async (attachment: Attachment) => {
   try {
-    const urlToFetch = (attachment as any).download_url || (attachment as any).file_url
+    let urlToFetch = (attachment as any).download_url || (attachment as any).file_url
+
+    // 若附件无直链，调用后端获取下载链接
     if (!urlToFetch) {
-      console.error('附件无可用下载链接:', attachment)
+      console.log('🟡 [MedicalRecordDetail] 附件无直链，调用后端获取下载链接', {
+        id: recordId.value,
+        attachmentId: (attachment as any).id,
+        name: attachment.name
+      })
+      const resp = await api.get<{ download_url: string; filename?: string; file_size?: number; file_type?: string }>(
+        `/medical-records/records/${recordId.value}/download_attachment/`,
+        { params: { attachment_id: (attachment as any).id } }
+      )
+      urlToFetch = (resp.data as any)?.download_url
+    }
+
+    if (!urlToFetch) {
+      console.error('🔴 [MedicalRecordDetail] 附件无可用下载链接', attachment)
       showError('下载链接不可用')
       return
     }
+
     console.log('🔵 [MedicalRecordDetail] 下载附件(优先api.download)', { urlToFetch, name: attachment.name })
     // 优先使用带鉴权头的 ApiClient.download
     await api.download(urlToFetch, attachment.name, { method: 'GET' })
@@ -386,7 +402,16 @@ const downloadAttachment = async (attachment: Attachment) => {
   } catch (err) {
     console.warn('🟠 [MedicalRecordDetail] api.download 失败，尝试回退到 fetch 直链下载', err)
     try {
-      const urlToFetch = (attachment as any).download_url || (attachment as any).file_url
+      let urlToFetch = (attachment as any).download_url || (attachment as any).file_url
+      if (!urlToFetch) {
+        const resp2 = await api.get<{ download_url: string }>(
+          `/medical-records/records/${recordId.value}/download_attachment/`,
+          { params: { attachment_id: (attachment as any).id }, skipErrorHandler: true }
+        )
+        urlToFetch = (resp2.data as any)?.download_url
+      }
+      if (!urlToFetch) throw new Error('无下载链接')
+
       const response = await fetch(urlToFetch)
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)

@@ -107,6 +107,17 @@ export const recordApi = {
   },
 
   /**
+   * 获取今日用药种类（去重后的药品数）
+   */
+  async getTodayMedicineTypes(date?: string) {
+    const params = date ? { date } : undefined
+    console.log('获取今日用药种类:', params)
+    const response = await api.get('/records/medication-records/today-medicine-types/', { params })
+    console.log('今日用药种类响应:', response.data)
+    return response
+  },
+
+  /**
    * 导出用药记录
    */
   async exportRecords(params?: {

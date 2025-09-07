@@ -86,7 +86,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
       
       if (response.success) {
         // 按标准结构解包 { success, data: { results: [], count: number } }
-        const list = response.data?.results || []
+        const list = response.data?.results ?? []
         const count = response.data?.count ?? 0
         records.value = list
         
@@ -98,10 +98,10 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
         throw new Error(response.message || '获取病历列表失败')
       }
     } catch (err: any) {
-      error.value = err.response?.data?.message || err.message || '获取病历列表失败'
-      console.error('获取病历列表失败:', err)
-      throw err
-    } finally {
+      error.value = err.message || '获取病历列表失败'
+       console.error('获取病历列表失败:', err)
+       throw err
+     } finally {
       loading.value = false
     }
   }
@@ -122,10 +122,10 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
         throw new Error(response.message || '获取病历详情失败')
       }
     } catch (err: any) {
-      error.value = err.response?.data?.message || err.message || '获取病历详情失败'
-      console.error('获取病历详情失败:', err)
-      throw err
-    } finally {
+      error.value = err.message || '获取病历详情失败'
+       console.error('获取病历详情失败:', err)
+       throw err
+     } finally {
       loading.value = false
     }
   }
@@ -147,10 +147,10 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
         throw new Error(response.message || '创建病历记录失败')
       }
     } catch (err: any) {
-      error.value = err.response?.data?.message || err.message || '创建病历记录失败'
-      console.error('创建病历记录失败:', err)
-      throw err
-    } finally {
+      error.value = err.message || '创建病历记录失败'
+       console.error('创建病历记录失败:', err)
+       throw err
+     } finally {
       loading.value = false
     }
   }
@@ -181,10 +181,10 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
         throw new Error(response.message || '更新病历记录失败')
       }
     } catch (err: any) {
-      error.value = err.response?.data?.message || err.message || '更新病历记录失败'
-      console.error('更新病历记录失败:', err)
-      throw err
-    } finally {
+      error.value = err.message || '更新病历记录失败'
+       console.error('更新病历记录失败:', err)
+       throw err
+     } finally {
       loading.value = false
     }
   }
@@ -216,10 +216,10 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
         throw new Error(response.message || '删除病历记录失败')
       }
     } catch (err: any) {
-      error.value = err.response?.data?.message || err.message || '删除病历记录失败'
-      console.error('删除病历记录失败:', err)
-      throw err
-    } finally {
+      error.value = err.message || '删除病历记录失败'
+       console.error('删除病历记录失败:', err)
+       throw err
+     } finally {
       loading.value = false
     }
   }

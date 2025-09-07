@@ -1,5 +1,6 @@
 import { api } from '@/utils/api'
 import type { PaginatedResponse } from '@/types/medicine'
+import type { ApiResponse } from '@/utils/api'
 
 // 提醒相关接口
 export interface Reminder {
@@ -8,8 +9,8 @@ export interface Reminder {
   medicine: {
     id: number
     name: string
-    generic_name?: string
-    dosage_form?: string
+    medicine_type: string
+    specification?: string
   }
   reminder_time: string
   frequency: 'daily' | 'twice_daily' | 'three_times_daily' | 'four_times_daily' | 'weekly' | 'every_other_day' | 'custom'
@@ -112,6 +113,7 @@ export interface ReminderFilters {
 }
 
 export interface ReminderHistoryFilters {
+  reminder?: number
   medicine?: number
   medicine_name?: string
   status?: string
@@ -133,7 +135,7 @@ class ReminderService {
   // 使用统一 api 客户端的 baseURL，无需 '/api' 前缀
 
   // 提醒CRUD操作
-  async getReminders(filters?: ReminderFilters): Promise<PaginatedResponse<Reminder>> {
+  async getReminders(filters?: ReminderFilters): Promise<ApiResponse<PaginatedResponse<Reminder>>> {
     const params = new URLSearchParams()
     
     if (filters) {
@@ -144,109 +146,111 @@ class ReminderService {
       })
     }
     
-    const { data } = await api.get<PaginatedResponse<Reminder>>(
+    const res = await api.get<PaginatedResponse<Reminder>>(
       `/reminders/?${params.toString()}`
     )
-    return data
+    return res
   }
 
-  async getReminder(id: number): Promise<Reminder> {
-    const { data } = await api.get<Reminder>(
+  async getReminder(id: number): Promise<ApiResponse<Reminder>> {
+    const res = await api.get<Reminder>(
       `/reminders/${id}/`
     )
-    return data
+    return res
   }
 
-  async createReminder(payload: ReminderCreate): Promise<Reminder> {
-    const { data } = await api.post<Reminder>(
+  async createReminder(payload: ReminderCreate): Promise<ApiResponse<Reminder>> {
+    const res = await api.post<Reminder>(
       `/reminders/`,
       payload
     )
-    return data
+    return res
   }
 
-  async updateReminder(id: number, payload: Partial<ReminderCreate>): Promise<Reminder> {
-    const { data } = await api.patch<Reminder>(
+  async updateReminder(id: number, payload: Partial<ReminderCreate>): Promise<ApiResponse<Reminder>> {
+    const res = await api.patch<Reminder>(
       `/reminders/${id}/`,
       payload
     )
-    return data
+    return res
   }
 
-  async deleteReminder(id: number): Promise<void> {
-    await api.delete<void>(`/reminders/${id}/`)
+  async deleteReminder(id: number): Promise<ApiResponse<void>> {
+    const res = await api.delete<void>(`/reminders/${id}/`)
+    return res
   }
 
   // 特殊查询
-  async getTodayReminders(): Promise<Reminder[]> {
-    const { data } = await api.get<Reminder[]>(
+  async getTodayReminders(): Promise<ApiResponse<Reminder[]>> {
+    const res = await api.get<Reminder[]>(
       `/reminders/today/`
     )
-    return data
+    return res
   }
 
-  async getUpcomingReminders(): Promise<Reminder[]> {
-    const { data } = await api.get<Reminder[]>(
+  async getUpcomingReminders(): Promise<ApiResponse<Reminder[]>> {
+    const res = await api.get<Reminder[]>(
       `/reminders/upcoming/`
     )
-    return data
+    return res
   }
 
-  async getActiveReminders(): Promise<Reminder[]> {
-    const { data } = await api.get<Reminder[]>(
+  async getActiveReminders(): Promise<ApiResponse<Reminder[]>> {
+    const res = await api.get<Reminder[]>(
       `/reminders/active/`
     )
-    return data
+    return res
   }
 
-  async getExpiredReminders(): Promise<Reminder[]> {
-    const { data } = await api.get<Reminder[]>(
+  async getExpiredReminders(): Promise<ApiResponse<Reminder[]>> {
+    const res = await api.get<Reminder[]>(
       `/reminders/expired/`
     )
-    return data
+    return res
   }
 
   // 统计信息
-  async getReminderStats(): Promise<ReminderStats> {
-    const { data } = await api.get<ReminderStats>(
+  async getReminderStats(): Promise<ApiResponse<ReminderStats>> {
+    const res = await api.get<ReminderStats>(
       `/reminders/stats/`
     )
-    return data
+    return res
   }
 
   // 操作
-  async toggleReminderActive(id: number): Promise<Reminder> {
-    const { data } = await api.post<Reminder>(
+  async toggleReminderActive(id: number): Promise<ApiResponse<Reminder>> {
+    const res = await api.post<Reminder>(
       `/reminders/${id}/toggle_active/`
     )
-    return data
+    return res
   }
 
-  async markReminderResponded(id: number): Promise<Reminder> {
-    const { data } = await api.post<Reminder>(
+  async markReminderResponded(id: number): Promise<ApiResponse<Reminder>> {
+    const res = await api.post<Reminder>(
       `/reminders/${id}/mark_responded/`
     )
-    return data
+    return res
   }
 
-  async testNotification(id: number): Promise<void> {
-    await api.post<void>(`/reminders/${id}/test_notification/`)
+  async testNotification(id: number): Promise<ApiResponse<void>> {
+    const res = await api.post<void>(`/reminders/${id}/test_notification/`)
+    return res
   }
 
   // 批量操作
-  async batchToggleReminders(reminderIds: number[], isActive: boolean): Promise<{ updated_count: number }> {
-    const { data } = await api.post<{ updated_count: number }>(
+  async batchToggleReminders(reminderIds: number[], isActive: boolean): Promise<ApiResponse<{ updated_count: number }>> {
+    const res = await api.post<{ updated_count: number }>(
       `/reminders/batch_toggle/`,
       {
         reminder_ids: reminderIds,
         is_active: isActive
       }
     )
-    return data
+    return res
   }
 
-  async batchDeleteReminders(reminderIds: number[]): Promise<{ deleted_count: number }> {
-    const { data } = await api.delete<{ deleted_count: number }>(
+  async batchDeleteReminders(reminderIds: number[]): Promise<ApiResponse<{ deleted_count: number }>> {
+    const res = await api.delete<{ deleted_count: number }>(
       `/reminders/batch_delete/`,
       {
         body: JSON.stringify({
@@ -254,11 +258,11 @@ class ReminderService {
         })
       }
     )
-    return data
+    return res
   }
 
   // 提醒历史记录
-  async getReminderHistory(filters?: ReminderHistoryFilters): Promise<PaginatedResponse<ReminderHistory>> {
+  async getReminderHistory(filters?: ReminderHistoryFilters): Promise<ApiResponse<PaginatedResponse<ReminderHistory>>> {
     const params = new URLSearchParams()
     
     if (filters) {
@@ -269,53 +273,53 @@ class ReminderService {
       })
     }
     
-    const { data } = await api.get<PaginatedResponse<ReminderHistory>>(
+    const res = await api.get<PaginatedResponse<ReminderHistory>>(
       `/reminder-history/?${params.toString()}`
     )
-    return data
+    return res
   }
 
-  async getReminderHistoryItem(id: number): Promise<ReminderHistory> {
-    const { data } = await api.get<ReminderHistory>(
+  async getReminderHistoryItem(id: number): Promise<ApiResponse<ReminderHistory>> {
+    const res = await api.get<ReminderHistory>(
       `/reminder-history/${id}/`
     )
-    return data
+    return res
   }
 
-  async respondToReminder(id: number, payload: ReminderHistoryResponse): Promise<ReminderHistory> {
-    const { data } = await api.post<ReminderHistory>(
+  async respondToReminder(id: number, payload: ReminderHistoryResponse): Promise<ApiResponse<ReminderHistory>> {
+    const res = await api.post<ReminderHistory>(
       `/reminder-history/${id}/respond/`,
       payload
     )
-    return data
+    return res
   }
 
-  async getTodayHistory(): Promise<ReminderHistory[]> {
-    const { data } = await api.get<ReminderHistory[]>(
+  async getTodayHistory(): Promise<ApiResponse<ReminderHistory[]>> {
+    const res = await api.get<ReminderHistory[]>(
       `/reminder-history/today/`
     )
-    return data
+    return res
   }
 
-  async getRecentHistory(): Promise<ReminderHistory[]> {
-    const { data } = await api.get<ReminderHistory[]>(
+  async getRecentHistory(): Promise<ApiResponse<ReminderHistory[]>> {
+    const res = await api.get<ReminderHistory[]>(
       `/reminder-history/recent/`
     )
-    return data
+    return res
   }
 
-  async getUnrespondedHistory(): Promise<ReminderHistory[]> {
-    const { data } = await api.get<ReminderHistory[]>(
+  async getUnrespondedHistory(): Promise<ApiResponse<ReminderHistory[]>> {
+    const res = await api.get<ReminderHistory[]>(
       `/reminder-history/unresponded/`
     )
-    return data
+    return res
   }
 
-  async getHistoryStatistics(days: number = 30): Promise<any> {
-    const { data } = await api.get<any>(
+  async getHistoryStatistics(days: number = 30): Promise<ApiResponse<any>> {
+    const res = await api.get<any>(
       `/reminder-history/statistics/?days=${days}`
     )
-    return data
+    return res
   }
 
   // 批量响应
@@ -323,8 +327,8 @@ class ReminderService {
     historyIds: number[], 
     responseType: string, 
     notes?: string
-  ): Promise<{ updated_count: number }> {
-    const { data } = await api.post<{ updated_count: number }>(
+  ): Promise<ApiResponse<{ updated_count: number }>> {
+    const res = await api.post<{ updated_count: number }>(
       `/reminder-history/batch_respond/`,
       {
         history_ids: historyIds,
@@ -332,29 +336,29 @@ class ReminderService {
         notes
       }
     )
-    return data
+    return res
   }
 
   // 统计相关
-  async getStatsSummary(days: number = 30): Promise<any> {
-    const { data } = await api.get<any>(
+  async getStatsSummary(days: number = 30): Promise<ApiResponse<any>> {
+    const res = await api.get<any>(
       `/reminder-stats/summary/?days=${days}`
     )
-    return data
+    return res
   }
 
-  async getStatsTrends(days: number = 30): Promise<any> {
-    const { data } = await api.get<any>(
+  async getStatsTrends(days: number = 30): Promise<ApiResponse<any>> {
+    const res = await api.get<any>(
       `/reminder-stats/trend/?days=${days}`
     )
-    return data
+    return res
   }
 
-  async getComplianceAnalysis(): Promise<any> {
-    const { data } = await api.get<any>(
+  async getComplianceAnalysis(): Promise<ApiResponse<any>> {
+    const res = await api.get<any>(
       `/reminder-stats/compliance/`
     )
-    return data
+    return res
   }
 }
 

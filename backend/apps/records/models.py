@@ -90,13 +90,13 @@ class MedicationRecord(models.Model):
         help_text='服药前症状严重程度评分（1-10分）'
     )
     
-    # 效果评分（1-10分）
+    # 效果评分（0-10分）
     effectiveness_score = models.PositiveIntegerField(
         blank=True,
         null=True,
-        validators=[MinValueValidator(1), MaxValueValidator(10)],
+        validators=[MinValueValidator(0), MaxValueValidator(10)],
         verbose_name='效果评分',
-        help_text='服药后效果评分（1-10分）'
+        help_text='服药后效果评分（0-10分）'
     )
     
     # 副作用记录

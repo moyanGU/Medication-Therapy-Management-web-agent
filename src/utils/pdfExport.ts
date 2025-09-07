@@ -379,7 +379,7 @@ export class MedicalRecordPDFExporter {
    * 添加汇总信息章节
    */
   private addSummarySection(records: MedicalRecord[]): void {
-    const totalCost = records.reduce((sum, record) => sum + (record.total_cost || 0), 0)
+    const totalCost = records.reduce((sum, record) => sum + (record.total_cost ?? 0), 0)
     const uniqueHospitals = new Set(records.map(record => record.hospital)).size
     const uniqueDepartments = new Set(records.map(record => record.department).filter(Boolean)).size
     

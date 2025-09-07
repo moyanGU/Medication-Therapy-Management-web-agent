@@ -52,7 +52,7 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-500">总就诊次数</p>
-              <p class="text-2xl font-bold text-gray-900">{{ statistics.total_visits || 0 }}</p>
+              <p class="text-2xl font-bold text-gray-900">{{ statistics.total_visits ?? 0 }}</p>
             </div>
           </div>
         </div>
@@ -66,7 +66,7 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-500">就诊医院数</p>
-              <p class="text-2xl font-bold text-gray-900">{{ statistics.unique_hospitals || 0 }}</p>
+              <p class="text-2xl font-bold text-gray-900">{{ statistics.unique_hospitals ?? 0 }}</p>
             </div>
           </div>
         </div>
@@ -80,7 +80,7 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-500">总费用</p>
-              <p class="text-2xl font-bold text-gray-900">¥{{ (statistics.total_cost || 0).toLocaleString() }}</p>
+              <p class="text-2xl font-bold text-gray-900">¥{{ (statistics.total_cost ?? 0).toLocaleString() }}</p>
             </div>
           </div>
         </div>
@@ -94,7 +94,7 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-500">待复诊</p>
-              <p class="text-2xl font-bold text-gray-900">{{ statistics.follow_up_due || 0 }}</p>
+              <p class="text-2xl font-bold text-gray-900">{{ statistics.follow_up_due ?? 0 }}</p>
             </div>
           </div>
         </div>
@@ -214,13 +214,13 @@
               <div class="flex justify-between items-center">
                 <span class="text-sm text-gray-600">最高单次费用</span>
                 <span class="text-lg font-semibold text-red-600">
-                  ¥{{ (statistics.max_cost || 0).toLocaleString() }}
+                  ¥{{ (statistics.max_cost ?? 0).toLocaleString() }}
                 </span>
               </div>
               <div class="flex justify-between items-center">
                 <span class="text-sm text-gray-600">最低单次费用</span>
                 <span class="text-lg font-semibold text-green-600">
-                  ¥{{ (statistics.min_cost || 0).toLocaleString() }}
+                  ¥{{ (statistics.min_cost ?? 0).toLocaleString() }}
                 </span>
               </div>
               <div class="pt-4 border-t border-gray-200">
@@ -353,27 +353,14 @@ import {
   Users,
   RotateCcw
 } from 'lucide-vue-next'
-import type { MedicalRecordStatistics } from '@/types/medicalRecord'
 
 const medicalRecordStore = useMedicalRecordStore()
 
 // 响应式数据
 const loading = ref(false)
 const selectedPeriod = ref('year')
-const statistics = ref<MedicalRecordStatistics>({
-  total_visits: 0,
-  unique_hospitals: 0,
-  unique_departments: 0,
-  total_cost: 0,
-  average_cost: 0,
-  max_cost: 0,
-  min_cost: 0,
-  insurance_coverage: 0,
-  follow_up_due: 0,
-  monthly_visits: [],
-  department_distribution: [],
-  cost_trend: []
-})
+// 改为直接使用 store 中的统计数据
+const statistics = computed(() => medicalRecordStore.statistics as any)
 
 // 模拟数据
 const visitTrendData = ref([
@@ -439,18 +426,18 @@ const maxDiseaseCount = computed(() => {
 })
 
 const averageCost = computed(() => {
-  if (statistics.value.total_visits === 0) return 0
-  return Math.round(statistics.value.total_cost / statistics.value.total_visits)
+  if ((statistics.value?.total_visits ?? 0) === 0) return 0
+  return Math.round((statistics.value?.total_cost ?? 0) / (statistics.value?.total_visits ?? 1))
 })
 
 const insuranceRate = computed(() => {
-  if (statistics.value.total_cost === 0) return 0
-  return (statistics.value.insurance_coverage / statistics.value.total_cost) * 100
+  if ((statistics.value?.total_cost ?? 0) === 0) return 0
+  return ((statistics.value?.insurance_coverage ?? 0) / (statistics.value?.total_cost ?? 1)) * 100
 })
 
 const visitFrequency = computed(() => {
   // 假设统计期间为12个月
-  return (statistics.value.total_visits / 12).toFixed(1)
+  return ((statistics.value?.total_visits ?? 0) / 12).toFixed(1)
 })
 
 const averageSatisfaction = computed(() => {
@@ -467,8 +454,9 @@ const improvementRate = computed(() => {
 const loadStatistics = async () => {
   try {
     loading.value = true
-    const data = await medicalRecordStore.fetchStatistics(selectedPeriod.value)
-    statistics.value = data
+    // 传递对象参数，避免将字符串直接作为 params
+    await medicalRecordStore.fetchStatistics({ period: selectedPeriod.value })
+    // 数据已同步至 store，模板通过 computed(statistics) 自动更新
   } catch (error) {
     console.error('加载统计数据失败:', error)
   } finally {

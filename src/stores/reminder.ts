@@ -5,13 +5,10 @@ import type {
   Reminder, 
   ReminderHistory, 
   ReminderStats,
-  CreateReminderData,
-  ReminderListParams,
-  ReminderHistoryParams,
-  BatchToggleData,
-  BatchDeleteData,
-  BatchRespondData,
-  RespondData
+  ReminderCreate,
+  ReminderFilters,
+  ReminderHistoryFilters,
+  ReminderHistoryResponse
 } from '@/services/reminderService'
 import { useToast } from '@/composables/useToast'
 
@@ -42,8 +39,8 @@ export const useReminderStore = defineStore('reminder', () => {
   })
   
   // 筛选参数
-  const filters = ref<ReminderListParams>({})
-  const historyFilters = ref<ReminderHistoryParams>({})
+  const filters = ref<ReminderFilters>({})
+  const historyFilters = ref<ReminderHistoryFilters>({})
   
   // 统计数据
   const statistics = ref<any>({})
@@ -78,7 +75,7 @@ export const useReminderStore = defineStore('reminder', () => {
   const totalInactiveReminders = computed(() => inactiveReminders.value.length)
 
   // 提醒管理方法
-  const fetchReminders = async (params?: ReminderListParams) => {
+  const fetchReminders = async (params?: ReminderFilters) => {
     try {
       loading.value = true
       error.value = null
@@ -87,16 +84,15 @@ export const useReminderStore = defineStore('reminder', () => {
       const response = await reminderService.getReminders(mergedParams)
       
       if (response.success) {
-        reminders.value = response.data.data || response.data
-        
-        // 更新分页信息
-        if (response.data.pagination) {
-          pagination.value = {
-            page: response.data.pagination.page,
-            pageSize: response.data.pagination.page_size,
-            total: response.data.pagination.total,
-            totalPages: response.data.pagination.total_pages
-          }
+        const pg: any = response.data
+        console.log('[reminder] fetchReminders response.data:', pg)
+        const results: Reminder[] = Array.isArray(pg?.results) ? pg.results : []
+        reminders.value = results
+        pagination.value = {
+          page: pg?.current_page ?? pagination.value.page,
+          pageSize: pg?.page_size ?? pagination.value.pageSize,
+          total: pg?.count ?? results.length,
+          totalPages: pg?.total_pages ?? Math.ceil((pg?.count ?? results.length) / (pg?.page_size ?? (pagination.value.pageSize ?? 1)))
         }
       } else {
         throw new Error(response.message || '获取提醒列表失败')
@@ -131,7 +127,7 @@ export const useReminderStore = defineStore('reminder', () => {
     }
   }
 
-  const createReminder = async (data: CreateReminderData) => {
+  const createReminder = async (data: ReminderCreate) => {
     try {
       loading.value = true
       error.value = null
@@ -154,7 +150,7 @@ export const useReminderStore = defineStore('reminder', () => {
     }
   }
 
-  const updateReminder = async (id: number, data: Partial<CreateReminderData>) => {
+  const updateReminder = async (id: number, data: Partial<ReminderCreate>) => {
     try {
       loading.value = true
       error.value = null
@@ -261,7 +257,7 @@ export const useReminderStore = defineStore('reminder', () => {
         if (currentReminder.value?.id === id) {
           currentReminder.value = response.data
         }
-        showSuccess(response.message || '提醒状态更新成功')
+        showSuccess(response.message ?? `成功更新 ${(response.data as any)?.updated_count ?? 0} 个提醒`)
         return response.data
       } else {
         throw new Error(response.message || '更新提醒状态失败')
@@ -312,15 +308,15 @@ export const useReminderStore = defineStore('reminder', () => {
   }
 
   // 批量操作方法
-  const batchToggleReminders = async (data: BatchToggleData) => {
+  const batchToggleReminders = async (data: { reminder_ids: number[]; is_active: boolean }) => {
     try {
       loading.value = true
-      const response = await reminderService.batchToggleReminders(data)
+      const response = await reminderService.batchToggleReminders(data.reminder_ids, data.is_active)
       
       if (response.success) {
         // 刷新列表
         await fetchReminders()
-        showSuccess(response.message || `成功更新 ${response.data.updated_count} 个提醒`)
+        showSuccess((response.message ?? `成功更新 ${(response.data as any)?.updated_count ?? 0} 个提醒`))
         return response.data
       } else {
         throw new Error(response.message || '批量更新提醒状态失败')
@@ -334,15 +330,15 @@ export const useReminderStore = defineStore('reminder', () => {
     }
   }
 
-  const batchDeleteReminders = async (data: BatchDeleteData) => {
+  const batchDeleteReminders = async (data: { reminder_ids: number[] }) => {
     try {
       loading.value = true
-      const response = await reminderService.batchDeleteReminders(data)
+      const response = await reminderService.batchDeleteReminders(data.reminder_ids)
       
       if (response.success) {
         // 从本地状态中移除删除的提醒
         reminders.value = reminders.value.filter(r => !data.reminder_ids.includes(r.id))
-        showSuccess(response.message || `成功删除 ${response.data.deleted_count} 个提醒`)
+        showSuccess(response.message ?? `成功删除 ${(response.data as any)?.deleted_count ?? 0} 个提醒`)
         return response.data
       } else {
         throw new Error(response.message || '批量删除提醒失败')
@@ -357,7 +353,7 @@ export const useReminderStore = defineStore('reminder', () => {
   }
 
   // 提醒历史方法
-  const fetchReminderHistory = async (params?: ReminderHistoryParams) => {
+  const fetchReminderHistory = async (params?: ReminderHistoryFilters) => {
     try {
       loading.value = true
       error.value = null
@@ -366,17 +362,35 @@ export const useReminderStore = defineStore('reminder', () => {
       const response = await reminderService.getReminderHistory(mergedParams)
       
       if (response.success) {
-        reminderHistory.value = response.data.data || response.data
+        const payload: any = response.data
+        console.log('[reminder] fetchReminderHistory payload:', payload)
         
-        // 更新分页信息
-        if (response.data.pagination) {
-          historyPagination.value = {
-            page: response.data.pagination.page,
-            pageSize: response.data.pagination.page_size,
-            total: response.data.pagination.total,
-            totalPages: response.data.pagination.total_pages
-          }
+        // 兼容两种结构：
+        // 1) 标准：{ results, pagination: { count, current_page, total_pages, page_size } }
+        // 2) 旧版：{ results, count, current_page, total_pages, page_size }
+        const results: ReminderHistory[] = Array.isArray(payload?.results)
+          ? payload.results
+          : Array.isArray(payload?.data?.results)
+            ? payload.data.results
+            : []
+        
+        const pagination = payload?.pagination || payload?.data?.pagination || null
+        const count = pagination?.count ?? payload?.count ?? results.length
+        const currentPage = pagination?.current_page ?? payload?.current_page ?? historyPagination.value.page
+        const pageSize = pagination?.page_size ?? payload?.page_size ?? historyPagination.value.pageSize
+        const totalPages = pagination?.total_pages ?? payload?.total_pages ?? Math.ceil(count / (pageSize || 1))
+        
+        reminderHistory.value = results
+        historyPagination.value = {
+          page: currentPage,
+          pageSize: pageSize,
+          total: count,
+          totalPages: totalPages
         }
+        
+        console.log('[reminder] fetchReminderHistory parsed:', {
+          count, currentPage, pageSize, totalPages, resultsLen: results.length
+        })
       } else {
         throw new Error(response.message || '获取提醒历史失败')
       }
@@ -388,7 +402,7 @@ export const useReminderStore = defineStore('reminder', () => {
     }
   }
 
-  const respondToReminder = async (id: number, data: RespondData) => {
+  const respondToReminder = async (id: number, data: ReminderHistoryResponse) => {
     try {
       const response = await reminderService.respondToReminder(id, data)
       
@@ -409,15 +423,15 @@ export const useReminderStore = defineStore('reminder', () => {
     }
   }
 
-  const batchRespondToReminders = async (data: BatchRespondData) => {
+  const batchRespondToReminders = async (data: { history_ids: number[]; response_type: string; notes?: string }) => {
     try {
       loading.value = true
-      const response = await reminderService.batchRespondToReminders(data)
+      const response = await reminderService.batchRespondToReminders(data.history_ids, data.response_type, data.notes)
       
       if (response.success) {
         // 刷新历史列表
         await fetchReminderHistory()
-        showSuccess(response.message || `成功响应 ${response.data.updated_count} 条提醒`)
+        showSuccess(response.message ?? `成功响应 ${(response.data as any)?.updated_count ?? 0} 条提醒`)
         return response.data
       } else {
         throw new Error(response.message || '批量响应提醒失败')
@@ -435,7 +449,8 @@ export const useReminderStore = defineStore('reminder', () => {
   const fetchStatistics = async (params?: { days?: number }) => {
     try {
       loading.value = true
-      const response = await reminderService.getHistoryStatistics(params)
+      const days = params?.days ?? 30
+      const response = await reminderService.getHistoryStatistics(days)
       
       if (response.success) {
         statistics.value = response.data
@@ -452,10 +467,10 @@ export const useReminderStore = defineStore('reminder', () => {
     }
   }
 
-  const fetchCompliance = async (params?: { days?: number }) => {
+  const fetchCompliance = async (_params?: { days?: number }) => {
     try {
       loading.value = true
-      const response = await reminderService.getComplianceData(params)
+      const response = await reminderService.getComplianceAnalysis()
       
       if (response.success) {
         compliance.value = response.data
@@ -475,7 +490,8 @@ export const useReminderStore = defineStore('reminder', () => {
   const fetchTrends = async (params?: { days?: number }) => {
     try {
       loading.value = true
-      const response = await reminderService.getStatsTrends(params)
+      const days = params?.days ?? 30
+      const response = await reminderService.getStatsTrends(days)
       
       if (response.success) {
         trends.value = response.data
@@ -493,11 +509,11 @@ export const useReminderStore = defineStore('reminder', () => {
   }
 
   // 工具方法
-  const setFilters = (newFilters: ReminderListParams) => {
+  const setFilters = (newFilters: ReminderFilters) => {
     filters.value = { ...filters.value, ...newFilters }
   }
 
-  const setHistoryFilters = (newFilters: ReminderHistoryParams) => {
+  const setHistoryFilters = (newFilters: ReminderHistoryFilters) => {
     historyFilters.value = { ...historyFilters.value, ...newFilters }
   }
 

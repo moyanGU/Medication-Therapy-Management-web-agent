@@ -181,10 +181,16 @@ const handleLogin = async () => {
   
   try {
     console.log('调用登录API')
-    await authStore.login({
+    const result = await authStore.login({
       username: form.username.trim(),
       password: form.password
     })
+
+    if (!result?.success) {
+      console.warn('登录失败（业务失败）：', result?.message)
+      errorMessage.value = result?.message || '用户名或密码错误'
+      return
+    }
     
     console.log('登录成功，准备跳转')
     
@@ -215,20 +221,11 @@ const handleLogin = async () => {
     console.log('路由跳转完成')
     
   } catch (error: any) {
-    console.error('登录失败:', error)
+    console.error('登录失败（异常）:', error)
     console.log('登录功能又出问题了')
     
-    // 处理不同类型的错误
-    if (error.response?.status === 401) {
-      errorMessage.value = '用户名或密码错误'
-    } else if (error.response?.status === 429) {
-      errorMessage.value = '登录尝试过于频繁，请稍后再试'
-    } else if (error.message) {
-      errorMessage.value = error.message
-    } else {
-      errorMessage.value = '登录失败，请稍后重试'
-    }
-    
+    // ApiClient 抛出的为 ApiError，不含 axios 的 error.response 结构
+    errorMessage.value = error?.message || '登录失败，请稍后重试'
     console.error('登录失败:', errorMessage.value)
   } finally {
     loading.value = false

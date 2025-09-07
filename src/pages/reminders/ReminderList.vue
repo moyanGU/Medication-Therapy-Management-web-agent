@@ -36,7 +36,7 @@
           </div>
           <div class="ml-4">
             <p class="text-sm font-medium text-gray-600">总提醒数</p>
-            <p class="text-2xl font-bold text-gray-900">{{ stats.total_reminders || 0 }}</p>
+            <p class="text-2xl font-bold text-gray-900">{{ stats.total_reminders ?? 0 }}</p>
           </div>
         </div>
       </div>
@@ -48,7 +48,7 @@
           </div>
           <div class="ml-4">
             <p class="text-sm font-medium text-gray-600">活跃提醒</p>
-            <p class="text-2xl font-bold text-gray-900">{{ stats.active_reminders || 0 }}</p>
+            <p class="text-2xl font-bold text-gray-900">{{ stats.active_reminders ?? 0 }}</p>
           </div>
         </div>
       </div>
@@ -60,7 +60,7 @@
           </div>
           <div class="ml-4">
             <p class="text-sm font-medium text-gray-600">今日提醒</p>
-            <p class="text-2xl font-bold text-gray-900">{{ stats.today_reminders || 0 }}</p>
+            <p class="text-2xl font-bold text-gray-900">{{ stats.today_reminders ?? 0 }}</p>
           </div>
         </div>
       </div>
@@ -72,7 +72,7 @@
           </div>
           <div class="ml-4">
             <p class="text-sm font-medium text-gray-600">响应率</p>
-            <p class="text-2xl font-bold text-gray-900">{{ stats.response_rate || 0 }}%</p>
+            <p class="text-2xl font-bold text-gray-900">{{ stats.response_rate ?? 0 }}%</p>
           </div>
         </div>
       </div>
@@ -506,13 +506,13 @@ const fetchReminders = async () => {
     if (quickFilter.value !== 'all') params.filter = quickFilter.value
 
     console.log('[Reminders] 请求列表参数:', params)
-    const res = await api.get('/reminders/', { params })
+    const res = await api.get<{ results: Reminder[]; count: number }>('/reminders/', { params })
     console.log('[Reminders] 列表响应:', res)
 
     if (res?.success) {
       // 按后端标准结构 { success, data: { results, count } }
-      reminders.value = res.data?.results || []
-      pagination.total = res.data?.count || 0
+      reminders.value = res.data?.results ?? []
+      pagination.total = res.data?.count ?? 0
       pagination.total_pages = Math.ceil(pagination.total / pagination.page_size)
     } else {
       error(res?.message || '获取提醒列表失败')
@@ -531,10 +531,10 @@ const fetchReminders = async () => {
 const fetchStats = async () => {
   try {
     console.log('[Reminders] 请求统计数据')
-    const res = await api.get('/reminders/stats/')
+    const res = await api.get<Stats>('/reminders/stats/')
     console.log('[Reminders] 统计响应:', res)
     if (res?.success) {
-      stats.value = res.data || {
+      stats.value = res.data ?? {
         total_reminders: 0,
         active_reminders: 0,
         today_reminders: 0,

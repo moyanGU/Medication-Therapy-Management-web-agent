@@ -46,26 +46,55 @@ export const useMedicineStore = defineStore('medicine', () => {
       error.value = null
       
       const response = await medicineApi.getMedicines(params)
+      console.log('🔵 [Medicine Store] fetchMedicines 响应:', response)
       
-      if (response.data.success) {
-        if (response.data.data.results) {
-          // 分页数据
-          console.log('🔵 [Medicine Store] 分页数据:', response.data.data.results)
-          console.log('🔵 [Medicine Store] 第一个药品的image_path:', response.data.data.results[0]?.image_path)
-          medicines.value = response.data.data.results
+      if (response.success) {
+        const data: any = response.data
+        // 判断是否为分页数据结构
+        const isPaginated = data && Array.isArray(data.results)
+        
+        if (isPaginated) {
+          const results: Medicine[] = data.results ?? []
+          medicines.value = results
+          const firstImagePath = results[0]?.image_path
+          console.log('🔵 [Medicine Store] 分页数据 results.length:', results.length)
+          console.log('🔵 [Medicine Store] 第一个药品的 image_path:', firstImagePath)
+          
+          // 兼容不同字段命名
+          const currentPage = data.current_page ?? data.page ?? 1
+          const pageSize = data.page_size ?? data.pageSize ?? results.length
+          const total = data.total ?? data.count ?? results.length
+          const totalPages = data.total_pages ?? (
+            pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1
+          )
+          
           pagination.value = {
-            current: response.data.data.pagination.current_page,
-            pageSize: response.data.data.pagination.page_size,
-            total: response.data.data.pagination.count,
-            totalPages: response.data.data.pagination.total_pages
+            current: currentPage,
+            pageSize,
+            total,
+            totalPages
           }
         } else {
-          // 非分页数据
-          console.log('🔵 [Medicine Store] 非分页数据:', response.data.data)
-          medicines.value = response.data.data
+          // 非分页：后端可能直接返回数组，或者返回 { items: [], medicines: [] }
+          let list: any = []
+          if (Array.isArray(data)) {
+            list = data
+          } else {
+            list = data?.medicines ?? data?.items ?? []
+          }
+          if (!Array.isArray(list)) list = []
+          medicines.value = list
+          console.log('🔵 [Medicine Store] 非分页数据 length:', list.length)
+          // 非分页时，重置分页为单页
+          pagination.value = {
+            current: 1,
+            pageSize: Math.max(1, Number((list?.length ?? 20))),
+            total: Math.max(0, Number((list?.length ?? 0))),
+            totalPages: 1
+          }
         }
       } else {
-        error.value = response.data.message || '获取药品列表失败'
+        error.value = response.message || '获取药品列表失败'
       }
     } catch (err: any) {
       error.value = err.message || '获取药品列表失败'
@@ -83,10 +112,10 @@ export const useMedicineStore = defineStore('medicine', () => {
       
       const response = await medicineApi.getMedicine(id)
       
-      if (response.data.success) {
-        currentMedicine.value = response.data.data
+      if (response.success) {
+        currentMedicine.value = response.data
       } else {
-        error.value = response.data.message || '获取药品详情失败'
+        error.value = response.message || '获取药品详情失败'
       }
     } catch (err: any) {
       error.value = err.message || '获取药品详情失败'
@@ -116,22 +145,22 @@ export const useMedicineStore = defineStore('medicine', () => {
       console.log('🔵 [Medicine Store] medicineApi.createMedicine 响应', {
         response: response,
         responseData: response.data,
-        success: response.data?.success,
+        success: response.success,
         timestamp: new Date().toISOString()
       })
       
-      if (response.data.success) {
+      if (response.success) {
         // 添加到列表中
-        medicines.value.unshift(response.data.data)
+        medicines.value.unshift(response.data)
         console.log('🟢 [Medicine Store] 药品创建成功', {
-          newMedicine: response.data.data,
+          newMedicine: response.data,
           totalMedicines: medicines.value.length
         })
-        return response.data.data
+        return response.data
       } else {
-        error.value = response.data.message || '创建药品失败'
+        error.value = response.message || '创建药品失败'
         console.error('🔴 [Medicine Store] 服务器返回失败', {
-          message: response.data.message,
+          message: response.message,
           responseData: response.data
         })
         throw new Error(error.value)
@@ -163,21 +192,21 @@ export const useMedicineStore = defineStore('medicine', () => {
       
       const response = await medicineApi.updateMedicine(id, data)
       
-      if (response.data.success) {
+      if (response.success) {
         // 更新列表中的药品
         const index = medicines.value.findIndex(m => m.id === id)
         if (index !== -1) {
-          medicines.value[index] = response.data.data
+          medicines.value[index] = response.data
         }
         
         // 更新当前药品
         if (currentMedicine.value?.id === id) {
-          currentMedicine.value = response.data.data
+          currentMedicine.value = response.data
         }
         
-        return response.data.data
+        return response.data
       } else {
-        error.value = response.data.message || '更新药品失败'
+        error.value = response.message || '更新药品失败'
         throw new Error(error.value)
       }
     } catch (err: any) {
@@ -197,7 +226,7 @@ export const useMedicineStore = defineStore('medicine', () => {
       
       const response = await medicineApi.deleteMedicine(id)
       
-      if (response.data.success) {
+      if (response.success) {
         // 从列表中移除
         medicines.value = medicines.value.filter(m => m.id !== id)
         
@@ -208,7 +237,7 @@ export const useMedicineStore = defineStore('medicine', () => {
         
         return true
       } else {
-        error.value = response.data.message || '删除药品失败'
+        error.value = response.message || '删除药品失败'
         throw new Error(error.value)
       }
     } catch (err: any) {
@@ -228,21 +257,21 @@ export const useMedicineStore = defineStore('medicine', () => {
       
       const response = await medicineApi.updateQuantity(id, quantity)
       
-      if (response.data.success) {
+      if (response.success) {
         // 更新列表中的药品
         const index = medicines.value.findIndex(m => m.id === id)
         if (index !== -1) {
-          medicines.value[index] = response.data.data
+          medicines.value[index] = response.data
         }
         
         // 更新当前药品
         if (currentMedicine.value?.id === id) {
-          currentMedicine.value = response.data.data
+          currentMedicine.value = response.data
         }
         
-        return response.data.data
+        return response.data
       } else {
-        error.value = response.data.message || '更新数量失败'
+        error.value = response.message || '更新数量失败'
         throw new Error(error.value)
       }
     } catch (err: any) {
@@ -262,10 +291,10 @@ export const useMedicineStore = defineStore('medicine', () => {
       
       const response = await medicineApi.getExpiredMedicines()
       
-      if (response.data.success) {
-        return response.data.data
+      if (response.success) {
+        return response.data
       } else {
-        error.value = response.data.message || '获取过期药品失败'
+        error.value = response.message || '获取过期药品失败'
         throw new Error(error.value)
       }
     } catch (err: any) {
@@ -285,10 +314,10 @@ export const useMedicineStore = defineStore('medicine', () => {
       
       const response = await medicineApi.getLowStockMedicines(threshold)
       
-      if (response.data.success) {
-        return response.data.data
+      if (response.success) {
+        return response.data
       } else {
-        error.value = response.data.message || '获取库存不足药品失败'
+        error.value = response.message || '获取库存不足药品失败'
         throw new Error(error.value)
       }
     } catch (err: any) {
@@ -308,11 +337,11 @@ export const useMedicineStore = defineStore('medicine', () => {
       
       const response = await medicineApi.getStatistics()
       
-      if (response.data.success) {
-        statistics.value = response.data.data
-        return response.data.data
+      if (response.success) {
+        statistics.value = response.data
+        return response.data
       } else {
-        error.value = response.data.message || '获取统计信息失败'
+        error.value = response.message || '获取统计信息失败'
         throw new Error(error.value)
       }
     } catch (err: any) {

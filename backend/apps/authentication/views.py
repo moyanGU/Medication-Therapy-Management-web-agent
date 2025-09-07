@@ -223,7 +223,7 @@ def login(request):
                     'phone': user.phone,
                     'email': user.email,
                     'is_admin': user.is_admin,
-                    'avatar': user.avatar,
+                    'avatar': (user.avatar or None),
                     'created_at': user.created_at.isoformat()
                 },
                 'tokens': {

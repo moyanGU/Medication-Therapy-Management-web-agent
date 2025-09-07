@@ -9,10 +9,10 @@ router.register(r'records', MedicalRecordViewSet, basename='medical-record')
 # URL配置
 urlpatterns = [
     # API路由
-    path('api/', include(router.urls)),
+    path('', include(router.urls)),
     
     # 自定义路由（如果需要）
-    # path('api/records/export/', MedicalRecordViewSet.as_view({'get': 'export_data'}), name='medical-record-export'),
+    # path('records/export/', MedicalRecordViewSet.as_view({'get': 'export_data'}), name='medical-record-export'),
 ]
 
 # 应用名称

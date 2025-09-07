@@ -5,6 +5,49 @@ import router from '@/router'
 import { api, type ApiResponse } from '@/utils/api'
 
 /**
+ * 将 AxiosRequestHeaders/Headers/任意对象 归一化为 Record<string, string>
+ */
+function normalizeHeaders(input: any): Record<string, string> | undefined {
+  if (!input) return undefined
+
+  // 原生 Headers
+  if (typeof Headers !== 'undefined' && input instanceof Headers) {
+    const out: Record<string, string> = {}
+    input.forEach((v: any, k: string) => {
+      out[k] = String(v)
+    })
+    return out
+  }
+
+  // AxiosHeaders 可能具有 toJSON()
+  try {
+    if (typeof input.toJSON === 'function') {
+      const j = input.toJSON()
+      if (j && typeof j === 'object') {
+        const out: Record<string, string> = {}
+        Object.entries(j).forEach(([k, v]) => {
+          if (v !== undefined && v !== null) out[k.toString()] = String(v as any)
+        })
+        return out
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // 普通对象
+  if (typeof input === 'object') {
+    const out: Record<string, string> = {}
+    Object.entries(input).forEach(([k, v]) => {
+      if (v !== undefined && v !== null) out[k.toString()] = String(v as any)
+    })
+    return out
+  }
+
+  return undefined
+}
+
+/**
  * HTTP请求工具类
  * 基于axios封装，提供统一的请求和响应处理
  */
@@ -52,7 +95,7 @@ class HttpClient {
       status: 200,
       statusText: 'OK',
       headers: {},
-      config: (config || {}) as any,
+      config: (config ?? {}) as any,
       request: {}
     }
   }
@@ -67,7 +110,7 @@ class HttpClient {
     }
     const endpoint = this.normalizeEndpoint(url)
     console.log('🔵 [http->api] GET', { url, endpoint, params: config?.params })
-    const resp = await api.get<T>(endpoint, { params: config?.params, headers: config?.headers })
+    const resp = await api.get<T>(endpoint, { params: config?.params as any, headers: normalizeHeaders(config?.headers) })
     return this.toAxiosResponse<T>(resp, config)
   }
 
@@ -81,7 +124,7 @@ class HttpClient {
     }
     const endpoint = this.normalizeEndpoint(url)
     console.log('🔵 [http->api] POST', { url, endpoint, data })
-    const resp = await api.post<T>(endpoint, data, { headers: config?.headers })
+    const resp = await api.post<T>(endpoint, data, { headers: normalizeHeaders(config?.headers) })
     return this.toAxiosResponse<T>(resp, config)
   }
 
@@ -95,7 +138,7 @@ class HttpClient {
     }
     const endpoint = this.normalizeEndpoint(url)
     console.log('🔵 [http->api] PUT', { url, endpoint, data })
-    const resp = await api.put<T>(endpoint, data, { headers: config?.headers })
+    const resp = await api.put<T>(endpoint, data, { headers: normalizeHeaders(config?.headers) })
     return this.toAxiosResponse<T>(resp, config)
   }
 
@@ -109,7 +152,7 @@ class HttpClient {
     }
     const endpoint = this.normalizeEndpoint(url)
     console.log('🔵 [http->api] PATCH', { url, endpoint, data })
-    const resp = await api.patch<T>(endpoint, data, { headers: config?.headers })
+    const resp = await api.patch<T>(endpoint, data, { headers: normalizeHeaders(config?.headers) })
     return this.toAxiosResponse<T>(resp, config)
   }
 
@@ -123,7 +166,7 @@ class HttpClient {
     }
     const endpoint = this.normalizeEndpoint(url)
     console.log('🔵 [http->api] DELETE', { url, endpoint })
-    const resp = await api.delete<T>(endpoint, { headers: config?.headers })
+    const resp = await api.delete<T>(endpoint, { headers: normalizeHeaders(config?.headers) })
     return this.toAxiosResponse<T>(resp, config)
   }
 
@@ -146,7 +189,7 @@ class HttpClient {
     }
     const endpoint = this.normalizeEndpoint(url)
     console.log('🔵 [http->api] UPLOAD', { url, endpoint })
-    const resp = await api.upload<T>(endpoint, file, { headers: config?.headers })
+    const resp = await api.upload<T>(endpoint, file, { headers: normalizeHeaders(config?.headers) })
     return this.toAxiosResponse<T>(resp, config)
   }
 
@@ -195,8 +238,11 @@ class HttpClient {
         
         // 检查token是否为字符串"undefined"或"null"
         if (token && token !== 'undefined' && token !== 'null' && token.trim() !== '') {
-          config.headers.Authorization = `Bearer ${token}`
-          console.log('Authorization header set:', config.headers.Authorization.substring(0, 50) + '...')
+          // 兼容 axios 头部类型
+          if (!config.headers) config.headers = {} as any
+          ;(config.headers as any)['Authorization'] = `Bearer ${token}`
+          const authPreview = (config.headers as any)['Authorization']
+          console.log('Authorization header set:', typeof authPreview === 'string' ? authPreview.substring(0, 50) + '...' : '[object]')
         } else {
           console.log('No valid token found. Token value:', token)
           console.log('localStorage keys:', Object.keys(localStorage))
@@ -258,70 +304,60 @@ class HttpClient {
           const authStore = useAuthStore()
           try {
             await authStore.refreshAccessToken()
-            console.log('🟢 [HTTP] Token刷新成功，重试原请求')
             
-            // 重试原请求
+            // 重新发送原始请求
             const originalRequest = error.config
-            if (originalRequest) {
-              // 更新请求头中的token
-              const newToken = localStorage.getItem('access_token')
-              if (newToken) {
-                originalRequest.headers.Authorization = `Bearer ${newToken}`
+            if (originalRequest && !originalRequest._retry) {
+              originalRequest._retry = true
+              const token = localStorage.getItem('access_token')
+              if (token && token !== 'undefined' && token !== 'null' && token.trim() !== '') {
+                if (!originalRequest.headers) originalRequest.headers = {} as any
+                ;(originalRequest.headers as any)['Authorization'] = `Bearer ${token}`
               }
-              return this.instance.request(originalRequest)
+              return this.instance(originalRequest)
             }
           } catch (refreshError) {
-            console.error('🔴 [HTTP] Token刷新失败，执行登出:', refreshError)
-            
-            console.log('🔴 [HTTP] 401 ERROR - PAUSING FOR DEBUG')
-            debugger; // 暂停执行，让用户查看错误详情
-            
-            // 延迟3秒，让用户有时间查看控制台错误
-            await new Promise(resolve => setTimeout(resolve, 3000))
-            
-            // 清理认证状态并重定向到登录页
-            authStore.logout()
+            console.error('刷新token失败:', refreshError)
+            // 清理认证信息并跳转到登录页
+            localStorage.removeItem('access_token')
+            const auth = useAuthStore()
+            auth.logout()
             router.push('/login')
           }
         }
-        
-        // 处理其他HTTP错误
-        const errorMessage = this.getErrorMessage(error)
-        console.error('🔴 [HTTP] 最终错误:', {
-          errorMessage,
-          status: error.response?.status,
-          url: error.config?.url
-        })
-        
+
+        // 其他错误处理
+        const msg = this.getErrorMessage(error)
+        console.error('请求失败:', msg)
         return Promise.reject(error)
       }
     )
   }
 
   /**
-   * 获取错误信息
+   * 解析错误消息
    */
   private getErrorMessage(error: any): string {
     if (error.response) {
-      // 服务器响应错误
       const { status, data } = error.response
-      if (data?.message) {
-        return data.message
+      if (data && typeof data === 'object') {
+        if (data.message) return data.message
+        if (data.detail) return data.detail
+        if (Array.isArray(data.errors) && data.errors.length > 0) {
+          const first = data.errors[0]
+          return typeof first === 'string' ? first : (first.message || JSON.stringify(first))
+        }
       }
       return `HTTP ${status}: ${error.response.statusText}`
-    } else if (error.request) {
-      // 网络错误
-      return '网络连接失败，请检查网络设置'
-    } else {
-      // 其他错误
-      return error.message || '未知错误'
     }
-  }
 
+    if (error.request) {
+      return '网络错误或服务器无响应'
+    }
+
+    return error.message || '未知错误'
+  }
 }
 
-// 创建并导出HTTP客户端实例
 export const http = new HttpClient()
-
-// 导出类型
 export type { AxiosRequestConfig, AxiosResponse }

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Search, Filter, Edit, Trash2, AlertTriangle, Calendar, Package } from 'lucide-react'
 import { useMedicineStore } from '@/stores/medicine'
-import { MedicineType, DosageForm, type MedicineListParams } from '@/types/medicine'
+import { MedicineType, type MedicineListParams } from '@/types/medicine'
 import { toast } from 'sonner'
 
 /**
@@ -112,6 +112,39 @@ export default function MedicineList() {
     return badges
   }
 
+  // 渲染药品类型中文标签
+  const renderTypeLabel = (medicine_type?: string) => {
+    switch (medicine_type) {
+      case MedicineType.PRESCRIPTION:
+        return '处方药'
+      case MedicineType.OTC:
+        return '非处方药'
+      case MedicineType.SUPPLEMENT:
+        return '保健品'
+      case MedicineType.HERBAL:
+        return '中药'
+      default:
+        return medicine_type || '-'
+    }
+  }
+
+  // 生成图片URL（与 Vue 页面保持一致的构建规则）
+  const getImageUrl = (image_path?: string | null) => {
+    if (!image_path) return null
+    if (image_path.startsWith('http://') || image_path.startsWith('https://')) {
+      return image_path
+    }
+    const baseURL = 'http://127.0.0.1:8000'
+    const path = image_path.startsWith('/') ? image_path : `/${image_path}`
+    return `${baseURL}/media${path}`
+  }
+
+  // 图片加载错误兜底：切换为占位图
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    const img = e.currentTarget
+    img.src = 'https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=medicine%20pill%20bottle&image_size=square'
+  }
+
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -155,7 +188,7 @@ export default function MedicineList() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="搜索药品名称、通用名或厂商..."
+                placeholder="搜索药品名称或厂商..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -184,7 +217,7 @@ export default function MedicineList() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">药品类型</label>
                 <select
                   value={filters.type || ''}
-                  onChange={(e) => handleFilterChange('type', e.target.value || undefined)}
+                  onChange={(e) => handleFilterChange('type', e.target.value ?? undefined)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="">全部类型</option>
@@ -195,22 +228,7 @@ export default function MedicineList() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">剂型</label>
-                <select
-                  value={filters.dosage_form || ''}
-                  onChange={(e) => handleFilterChange('dosage_form', e.target.value || undefined)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">全部剂型</option>
-                  <option value={DosageForm.TABLET}>片剂</option>
-                  <option value={DosageForm.CAPSULE}>胶囊</option>
-                  <option value={DosageForm.LIQUID}>液体</option>
-                  <option value={DosageForm.INJECTION}>注射剂</option>
-                  <option value={DosageForm.CREAM}>乳膏</option>
-                  <option value={DosageForm.OINTMENT}>软膏</option>
-                </select>
-              </div>
+              {/* 删除了剂型筛选块，以避免无效筛选参数导致的后端不兼容 */}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">状态</label>
@@ -292,11 +310,12 @@ export default function MedicineList() {
                       {/* 药品信息 */}
                       <div className="col-span-3">
                         <div className="flex items-center">
-                          {medicine.image ? (
+                          {medicine.image_path ? (
                             <img
-                              src={medicine.image}
+                              src={getImageUrl(medicine.image_path) ?? undefined}
                               alt={medicine.name}
                               className="h-10 w-10 rounded-lg object-cover mr-3"
+                              onError={handleImageError}
                             />
                           ) : (
                             <div className="h-10 w-10 rounded-lg bg-gray-200 flex items-center justify-center mr-3">
@@ -305,8 +324,8 @@ export default function MedicineList() {
                           )}
                           <div>
                             <div className="text-sm font-medium text-gray-900">{medicine.name}</div>
-                            {medicine.generic_name && (
-                              <div className="text-sm text-gray-500">{medicine.generic_name}</div>
+                            {medicine.specification && (
+                              <div className="text-sm text-gray-500">{medicine.specification}</div>
                             )}
                             {medicine.manufacturer && (
                               <div className="text-xs text-gray-400">{medicine.manufacturer}</div>
@@ -318,28 +337,16 @@ export default function MedicineList() {
                       {/* 类型/剂型 */}
                       <div className="col-span-2">
                         <div className="text-sm text-gray-900">
-                          {medicine.type === MedicineType.PRESCRIPTION ? '处方药' :
-                           medicine.type === MedicineType.OTC ? '非处方药' :
-                           medicine.type === MedicineType.SUPPLEMENT ? '保健品' : '中药'}
+                          {renderTypeLabel((medicine as any).medicine_type)}
                         </div>
-                        <div className="text-sm text-gray-500">
-                          {medicine.dosage_form === DosageForm.TABLET ? '片剂' :
-                           medicine.dosage_form === DosageForm.CAPSULE ? '胶囊' :
-                           medicine.dosage_form === DosageForm.LIQUID ? '液体' :
-                           medicine.dosage_form === DosageForm.INJECTION ? '注射剂' :
-                           medicine.dosage_form === DosageForm.CREAM ? '乳膏' :
-                           medicine.dosage_form === DosageForm.OINTMENT ? '软膏' : medicine.dosage_form}
-                        </div>
+                        <div className="text-sm text-gray-500">—</div>
                       </div>
 
                       {/* 库存/单位 */}
                       <div className="col-span-2">
                         <div className="text-sm text-gray-900">
-                          {medicine.quantity} {medicine.unit}
+                          {medicine.quantity}
                         </div>
-                        {medicine.strength && (
-                          <div className="text-sm text-gray-500">{medicine.strength}</div>
-                        )}
                       </div>
 
                       {/* 有效期 */}
@@ -385,27 +392,27 @@ export default function MedicineList() {
               </div>
 
               {/* 分页 */}
-              {pagination && pagination.total_pages > 1 && (
+              {pagination && (pagination as any).total_pages > 1 && (
                 <div className="px-6 py-3 border-t border-gray-200 bg-gray-50">
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-gray-700">
-                      显示第 {((pagination.current_page - 1) * pagination.page_size) + 1} - {Math.min(pagination.current_page * pagination.page_size, pagination.count)} 条，
-                      共 {pagination.count} 条记录
+                      显示第 {(((pagination as any).current_page - 1) * (pagination as any).page_size) + 1} - {Math.min((pagination as any).current_page * (pagination as any).page_size, (pagination as any).count)} 条，
+                      共 {(pagination as any).count} 条记录
                     </div>
                     <div className="flex items-center space-x-2">
                       <button
-                        onClick={() => handlePageChange(pagination.current_page - 1)}
-                        disabled={pagination.current_page <= 1}
+                        onClick={() => handlePageChange((pagination as any).current_page - 1)}
+                        disabled={(pagination as any).current_page <= 1}
                         className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                       >
                         上一页
                       </button>
                       <span className="text-sm text-gray-700">
-                        第 {pagination.current_page} / {pagination.total_pages} 页
+                        第 {(pagination as any).current_page} / {(pagination as any).total_pages} 页
                       </span>
                       <button
-                        onClick={() => handlePageChange(pagination.current_page + 1)}
-                        disabled={pagination.current_page >= pagination.total_pages}
+                        onClick={() => handlePageChange((pagination as any).current_page + 1)}
+                        disabled={(pagination as any).current_page >= (pagination as any).total_pages}
                         className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                       >
                         下一页

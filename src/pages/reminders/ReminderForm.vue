@@ -487,7 +487,7 @@ const updateReminderTimes = () => {
     weekly: 1,
     every_other_day: 1,
     custom: 0
-  }[form.frequency] || 1
+  }[form.frequency] ?? 1
   
   if (timeCount > 0) {
     reminderTimes.value = Array(timeCount).fill('').map((_, index) => {
@@ -550,7 +550,7 @@ const handleSubmit = async () => {
     
     const submitData = {
       ...form,
-      end_date: noEndDate.value ? null : form.end_date || null,
+      end_date: noEndDate.value ? null : (form.end_date ?? null),
       reminder_times: form.frequency === 'custom' ? customTimes.value : reminderTimes.value,
       week_days: form.frequency === 'weekly' ? selectedWeekDays.value : null
     }

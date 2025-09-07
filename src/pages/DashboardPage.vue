@@ -19,7 +19,7 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-600">药品总数</p>
-              <p class="text-2xl font-semibold text-gray-900">{{ medicineStats?.total_medicines || 0 }}</p>
+              <p class="text-2xl font-semibold text-gray-900">{{ medicineStats?.total_medicines ?? 0 }}</p>
             </div>
           </div>
         </div>
@@ -33,7 +33,7 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-600">今日提醒</p>
-              <p class="text-2xl font-semibold text-gray-900">{{ todayReminders?.length || 0 }}</p>
+              <p class="text-2xl font-semibold text-gray-900">{{ todayReminders?.length ?? 0 }}</p>
             </div>
           </div>
         </div>
@@ -47,7 +47,7 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-600">即将过期</p>
-              <p class="text-2xl font-semibold text-gray-900">{{ medicineStats?.expiring_soon_count || 0 }}</p>
+              <p class="text-2xl font-semibold text-gray-900">{{ medicineStats?.expiring_soon_count ?? 0 }}</p>
             </div>
           </div>
         </div>
@@ -61,7 +61,7 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-600">用药计划</p>
-              <p class="text-2xl font-semibold text-gray-900">{{ activeReminders?.length || 0 }}</p>
+              <p class="text-2xl font-semibold text-gray-900">{{ activeReminders?.length ?? 0 }}</p>
             </div>
           </div>
         </div>

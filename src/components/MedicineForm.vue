@@ -355,7 +355,7 @@ watch(
         specification: newMedicine.specification || '',
         manufacturer: newMedicine.manufacturer || '',
         medicine_type: newMedicine.medicine_type || 'tablet',
-        quantity: newMedicine.quantity || 0,
+        quantity: newMedicine.quantity ?? 0,
         purchase_price: newMedicine.purchase_price,
         purchase_date: newMedicine.purchase_date || '',
         expiry_date: newMedicine.expiry_date || '',
@@ -363,7 +363,7 @@ watch(
         storage_conditions: newMedicine.storage_conditions || '',
         description: newMedicine.description || '',
         image_path: newMedicine.image_path || '', // 使用image_path字段
-        is_prescription: newMedicine.is_prescription || false
+        is_prescription: newMedicine.is_prescription ?? false
       })
     } else {
       // 添加模式，重置表单
@@ -453,24 +453,14 @@ const handleSubmit = async () => {
     
   } catch (error: any) {
     console.error('🔴 [MedicineForm] Save failed:', {
-      message: error.message,
-      status: error.response?.status,
-      data: error.response?.data,
+      message: error?.message,
+      code: error?.code,
       timestamp: new Date().toISOString()
     })
     
-    // 处理表单验证错误
-    if (error.response?.data?.errors) {
-      errors.value = error.response.data.errors
-      console.log('🔴 [MedicineForm] Form validation errors:', error.response.data.errors)
-      console.log('🔴 [MedicineForm] Detailed error analysis:')
-      Object.entries(error.response.data.errors).forEach(([field, fieldErrors]) => {
-        console.log(`  - ${field}:`, fieldErrors)
-      })
-    } else {
-      const errorMessage = error.response?.data?.message || error.message || '保存失败，请重试'
-      toast.error(errorMessage)
-    }
+    // 统一错误提示，ApiClient 抛出的为 ApiError
+    const errorMessage = error?.message || '保存失败，请重试'
+    toast.error(errorMessage)
   } finally {
     loading.value = false
   }
@@ -492,19 +482,14 @@ const handleImageUpload = async () => {
         // 调用上传API
         const { uploadApi } = await import('@/api/upload')
         const response = await uploadApi.uploadMedicineImage(file)
-        
-        console.log('🟢 [MedicineForm] Image upload response:', response)
-        console.log('🔵 [MedicineForm] Response data structure:', response.data)
-        
-        // 检查响应数据结构 - 后端返回 {success: true, data: {image_path: '...'}}
-        if (response.data?.success && response.data?.data?.image_path) {
-          formData.image_path = response.data.data.image_path
-          console.log('🟢 [MedicineForm] Image path set:', formData.image_path)
+        console.log('🟢 [MedicineForm] 图片上传响应:', response)
+        if (response?.success && (response?.data as any)?.image_path) {
+          formData.image_path = (response.data as any).image_path
           toast.success('图片上传成功')
         } else {
-          console.error('🔴 [MedicineForm] Invalid response structure:', response)
-          console.error('🔴 [MedicineForm] Expected: response.data.data.image_path, got:', response.data?.data?.image_path)
-          toast.error('图片上传失败：响应格式错误')
+-          console.error('🔴 [MedicineForm] Expected: response.data.image_path, got:', (response?.data as any)?.image_path)
++          console.error('🔴 [MedicineForm] Expected image_path in response.data, got:', response)
+          toast.error(response?.message || '图片上传失败：缺少图片路径')
         }
       } catch (error) {
         console.error('🔴 [MedicineForm] Image upload failed:', error)

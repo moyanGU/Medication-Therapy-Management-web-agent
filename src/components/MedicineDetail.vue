@@ -36,8 +36,8 @@
             <div class="mb-6">
               <div class="aspect-square bg-gray-100 rounded-lg overflow-hidden">
                 <img 
-                  v-if="medicine.image_url" 
-                  :src="medicine.image_url" 
+                  v-if="medicine.image_path"
+                  :src="getImageUrl(medicine.image_path)"
                   :alt="medicine.name"
                   class="w-full h-full object-cover"
                   @error="handleImageError"
@@ -234,6 +234,24 @@ const formatDate = (dateString?: string): string => {
 const formatDateTime = (dateString: string): string => {
   return new Date(dateString).toLocaleString('zh-CN')
 }
+
+/**
+ * 根据后端返回的 image_path 构建完整图片 URL
+ * 若 image_path 为 http/https 开头的绝对地址则直接返回；
+ * 否则拼接后端基地址 + /media + 相对路径。
+ */
+const getImageUrl = (imagePath?: string | null) => {
+  if (!imagePath) return ''
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+    return imagePath
+  }
+  const baseURL = 'http://127.0.0.1:8000'
+  const path = imagePath.startsWith('/') ? imagePath : `/${imagePath}`
+  return `${baseURL}/media${path}`
+}
+
+// 已有的错误处理函数将作为图片失败时的兜底
+// function handleImageError ... 已存在，无需重复定义
 
 // 处理图片加载错误
 const handleImageError = (event: Event) => {

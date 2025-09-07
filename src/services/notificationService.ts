@@ -196,8 +196,8 @@ class NotificationService {
         icon: options.icon || this.getDefaultIcon(),
         badge: options.badge,
         tag: options.tag,
-        requireInteraction: options.requireInteraction || false,
-        silent: options.silent || false,
+        requireInteraction: options.requireInteraction ?? false,
+        silent: options.silent ?? false,
         vibrate: options.vibrate,
         actions: options.actions,
         data: options.data

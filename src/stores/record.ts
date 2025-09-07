@@ -35,8 +35,8 @@ export const useRecordStore = defineStore('record', () => {
   
   // 计算属性
   const hasRecords = computed(() => records.value.length > 0)
-  const adherenceRate = computed(() => statistics.value?.adherence_rate || 0)
-  const totalRecords = computed(() => statistics.value?.total_records || 0)
+  const adherenceRate = computed(() => statistics.value?.adherence_rate ?? 0)
+  const totalRecords = computed(() => statistics.value?.total_records ?? 0)
   
   /**
    * 获取用药记录列表
@@ -61,7 +61,7 @@ export const useRecordStore = defineStore('record', () => {
       console.log('🔵 [Record Store] 记录列表响应:', response)
       
       if (response.success) {
-        const data = response.data || {}
+        const data = response.data ?? {}
         console.log('🔵 [Record Store] 解析的data对象:', data)
         
         // 安全地访问results数组
@@ -77,10 +77,10 @@ export const useRecordStore = defineStore('record', () => {
         const pg = (data as any).pagination
         if (pg && typeof pg === 'object') {
           pagination.value = {
-            page: Number(queryParams.value.page) || 1,
-            pageSize: Number((queryParams.value as any).page_size) || 20,
-            total: Number(pg.count) || 0,
-            totalPages: Number(pg.total_pages) || 1
+            page: Math.max(1, Number(queryParams.value.page ?? 1)),
+            pageSize: Math.max(1, Number((queryParams.value as any).page_size ?? 20)),
+            total: Math.max(0, Number(pg.count ?? 0)),
+            totalPages: Math.max(1, Number(pg.total_pages ?? 1))
           }
           console.log('🟢 [Record Store] 分页信息更新:', pagination.value)
         } else {
@@ -267,7 +267,7 @@ export const useRecordStore = defineStore('record', () => {
       } else {
         error.value = (response as any).message || '删除用药记录失败'
         console.error('🔴 [Record Store] 服务器返回失败:', response)
-        throw new Error(response.data.message || '删除用药记录失败')
+        throw new Error(response.message || '删除用药记录失败')
       }
     } catch (err: any) {
       error.value = err.message || '删除用药记录失败'

@@ -131,10 +131,11 @@
           <!-- 药品图片 -->
           <div class="medicine-image">
             <img 
-              v-if="medicine.image_url" 
-              :src="medicine.image_url" 
+              v-if="medicine.image_path" 
+              :src="getImageUrl(medicine.image_path)" 
               :alt="medicine.name"
               class="w-full h-full object-cover"
+              @error="handleImageError"
             />
             <div v-else class="image-placeholder">
               <Package class="w-8 h-8 text-gray-400" />
@@ -414,6 +415,29 @@ const handleQuantityUpdate = async () => {
 
 const formatDate = (dateString: string) => {
   return new Date(dateString).toLocaleDateString('zh-CN')
+}
+
+/**
+ * 根据后端返回的 image_path 构建完整的图片 URL
+ * - 若为 http/https 绝对地址，直接返回
+ * - 否则拼接后端基地址 + /media + 相对路径
+ */
+const getImageUrl = (imagePath?: string | null) => {
+  if (!imagePath) return ''
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+    return imagePath
+  }
+  const baseURL = 'http://127.0.0.1:8000'
+  const path = imagePath.startsWith('/') ? imagePath : `/${imagePath}`
+  return `${baseURL}/media${path}`
+}
+
+/**
+ * 图片加载失败时回退到占位图
+ */
+const handleImageError = (event: Event) => {
+  const img = event.target as HTMLImageElement
+  img.src = 'https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=medicine%20pill%20bottle&image_size=square'
 }
 
 // 生命周期

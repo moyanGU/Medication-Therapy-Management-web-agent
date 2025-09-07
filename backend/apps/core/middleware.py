@@ -145,8 +145,13 @@ class CacheMiddleware(MiddlewareMixin):
         # 生成缓存键
         cache_key = self._generate_cache_key(request)
         
-        # 尝试从缓存获取响应
-        cached_response = cache.get(cache_key)
+        # 尝试从缓存获取响应（对Redis异常容错）
+        try:
+            cached_response = cache.get(cache_key)
+        except Exception as e:
+            logger.warning(f"[CacheMiddleware] 缓存读取失败，将降级为直通请求: {e}")
+            return None
+        
         if cached_response:
             logger.debug(f"缓存命中: {cache_key}")
             return JsonResponse(cached_response)
@@ -177,13 +182,16 @@ class CacheMiddleware(MiddlewareMixin):
                     cache_data = response.data
                 else:
                     cache_data = json.loads(response.content.decode('utf-8'))
-                
-                # 设置缓存
+            except (json.JSONDecodeError, AttributeError) as e:
+                logger.warning(f"缓存解析失败: {e}")
+                return response
+            
+            # 设置缓存（对Redis异常容错）
+            try:
                 cache.set(cache_key, cache_data, self.cache_timeout)
                 logger.debug(f"设置缓存: {cache_key}")
-                
-            except (json.JSONDecodeError, AttributeError) as e:
-                logger.warning(f"缓存设置失败: {e}")
+            except Exception as e:
+                logger.warning(f"[CacheMiddleware] 缓存写入失败(已忽略): {e}")
         
         return response
     
@@ -259,8 +267,12 @@ class RateLimitMiddleware(MiddlewareMixin):
         # 生成限流键
         rate_key = f"rate_limit:{client_ip}"
         
-        # 获取当前请求计数
-        current_requests = cache.get(rate_key, 0)
+        # 获取当前请求计数（对Redis异常容错）
+        try:
+            current_requests = cache.get(rate_key, 0)
+        except Exception as e:
+            logger.warning(f"[RateLimit] 读取计数失败，降级放行: {e}")
+            return None
         
         # 检查是否超过限制
         if current_requests >= self.rate_limit:
@@ -273,8 +285,11 @@ class RateLimitMiddleware(MiddlewareMixin):
                 'status_code': 429
             }, status=429)
         
-        # 增加请求计数
-        cache.set(rate_key, current_requests + 1, self.rate_window)
+        # 增加请求计数（对Redis异常容错）
+        try:
+            cache.set(rate_key, current_requests + 1, self.rate_window)
+        except Exception as e:
+            logger.warning(f"[RateLimit] 写入计数失败(已忽略): {e}")
         
         return None
     

@@ -837,10 +837,10 @@ const loadRecord = async () => {
       diagnosis: record.diagnosis || '',
       diagnosis_code: record.diagnosis_code || '',
       treatment: record.treatment || '',
-      prescribed_medicines: record.prescribed_medicines || [],
-      examinations: record.examinations || [],
+      prescribed_medicines: record.prescribed_medicines ?? [],
+      examinations: record.examinations ?? [],
       examination_results: record.examination_results || '',
-      lab_results: record.lab_results || {},
+      lab_results: record.lab_results ?? {},
       medical_orders: record.medical_orders || '',
       notes: record.notes || '',
       total_cost: record.total_cost,
@@ -853,7 +853,7 @@ const loadRecord = async () => {
       satisfaction_score: record.satisfaction_score,
       status: record.status,
       urgency: record.urgency,
-      attachments: record.attachments || []
+      attachments: record.attachments ?? []
     })
   } catch (error: any) {
     console.error('加载病历失败:', error)

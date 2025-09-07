@@ -213,6 +213,40 @@ class MedicationRecordViewSet(viewsets.ModelViewSet):
             'data': trend_data
         })
     
+    @action(detail=False, methods=['get'], url_path='today-medicine-types')
+    def today_medicine_types(self, request):
+        """
+        今日用药种类统计（按去重后的medicine_id计数）
+        可选查询参数：
+        - date: YYYY-MM-DD，不传则默认今天
+        返回：{ success: true, data: { date: 'YYYY-MM-DD', count: number } }
+        """
+        # 解析日期参数
+        date_str = request.query_params.get('date')
+        if date_str:
+            try:
+                target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                return Response(
+                    {'success': False, 'error': '日期格式错误，请使用YYYY-MM-DD'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            target_date = timezone.now().date()
+
+        queryset = self.get_queryset().filter(taken_at__date=target_date)
+        # 统计去重后的药品种类数
+        medicine_ids = list(queryset.values_list('medicine_id', flat=True).distinct())
+        count = len(medicine_ids)
+
+        return Response({
+            'success': True,
+            'data': {
+                'date': target_date.strftime('%Y-%m-%d'),
+                'count': count
+            }
+        })
+    
     @action(detail=False, methods=['get'])
     def export(self, request):
         """

@@ -27,18 +27,5 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'), // ✅ 定义 @ = src
     },
   },
-  server: {
-    proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-        secure: false,
-      },
-      '/media': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-        secure: false,
-      },
-    },
-  },
+  // 已移除 server.proxy，避免使用代理，所有请求应直接指向后端基地址
 })
