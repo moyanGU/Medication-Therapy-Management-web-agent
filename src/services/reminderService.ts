@@ -6,12 +6,20 @@ import type { ApiResponse } from '@/utils/api'
 export interface Reminder {
   id: number
   user: number
-  medicine: {
+  /**
+   * 注意：后端在不同序列化器下，medicine 可能仅返回主键ID，或包含部分对象信息。
+   * 因此统一声明为 number | { id: number; name?: string; medicine_type?: string; specification?: string }。
+   */
+  medicine: number | {
     id: number
-    name: string
-    medicine_type: string
+    name?: string
+    medicine_type?: string
     specification?: string
   }
+  /** 补充的派生字段，来自 serializers: source='medicine.name' */
+  medicine_name?: string
+  /** 可能存在的图片字段 */
+  medicine_image?: string
   reminder_time: string
   frequency: 'daily' | 'twice_daily' | 'three_times_daily' | 'four_times_daily' | 'weekly' | 'every_other_day' | 'custom'
   dosage: number
@@ -250,12 +258,10 @@ class ReminderService {
   }
 
   async batchDeleteReminders(reminderIds: number[]): Promise<ApiResponse<{ deleted_count: number }>> {
-    const res = await api.delete<{ deleted_count: number }>(
+    const res = await api.post<{ deleted_count: number }>(
       `/reminders/batch_delete/`,
       {
-        body: JSON.stringify({
-          reminder_ids: reminderIds
-        })
+        reminder_ids: reminderIds
       }
     )
     return res

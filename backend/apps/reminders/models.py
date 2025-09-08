@@ -168,12 +168,16 @@ class Reminder(models.Model):
         ('with_meal', '餐中'),
         ('empty_stomach', '空腹'),
         ('anytime', '任意时间'),
+        # 新增细化选项
+        ('before_breakfast', '早饭前'),
+        ('after_dinner', '晚饭后'),
+        ('before_bed', '睡前'),
     ]
     meal_timing = models.CharField(
         max_length=20,
         choices=MEAL_TIMING_CHOICES,
         default='anytime',
-        verbose_name='餐前餐后',
+        verbose_name='用药时机',
         help_text='相对于用餐时间的服药时机'
     )
     

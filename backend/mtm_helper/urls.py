@@ -6,25 +6,31 @@ from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
 from django.http import HttpResponse
+from apps.core.views import api_docs
 from apps.reminders.views import ReminderViewSet
 
-# API路由配置
+# API路由配置（注意顺序）
 api_urlpatterns = [
     path('', include('apps.core.urls')),
     path('auth/', include('apps.authentication.urls')),
     path('medicines/', include('apps.medicines.urls')),
     path('records/', include('apps.records.urls')),
-    path('reminders/', include('apps.reminders.urls')),
-    # 别名路由：映射到 ReminderViewSet 对应动作，避免双重前缀导致的404
+    # 显式别名：确保 /api/reminders/ 与 /api/reminders/<pk>/ 支持 POST/PUT/PATCH/DELETE
+    # 必须放在 include('apps.reminders.urls') 之前，避免被 DRF Router 根视图拦截导致 405
+    path('reminders/', ReminderViewSet.as_view({'get': 'list', 'post': 'create'}), name='reminders-list-create'),
+    path('reminders/<int:pk>/', ReminderViewSet.as_view({
+        'get': 'retrieve',
+        'put': 'update',
+        'patch': 'partial_update',
+        'delete': 'destroy',
+    }), name='reminders-detail'),
     path('reminders/today/', ReminderViewSet.as_view({'get': 'today'}), name='reminders-today'),
     path('reminders/stats/', ReminderViewSet.as_view({'get': 'stats'}), name='reminders-stats'),
     path('reminders/upcoming/', ReminderViewSet.as_view({'get': 'upcoming'}), name='reminders-upcoming'),
-    path('reminders/active/', ReminderViewSet.as_view({'get': 'active'}), name='reminders-active'),
-    path('reminders/expired/', ReminderViewSet.as_view({'get': 'expired'}), name='reminders-expired'),
-    path('medical-records/', include('apps.medical_records.urls')),
+    # 其余 reminders 路由（history、扩展 action 等）
+    path('reminders/', include('apps.reminders.urls')),
+    path('plans/', include('apps.plans.urls')),
 ]
-
-from apps.core.views import api_docs
 
 
 def favicon_view(request):
@@ -44,6 +50,7 @@ def favicon_view(request):
     return HttpResponse(svg, content_type='image/svg+xml')
 
 
+# 单一定义的 URL 列表
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(api_urlpatterns)),
@@ -54,7 +61,7 @@ urlpatterns = [
     path('favicon.svg', favicon_view),
 ]
 
-# 开发环境下提供媒体文件服务
+# 开发环境下提供媒体与静态文件服务
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

@@ -8,7 +8,7 @@
             <h1 class="text-2xl font-bold text-gray-900">用药计划</h1>
             <p class="text-gray-600 mt-1">制定和管理您的用药方案</p>
           </div>
-          <button class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+          <button class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" @click="openCreate">
             <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
             </svg>
@@ -17,16 +17,19 @@
         </div>
       </div>
 
-      <!-- 冲突检测提醒 -->
-      <div class="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
+      <!-- 冲突检测提醒（用药安全提醒，始终可见并突出显示） -->
+      <div
+        role="alert"
+        class="sticky top-4 z-20 bg-orange-50/90 border-2 border-orange-400 rounded-lg p-4 mb-6 shadow ring-1 ring-orange-200 backdrop-blur-sm"
+      >
         <div class="flex items-start">
           <div class="flex-shrink-0">
-            <svg class="h-5 w-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+            <svg class="h-6 w-6 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M4.93 19h14.14c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.198 16.5C2.428 17.333 3.39 19 4.93 19z"></path>
             </svg>
           </div>
           <div class="ml-3">
-            <h3 class="text-sm font-medium text-orange-800">用药安全提醒</h3>
+            <h3 class="text-base font-semibold text-orange-800">用药安全提醒</h3>
             <div class="mt-2 text-sm text-orange-700">
               <p>在制定用药计划时，请注意药物之间的相互作用。如有疑问，请及时咨询您的医生或药师。</p>
             </div>
@@ -55,263 +58,245 @@
       </div>
 
       <!-- 用药计划列表 -->
-      <div class="space-y-6">
-        <!-- 长期用药计划 -->
-        <div v-show="activeTab === 'all' || activeTab === 'long'" class="bg-white rounded-lg shadow">
-          <div class="px-6 py-4 border-b border-gray-200">
-            <div class="flex items-center justify-between">
-              <div>
-                <h3 class="text-lg font-medium text-gray-900">高血压治疗方案</h3>
-                <p class="text-sm text-gray-600">长期用药计划 · 2024-01-01 开始</p>
-              </div>
-              <div class="flex items-center space-x-2">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  进行中
-                </span>
-                <button class="text-gray-400 hover:text-gray-500">
-                  <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-          <div class="p-6">
-            <div class="space-y-4">
-              <!-- 药品项 -->
-              <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div class="flex items-center space-x-4">
-                  <img
-                    src="https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=medicine%20tablet&image_size=square"
-                    alt="药品图片"
-                    class="w-12 h-12 rounded-lg object-cover"
-                  />
-                  <div>
-                    <h4 class="text-sm font-medium text-gray-900">降压药</h4>
-                    <p class="text-sm text-gray-600">5mg × 1片</p>
-                    <p class="text-xs text-gray-500">每日2次，早晚空腹服用</p>
-                  </div>
-                </div>
-                <div class="text-right">
-                  <div class="text-sm font-medium text-gray-900">剩余 25 天</div>
-                  <div class="text-xs text-gray-500">预计用完：2025-02-15</div>
-                </div>
-              </div>
-
-              <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div class="flex items-center space-x-4">
-                  <img
-                    src="https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=medicine%20capsule&image_size=square"
-                    alt="药品图片"
-                    class="w-12 h-12 rounded-lg object-cover bg-gray-100"
-                  />
-                  <div>
-                    <h4 class="text-sm font-medium text-gray-900">阿司匹林肠溶片</h4>
-                    <p class="text-sm text-gray-600">100mg × 1片</p>
-                    <p class="text-xs text-gray-500">每日1次，饭后服用</p>
-                  </div>
-                </div>
-                <div class="text-right">
-                  <div class="text-sm font-medium text-gray-900">剩余 30 天</div>
-                  <div class="text-xs text-gray-500">预计用完：2025-02-20</div>
-                </div>
-              </div>
-            </div>
-            <div class="mt-4 pt-4 border-t border-gray-200">
-              <div class="flex items-center justify-between text-sm">
-                <span class="text-gray-600">计划进度</span>
-                <span class="font-medium text-gray-900">第 21 天 / 长期</span>
-              </div>
-              <div class="mt-2">
-                <div class="w-full bg-gray-200 rounded-full h-2">
-                  <div class="bg-blue-600 h-2 rounded-full" style="width: 65%"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 短期用药计划 -->
-        <div v-show="activeTab === 'all' || activeTab === 'short'" class="bg-white rounded-lg shadow">
-          <div class="px-6 py-4 border-b border-gray-200">
-            <div class="flex items-center justify-between">
-              <div>
-                <h3 class="text-lg font-medium text-gray-900">感冒治疗方案</h3>
-                <p class="text-sm text-gray-600">短期用药计划 · 2025-01-15 开始</p>
-              </div>
-              <div class="flex items-center space-x-2">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                  进行中
-                </span>
-                <button class="text-gray-400 hover:text-gray-500">
-                  <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-          <div class="p-6">
-            <div class="space-y-4">
-              <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div class="flex items-center space-x-4">
-                  <img
-                    src="https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=medicine%20pill&image_size=square"
-                    alt="药品图片"
-                    class="w-12 h-12 rounded-lg object-cover bg-gray-100"
-                  />
-                  <div>
-                    <h4 class="text-sm font-medium text-gray-900">感冒灵颗粒</h4>
-                    <p class="text-sm text-gray-600">1袋</p>
-                    <p class="text-xs text-gray-500">每日3次，饭后温水冲服</p>
-                  </div>
-                </div>
-                <div class="text-right">
-                  <div class="text-sm font-medium text-gray-900">剩余 3 天</div>
-                  <div class="text-xs text-gray-500">预计用完：2025-01-25</div>
-                </div>
-              </div>
-
-              <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div class="flex items-center space-x-4">
-                  <img
-                    src="https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=medicine%20injection&image_size=square"
-                    alt="药品图片"
-                    class="w-12 h-12 rounded-lg object-cover bg-gray-100"
-                  />
-                  <div>
-                    <h4 class="text-sm font-medium text-gray-900">维生素C片</h4>
-                    <p class="text-sm text-gray-600">100mg × 2片</p>
-                    <p class="text-xs text-gray-500">每日1次，饭后服用</p>
-                  </div>
-                </div>
-                <div class="text-right">
-                  <div class="text-sm font-medium text-orange-600">库存不足</div>
-                  <div class="text-xs text-gray-500">剩余 2 天</div>
-                </div>
-              </div>
-            </div>
-            <div class="mt-4 pt-4 border-t border-gray-200">
-              <div class="flex items-center justify-between text-sm">
-                <span class="text-gray-600">计划进度</span>
-                <span class="font-medium text-gray-900">第 7 天 / 共 10 天</span>
-              </div>
-              <div class="mt-2">
-                <div class="w-full bg-gray-200 rounded-full h-2">
-                  <div class="bg-blue-600 h-2 rounded-full" style="width: 70%"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 已完成的计划 -->
-        <div v-show="activeTab === 'all' || activeTab === 'completed'" class="bg-white rounded-lg shadow opacity-75">
-          <div class="px-6 py-4 border-b border-gray-200">
-            <div class="flex items-center justify-between">
-              <div>
-                <h3 class="text-lg font-medium text-gray-900">胃炎治疗方案</h3>
-                <p class="text-sm text-gray-600">短期用药计划 · 2024-12-01 - 2024-12-14</p>
-              </div>
-              <div class="flex items-center space-x-2">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                  已完成
-                </span>
-                <button class="text-gray-400 hover:text-gray-500">
-                  <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-          <div class="p-6">
-            <div class="space-y-4">
-              <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div class="flex items-center space-x-4">
-                  <img
-                    src="https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=medicine%20syrup&image_size=square"
-                    alt="药品图片"
-                    class="w-12 h-12 rounded-lg object-cover bg-gray-100"
-                  />
-                  <div>
-                    <h4 class="text-sm font-medium text-gray-900">奥美拉唑肠溶胶囊</h4>
-                    <p class="text-sm text-gray-600">20mg × 1粒</p>
-                    <p class="text-xs text-gray-500">每日1次，早餐前空腹服用</p>
-                  </div>
-                </div>
-                <div class="text-right">
-                  <div class="text-sm font-medium text-green-600">已完成</div>
-                  <div class="text-xs text-gray-500">14天疗程</div>
-                </div>
-              </div>
-            </div>
-            <div class="mt-4 pt-4 border-t border-gray-200">
-              <div class="flex items-center justify-between text-sm">
-                <span class="text-gray-600">计划进度</span>
-                <span class="font-medium text-green-600">已完成 14 天</span>
-              </div>
-              <div class="mt-2">
-                <div class="w-full bg-gray-200 rounded-full h-2">
-                  <div class="bg-green-600 h-2 rounded-full" style="width: 100%"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 冲突检测结果（暂时隐藏） -->
-      <div v-if="false" class="mt-8 bg-white rounded-lg shadow">
+      <div class="bg-white rounded-lg shadow">
         <div class="px-6 py-4 border-b border-gray-200">
-          <h3 class="text-lg font-medium text-gray-900">药物相互作用检测</h3>
+          <h3 class="text-lg font-medium text-gray-900">我的用药计划</h3>
         </div>
-        <div class="p-6">
-          <div class="flex items-start space-x-3">
-            <div class="flex-shrink-0">
-              <svg class="h-5 w-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-              </svg>
+        <div class="border-t border-gray-200">
+          <!-- 加载/错误状态 -->
+          <div v-if="loading" class="p-6 text-gray-500">正在加载计划数据...</div>
+          <div v-else-if="error" class="p-6 text-red-600">{{ error }}</div>
+
+          <!-- 列表渲染 -->
+          <ul v-else role="list" class="divide-y divide-gray-200">
+            <li v-for="plan in plans" :key="plan.id" class="p-6">
+              <div class="flex items-start justify-between">
+                <div>
+                  <h4 class="text-lg font-semibold text-gray-900">{{ plan.name || '未命名计划' }}</h4>
+                  <p class="mt-1 text-sm text-gray-500">
+                    类型：{{ planTypeLabel(plan.plan_type) }}
+                    <span class="ml-4">优先级：{{ plan.priority }}</span>
+                    <span class="ml-4">起止：{{ plan.start_date }} ~ {{ plan.end_date || '未设置' }}</span>
+                  </p>
+                </div>
+                <span class="inline-flex items-center px-3 py-0.5 rounded-full text-sm font-medium" :class="statusBadgeClass(plan.status)">
+                  {{ statusLabel(plan.status) }}
+                </span>
+              </div>
+
+              <!-- 药品列表 -->
+              <div v-if="plan.medicines && plan.medicines.length" class="mt-4 space-y-2">
+                <div v-for="m in plan.medicines" :key="m.id" class="flex items-center justify-between">
+                  <div class="text-sm text-gray-700">
+                    {{ m.medicine_name || m.medicine }}
+                    <span class="ml-2 text-gray-500">{{ m.single_dose || m.daily_dosage }} {{ m.frequency }}</span>
+                  </div>
+                  <div class="text-xs text-gray-400">开始：{{ plan.start_date }}，持续：{{ plan.duration_days || '-' }} 天</div>
+                </div>
+              </div>
+
+              <!-- 进度条 -->
+              <div class="mt-4">
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                  <div class="bg-blue-600 h-2 rounded-full" :style="{ width: progressText(plan.status, plan.progress_percentage) }"></div>
+                </div>
+                <div class="mt-1 text-xs text-gray-500">完成度：{{ progressText(plan.status, plan.progress_percentage) }}</div>
+              </div>
+            </li>
+
+            <!-- 空状态 -->
+            <li v-if="!plans.length" class="p-6 text-gray-500">暂无数据</li>
+          </ul>
+
+          <!-- 分页 -->
+          <div v-if="pagination" class="px-6 py-4 flex items-center justify-between border-t border-gray-200">
+            <button type="button" class="px-3 py-1.5 text-sm rounded border" :class="{ 'opacity-50 cursor-not-allowed': !pagination.previous }" :disabled="!pagination.previous" @click="goPrev">上一页</button>
+            <div class="text-sm text-gray-600">
+              第 {{ pagination.current_page || 1 }} / {{ pagination.total_pages || 1 }} 页，共 {{ pagination.count || 0 }} 条
             </div>
-            <div>
-              <h4 class="text-sm font-medium text-gray-900">当前用药方案安全</h4>
-              <p class="text-sm text-gray-600 mt-1">未检测到明显的药物相互作用。请继续按照医嘱服用。</p>
-              <p class="text-xs text-gray-500 mt-2">最后检测时间：2025-01-22 14:30</p>
-            </div>
+            <button type="button" class="px-3 py-1.5 text-sm rounded border" :class="{ 'opacity-50 cursor-not-allowed': !pagination.next }" :disabled="!pagination.next" @click="goNext">下一页</button>
           </div>
         </div>
       </div>
+
+      <!-- 相互作用检测结果容器（临时隐藏） -->
+      <div v-if="false" class="mt-8">
+        <h2 class="text-lg font-medium text-gray-900 mb-4">相互作用检测结果</h2>
+        <!-- 结果列表 -->
+        <div class="bg-white rounded-lg shadow p-6">
+          <p class="text-sm text-gray-500">该区域暂时隐藏，待后续接入真实检测接口后启用。</p>
+        </div>
+      </div>
+
+      <!-- 创建计划表单（弹窗） -->
+      <PlanForm
+        v-if="showCreateDialog"
+        :visible="showCreateDialog"
+        @close="closeCreate"
+        @success="() => { console.log('[PlansPage] 创建成功 -> 刷新列表并关闭对话框'); fetchPlans(); closeCreate(); }"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-/**
- * 用药计划页面组件
- * 管理长期和短期用药计划，检测药物冲突
- */
+import { ref, onMounted, watch } from 'vue'
+import plansApi from '@/api/plans'
+import type { MedicationPlan, Pagination, PlanStatus, PlanType, PlanListParams } from '@/types/plan'
+import PlanForm from '@/components/PlanForm.vue'
 
-// 标签交互：默认显示“全部计划”
+// 标签筛选状态
 const activeTab = ref<'all' | 'long' | 'short' | 'completed'>('all')
 
-/**
- * 切换标签
- * @param tab 目标标签
- */
-const setTab = (tab: 'all' | 'long' | 'short' | 'completed') => {
-  console.log('[PlansPage] setTab ->', tab)
+// 列表与状态
+const plans = ref<MedicationPlan[]>([])
+const pagination = ref<Pagination | null>(null)
+const loading = ref(false)
+const error = ref<string | null>(null)
+const page = ref(1)
+const pageSize = ref(10)
+
+// 创建弹窗状态
+const showCreateDialog = ref(false)
+
+function openCreate() {
+  console.log('[PlansPage] 点击创建计划按钮 -> 打开创建对话框')
+  showCreateDialog.value = true
+}
+
+function closeCreate() {
+  console.log('[PlansPage] 关闭创建对话框')
+  showCreateDialog.value = false
+}
+
+// 切换标签
+function setTab(tab: 'all' | 'long' | 'short' | 'completed') {
+  console.log('[PlansPage] 切换标签:', tab)
   activeTab.value = tab
 }
 
-/**
- * 计算标签按钮样式
- * @param tab 标签名
- */
-const tabClass = (tab: 'all' | 'long' | 'short' | 'completed') => {
-  const base = 'whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm'
-  const active = 'border-blue-500 text-blue-600'
-  const inactive = 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-  return `${base} ${activeTab.value === tab ? active : inactive}`
+// 计算标签样式
+function tabClass(tab: 'all' | 'long' | 'short' | 'completed') {
+  const isActive = activeTab.value === tab
+  return [
+    'whitespace-nowrap py-4 px-1 border-b-2 text-sm font-medium',
+    isActive
+      ? 'border-blue-500 text-blue-600'
+      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+  ]
 }
+
+// 标签到查询参数映射
+function buildParams(): PlanListParams {
+  const params: PlanListParams = { page: page.value, page_size: pageSize.value }
+  if (activeTab.value === 'long') params.plan_type = 'long_term'
+  if (activeTab.value === 'short') params.plan_type = 'short_term'
+  if (activeTab.value === 'completed') params.status = 'completed'
+  console.log('[PlansPage] 查询参数:', params)
+  return params
+}
+
+// 拉取列表
+async function fetchPlans() {
+  loading.value = true
+  error.value = null
+  try {
+    const data = await plansApi.getPlans(buildParams())
+    plans.value = data.results || []
+    pagination.value = data.pagination
+    console.log('[PlansPage] 拉取成功, count=', pagination.value?.count, 'page=', pagination.value?.current_page)
+  } catch (e: any) {
+    console.error('[PlansPage] 拉取失败:', e)
+    error.value = e?.message || '获取计划列表失败'
+  } finally {
+    loading.value = false
+  }
+}
+
+function goPrev() {
+  if (pagination.value?.previous) {
+    page.value = Math.max(1, (pagination.value.current_page || 1) - 1)
+    console.log('[PlansPage] 上一页 ->', page.value)
+    fetchPlans()
+  }
+}
+
+function goNext() {
+  if (pagination.value?.next) {
+    page.value = (pagination.value.current_page || 1) + 1
+    console.log('[PlansPage] 下一页 ->', page.value)
+    fetchPlans()
+  }
+}
+
+// 辅助：显示标签/状态与进度
+function planTypeLabel(t: PlanType): string {
+  switch (t) {
+    case 'long_term':
+      return '长期用药'
+    case 'short_term':
+      return '短期用药'
+    case 'acute':
+      return '急性期'
+    case 'chronic':
+      return '慢性病管理'
+    case 'preventive':
+      return '预防性'
+    case 'rehabilitation':
+      return '康复'
+    default:
+      return String(t)
+  }
+}
+
+function statusLabel(s: PlanStatus): string {
+  switch (s) {
+    case 'draft':
+      return '草稿'
+    case 'active':
+      return '进行中'
+    case 'paused':
+      return '已暂停'
+    case 'completed':
+      return '已完成'
+    case 'cancelled':
+      return '已取消'
+    default:
+      return String(s)
+  }
+}
+
+function statusBadgeClass(s: PlanStatus): string {
+  switch (s) {
+    case 'active':
+      return 'bg-blue-100 text-blue-800'
+    case 'completed':
+      return 'bg-gray-100 text-gray-800'
+    case 'paused':
+      return 'bg-yellow-100 text-yellow-800'
+    case 'draft':
+      return 'bg-gray-100 text-gray-800'
+    case 'cancelled':
+      return 'bg-red-100 text-red-800'
+    default:
+      return 'bg-gray-100 text-gray-800'
+  }
+}
+
+function progressPercent(status: PlanStatus, percent?: number | null): number {
+  if (status === 'completed') return 100
+  if (typeof percent === 'number' && percent >= 0) return Math.min(100, Math.max(0, Math.round(percent)))
+  return 0
+}
+
+function progressText(status: PlanStatus, percent?: number | null): string {
+  return `${progressPercent(status, percent)}%`
+}
+
+// 首次与标签切换
+onMounted(fetchPlans)
+watch(activeTab, () => {
+  page.value = 1
+  fetchPlans()
+})
 </script>

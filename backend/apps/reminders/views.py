@@ -104,11 +104,8 @@ class ReminderViewSet(viewsets.ModelViewSet):
             
             if page is not None:
                 serializer = self.get_serializer(page, many=True)
-                return self.get_paginated_response({
-                    'success': True,
-                    'message': '获取提醒列表成功',
-                    'data': serializer.data
-                })
+                # 分页响应统一使用分页器封装，results 为纯数组
+                return self.get_paginated_response(serializer.data)
             
             serializer = self.get_serializer(queryset, many=True)
             return Response({
@@ -307,7 +304,7 @@ class ReminderViewSet(viewsets.ModelViewSet):
             logger.info(f"用户 {request.user.username} 获取已过期的提醒")
             
             reminders = self.get_queryset()
-            expired_reminders = [r for r in reminders if r.is_expired()]
+            expired_reminders = [r for r in reminders if r.is_expired]
             
             serializer = ReminderListSerializer(expired_reminders, many=True)
             
@@ -339,7 +336,8 @@ class ReminderViewSet(viewsets.ModelViewSet):
                 'total_reminders': queryset.count(),
                 'active_reminders': queryset.filter(is_active=True).count(),
                 'inactive_reminders': queryset.filter(is_active=False).count(),
-                'expired_reminders': len([r for r in queryset if r.is_expired()]),
+-                'expired_reminders': len([r for r in queryset if r.is_expired()]),
++                'expired_reminders': len([r for r in queryset if r.is_expired]),
                 'today_reminders': len([r for r in queryset if r.should_remind_today()]),
                 'response_rate': 0,  # 需要从历史记录计算
                 'total_responses': 0,  # 需要从历史记录计算

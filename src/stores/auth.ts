@@ -27,13 +27,6 @@ interface RegisterData {
   verification_code: string
 }
 
-// API响应接口
-interface ApiResponse<T = any> {
-  success: boolean
-  message: string
-  data: T
-}
-
 // 登录响应数据（兼容多种后端返回形态）
 interface LoginResponseData {
   // 新结构：后端返回 data.tokens.access / data.tokens.refresh

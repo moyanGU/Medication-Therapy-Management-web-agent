@@ -61,7 +61,7 @@
               <Bell class="w-5 h-5" />
             </div>
             <div>
-              <h2 class="card-title">{{ reminder.title || reminder.medicine.name }}</h2>
+              <h2 class="card-title">{{ reminder.title || reminder.medicine_name }}</h2>
               <p class="card-subtitle">
                 <span :class="[
                   'status-badge',
@@ -85,12 +85,12 @@
                 药品信息
               </div>
               <div class="info-value">
-                <div class="font-medium">{{ reminder.medicine.name }}</div>
+                <div class="font-medium">{{ reminder.medicine_name }}</div>
                 <div class="text-sm text-gray-600">
-                  {{ reminder.medicine.specification || '无规格信息' }}
+                  {{ reminder.medicine?.specification || '无规格信息' }}
                 </div>
                 <div class="text-sm text-gray-600">
-                  {{ getMedicineTypeText(reminder.medicine.medicine_type) || '无类型信息' }}
+                  {{ getMedicineTypeText(reminder.medicine?.medicine_type) || '无类型信息' }}
                 </div>
               </div>
             </div>
@@ -132,11 +132,11 @@
               </div>
             </div>
             
-            <!-- 用餐时机 -->
+            <!-- 用药时机 -->
             <div class="info-item">
               <div class="info-label">
                 <Utensils class="w-4 h-4 mr-2" />
-                用餐时机
+                用药时机
               </div>
               <div class="info-value">
                 {{ getMealTimingLabel(reminder.meal_timing) }}
@@ -612,7 +612,10 @@ const getMealTimingLabel = (timing: string) => {
     before_meal: '餐前',
     with_meal: '餐中',
     after_meal: '餐后',
-    anytime: '任意时间'
+    anytime: '任意时间',
+    before_breakfast: '早饭前',
+    after_dinner: '晚饭后',
+    before_bed: '睡前'
   }
   return labels[timing] || timing
 }

@@ -71,20 +71,20 @@
             <!-- 剂量 -->
             <div class="form-group">
               <label class="form-label required">剂量</label>
-              <div class="flex space-x-2">
+              <div class="grid grid-cols-2 gap-2 items-start">
                 <input
                   v-model.number="form.dosage"
                   type="number"
                   step="0.1"
                   min="0"
-                  class="input-field flex-1"
+                  class="input-field w-full min-w-0"
                   :class="{ 'border-red-500': errors.dosage }"
                   placeholder="剂量"
                   required
                 />
                 <select
                   v-model="form.dosage_unit"
-                  class="input-field w-32"
+                  class="input-field w-full min-w-0"
                   :class="{ 'border-red-500': errors.dosage_unit }"
                   required
                 >
@@ -102,9 +102,9 @@
               <p v-if="errors.dosage" class="error-text">{{ errors.dosage }}</p>
             </div>
             
-            <!-- 用餐时机 -->
+            <!-- 用药时机 -->
             <div class="form-group">
-              <label class="form-label required">用餐时机</label>
+              <label class="form-label required">用药时机</label>
               <select
                 v-model="form.meal_timing"
                 class="input-field"
@@ -115,6 +115,9 @@
                 <option value="with_meal">餐中</option>
                 <option value="after_meal">餐后</option>
                 <option value="anytime">任意时间</option>
+                <option value="before_breakfast">早饭前</option>
+                <option value="after_dinner">晚饭后</option>
+                <option value="before_bed">睡前</option>
               </select>
               <p v-if="errors.meal_timing" class="error-text">{{ errors.meal_timing }}</p>
             </div>
@@ -407,9 +410,11 @@ const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '�
 const fetchMedicines = async () => {
   try {
     const response = await api.get('/medicines/')
-    
+
     if (response.success) {
-      medicines.value = (response.data as any).results || response.data
+      const payload: any = (response as any).data
+      const list = payload?.data?.results ?? payload?.results ?? payload?.data ?? []
+      medicines.value = list
       console.log('获取到药品列表:', medicines.value)
     } else {
       console.error('获取药品列表失败:', response)
@@ -427,7 +432,8 @@ const fetchReminder = async (id: string) => {
     const response = await api.get(`/reminders/${id}/`)
     
     if (response.success) {
-      const reminder = response.data as any
+      const respData: any = (response as any).data
+      const reminder = respData?.data ?? respData
       Object.assign(form, {
         medicine_id: reminder.medicine.id,
         title: reminder.title,
@@ -452,8 +458,8 @@ const fetchReminder = async (id: string) => {
       }
       
       // 处理周重复
-      if (reminder.frequency === 'weekly' && reminder.week_days) {
-        selectedWeekDays.value = reminder.week_days
+      if (reminder.frequency === 'weekly' && reminder.weekdays) {
+        selectedWeekDays.value = reminder.weekdays
       }
     } else {
       showError('获取提醒信息失败')
@@ -462,7 +468,6 @@ const fetchReminder = async (id: string) => {
   } catch (error) {
     console.error('获取提醒信息失败:', error)
     showError('获取提醒信息失败')
-    goBack()
   } finally {
     loading.value = false
   }
@@ -548,17 +553,24 @@ const handleSubmit = async () => {
   try {
     loading.value = true
     
-    const submitData = {
-      ...form,
-      end_date: noEndDate.value ? null : (form.end_date ?? null),
-      reminder_times: form.frequency === 'custom' ? customTimes.value : reminderTimes.value,
-      week_days: form.frequency === 'weekly' ? selectedWeekDays.value : null
+    // 组装提交数据：
+    const { medicine_id, ...rest } = form
+    const submitData: any = {
+      ...rest,
+      medicine: medicine_id, // 后端期望字段名
+      end_date: noEndDate.value ? null : (form.end_date || null),
+      // 后端字段为 weekdays
+      weekdays: form.frequency === 'weekly' ? selectedWeekDays.value : [],
     }
+
+    console.log('提交数据payload:', submitData)
     
     const response = isEdit.value 
       ? await api.put(`/reminders/${route.params.id}/`, submitData)
       : await api.post('/reminders/', submitData)
     
+    console.log('提交响应:', response)
+
     if (response.success) {
       showSuccess(`提醒${isEdit.value ? '更新' : '创建'}成功`)
       router.push('/reminders')
@@ -569,9 +581,13 @@ const handleSubmit = async () => {
       }
       showError(response.message || `${isEdit.value ? '更新' : '创建'}失败`)
     }
-  } catch (error) {
-    console.error('提交失败:', error)
-    showError('提交失败')
+  } catch (error: any) {
+    console.error('提交失败:', {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack,
+    })
+    showError(error?.message || '提交失败')
   } finally {
     loading.value = false
   }

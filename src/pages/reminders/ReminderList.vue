@@ -112,12 +112,15 @@
           <option value="custom">自定义</option>
         </select>
         
-        <!-- 用餐时机筛选 -->
+        <!-- 用药时机筛选 -->
         <select v-model="filters.meal_timing" class="input-field">
           <option value="">全部时机</option>
           <option value="before_meal">餐前</option>
           <option value="with_meal">餐中</option>
           <option value="after_meal">餐后</option>
+          <option value="before_breakfast">早饭前</option>
+          <option value="after_dinner">晚饭后</option>
+          <option value="before_bed">睡前</option>
           <option value="anytime">任意时间</option>
         </select>
       </div>
@@ -245,7 +248,7 @@
               <div class="flex-1">
                 <div class="flex items-center space-x-2">
                   <h3 class="text-lg font-medium text-gray-900">
-                    {{ reminder.title || reminder.medicine.name }}
+                    {{ reminder.title || reminder.medicine_name }}
                   </h3>
                   <span
                     :class="[
@@ -260,7 +263,7 @@
                 <div class="mt-1 space-y-1">
                   <p class="text-sm text-gray-600">
                     <Pill class="inline w-4 h-4 mr-1" />
-                    {{ reminder.medicine.name }}
+                    {{ reminder.medicine_name }}
                     <span class="mx-2">•</span>
                     {{ reminder.dosage }} {{ getDosageUnitLabel(reminder.dosage_unit) }}
                   </p>
@@ -409,10 +412,9 @@ import {
 interface Reminder {
   id: number
   title: string
-  medicine: {
-    id: number
-    name: string
-  }
+  // 后端列表返回 medicine 为主键ID，同时提供 medicine_name 字段
+  medicine: number | { id: number; name: string }
+  medicine_name: string
   dosage: number
   dosage_unit: string
   frequency: string
@@ -510,9 +512,12 @@ const fetchReminders = async () => {
     console.log('[Reminders] 列表响应:', res)
 
     if (res?.success) {
-      // 按后端标准结构 { success, data: { results, count } }
-      reminders.value = res.data?.results ?? []
-      pagination.total = res.data?.count ?? 0
+      // 兼容两种返回结构：{ success, data: { results, count } } 或 { success, results, count }
+      const payload: any = (res as any).data
+      const list = payload?.data?.results ?? payload?.results ?? []
+      const total = payload?.data?.count ?? payload?.count ?? 0
+      reminders.value = list
+      pagination.total = total
       pagination.total_pages = Math.ceil(pagination.total / pagination.page_size)
     } else {
       error(res?.message || '获取提醒列表失败')
@@ -534,7 +539,9 @@ const fetchStats = async () => {
     const res = await api.get<Stats>('/reminders/stats/')
     console.log('[Reminders] 统计响应:', res)
     if (res?.success) {
-      stats.value = res.data ?? {
+      const payload: any = (res as any).data
+      const data = payload?.data ?? payload
+      stats.value = data ?? {
         total_reminders: 0,
         active_reminders: 0,
         today_reminders: 0,
@@ -547,7 +554,7 @@ const fetchStats = async () => {
     console.error('获取统计数据失败:', err)
     error(err?.message || '获取统计数据失败')
   }
- }
+}
 
 const refreshData = () => {
   fetchReminders()
@@ -604,7 +611,7 @@ const toggleReminderActive = async (reminder: Reminder) => {
  * 删除提醒
  */
 const deleteReminder = async (reminder: Reminder) => {
-  if (!confirm(`确定要删除提醒"${reminder.title || reminder.medicine.name}"吗？`)) return
+  if (!confirm(`确定要删除提醒"${reminder.title || reminder.medicine_name}"吗？`)) return
   try {
     const res = await api.delete(`/reminders/${reminder.id}/`)
     console.log('[Reminders] 删除响应:', res)
@@ -647,7 +654,7 @@ const batchToggleActive = async (isActive: boolean) => {
 }
 
 /**
- * 批量删除
+ * 批量删除 - 使用POST方法传递JSON
  */
 const batchDelete = async () => {
   if (selectedReminders.value.length === 0) return
@@ -658,7 +665,7 @@ const batchDelete = async () => {
     })
     console.log('[Reminders] 批量删除响应:', { ok, data, message })
     if (ok) {
-      const deleted = (data as any)?.deleted_count ?? selectedReminders.value.length
+      const deleted = (data as any)?.data?.deleted_count ?? (data as any)?.deleted_count ?? selectedReminders.value.length
       success(`已删除 ${deleted} 个提醒`)
       selectedReminders.value = []
       fetchReminders()
@@ -702,6 +709,9 @@ const getMealTimingLabel = (timing: string) => {
     before_meal: '餐前',
     with_meal: '餐中',
     after_meal: '餐后',
+    before_breakfast: '早饭前',
+    after_dinner: '晚饭后',
+    before_bed: '睡前',
     anytime: '任意时间'
   }
   return labels[timing] || timing

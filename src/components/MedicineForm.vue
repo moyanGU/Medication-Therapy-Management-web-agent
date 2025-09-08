@@ -487,8 +487,7 @@ const handleImageUpload = async () => {
           formData.image_path = (response.data as any).image_path
           toast.success('图片上传成功')
         } else {
--          console.error('🔴 [MedicineForm] Expected: response.data.image_path, got:', (response?.data as any)?.image_path)
-+          console.error('🔴 [MedicineForm] Expected image_path in response.data, got:', response)
+          console.error('🔴 [MedicineForm] Expected image_path in response.data, got:', response)
           toast.error(response?.message || '图片上传失败：缺少图片路径')
         }
       } catch (error) {
@@ -538,6 +537,20 @@ onMounted(() => {
   
   console.log('=== Component Mount Complete ===')
 })
+
+watch(
+  () => props.visible,
+  (v) => {
+    console.log('[MedicineForm] visible changed:', v)
+    if (v && !props.medicine) {
+      resetForm()
+      // 默认采购日期
+      if (!formData.purchase_date) {
+        formData.purchase_date = new Date().toISOString().split('T')[0]
+      }
+    }
+  }
+)
 </script>
 
 <style scoped>

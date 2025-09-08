@@ -260,61 +260,53 @@ interface NotificationItem {
   createdAt: string
 }
 
-// 用真实数据替换模拟通知
-const notifications = ref<NotificationItem[]>([])
-
-const hasUnreadNotifications = computed(() => 
-  notifications.value.some(n => !n.read)
-)
-
-// 工具：单位展示
-const unitLabel = (unit?: string) => {
-  const map: Record<string, string> = {
-    tablet: '片',
-    capsule: '粒',
-    ml: 'ml',
-    mg: 'mg',
-    g: 'g',
-    drop: '滴',
-    spray: '喷',
-    patch: '贴',
-    injection: '支'
-  }
-  return unit && map[unit] ? map[unit] : ''
-}
-
-// 工具：格式化日期为 YYYY-MM-DD
-const formatDateYMD = (iso?: string) => {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return iso
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
 // 从各来源抓取通知
 const loadingNotifications = ref(false)
 const fetchNotifications = async () => {
   if (!isAuthenticated.value) return
   try {
     loadingNotifications.value = true
+    // Option A: 6个月有效期 = 180 天
+    const SIX_MONTHS_DAYS = 180
+
     const results = await Promise.allSettled([
       reminderService.getTodayReminders(),
       medicineApi.getExpiredMedicines(),
-      medicineApi.getExpiringSoonMedicines(),
-      medicineApi.getLowStockMedicines()
+      // 低库存
+      medicineApi.getLowStockMedicines(),
+      // 获取药品列表，前端计算 180 天内到期并生成通知；同时稳健解析后端响应的双层 data 结构，增加关键日志。
+      medicineApi.getMedicines({ page_size: 1000, ordering: 'expiry_date' })
     ])
 
     const now = new Date().toISOString()
     const tmp: NotificationItem[] = []
 
+    // 工具：稳健提取列表数据（兼容 {success,data: T} 与 {success,data:{results:[]}} 等）
+    const pickArray = (resp: any): any[] => {
+      const d = resp?.data ?? resp
+      if (Array.isArray(d)) return d
+      if (Array.isArray(d?.results)) return d.results
+      if (Array.isArray(d?.data)) return d.data
+      if (Array.isArray(d?.data?.results)) return d.data.results
+      return []
+    }
+
+    // 工具：计算距今天的天数（正数表示还有N天，负数表示已过期N天）
+    const daysUntil = (iso?: string | null) => {
+      if (!iso) return Number.NaN
+      const end = new Date(iso)
+      if (isNaN(end.getTime())) return Number.NaN
+      const nowDate = new Date()
+      const diffMs = end.getTime() - nowDate.getTime()
+      return Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+    }
+
     // 今日用药提醒
     {
       const r = results[0]
       if (r.status === 'fulfilled' && r.value?.success) {
-        const list = r.value.data as Reminder[]
+        const list = pickArray(r.value) as Reminder[]
+        console.log('🔔 [通知] 今日提醒数:', list.length)
         list.forEach((rem, idx) => {
           const time = rem.reminder_time?.slice(0,5) || ''
           const medName = rem.medicine?.name || '药品'
@@ -334,7 +326,8 @@ const fetchNotifications = async () => {
     {
       const r = results[1]
       if (r.status === 'fulfilled' && r.value?.success) {
-        const list = r.value.data as Medicine[]
+        const list = pickArray(r.value) as Medicine[]
+        console.log('🔔 [通知] 已过期药品数:', list.length)
         list.forEach((m, idx) => {
           tmp.push({
             id: `exp-${m.id}-${idx}`,
@@ -347,18 +340,17 @@ const fetchNotifications = async () => {
       }
     }
 
-    // 即将过期药品
+    // 库存不足药品
     {
       const r = results[2]
       if (r.status === 'fulfilled' && r.value?.success) {
-        const list = r.value.data as Medicine[]
+        const list = pickArray(r.value) as Medicine[]
+        console.log('🔔 [通知] 库存不足药品数:', list.length)
         list.forEach((m, idx) => {
-          const days = (m as any).days_until_expiry
-          const suffix = days !== undefined && days !== null ? `（约${days}天后过期）` : ''
           tmp.push({
-            id: `expsoon-${m.id}-${idx}`,
-            title: '药品即将过期',
-            message: `${m.name} ${suffix}`,
+            id: `low-${m.id}-${idx}`,
+            title: '库存不足提醒',
+            message: `${m.name} 库存不足（当前${m.quantity}），请尽快补购`,
             read: false,
             createdAt: now
           })
@@ -366,16 +358,24 @@ const fetchNotifications = async () => {
       }
     }
 
-    // 库存不足药品
+    // 6个月有效期提醒（Option A：days=180，由前端基于 expiry_date 计算）
     {
       const r = results[3]
       if (r.status === 'fulfilled' && r.value?.success) {
-        const list = r.value.data as Medicine[]
+        const raw = pickArray(r.value) as Medicine[]
+        // 过滤出 0..180 天内到期的药品
+        const list = raw.filter(m => {
+          const d = daysUntil(m.expiry_date || null)
+          return Number.isFinite(d) && d >= 0 && d <= SIX_MONTHS_DAYS
+        })
+        console.log('🔔 [通知] 6个月内到期药品数:', list.length)
         list.forEach((m, idx) => {
+          const d = daysUntil(m.expiry_date || null)
+          const suffix = Number.isFinite(d) ? `（约${d}天后过期）` : ''
           tmp.push({
-            id: `low-${m.id}-${idx}`,
-            title: '库存不足提醒',
-            message: `${m.name} 库存不足（当前${m.quantity}），请尽快补购`,
+            id: `val6m-${m.id}-${idx}`,
+            title: '6个月有效期提醒',
+            message: `${m.name} ${suffix}`,
             read: false,
             createdAt: now
           })
