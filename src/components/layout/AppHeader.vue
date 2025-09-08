@@ -231,6 +231,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '@/composables/useAuth'
+// 新增：服务与类型
+import { reminderService, type Reminder } from '@/services/reminderService'
+import { medicineApi } from '@/api/medicine'
+import type { Medicine } from '@/types/medicine'
 
 /**
  * 应用头部组件
@@ -247,27 +251,147 @@ const showNotifications = ref(false)
 // 计算属性
 const userName = computed(() => user.value?.username || '')
 
-// 模拟通知数据
-const notifications = ref([
-  {
-    id: 1,
-    title: '用药提醒',
-    message: '该服用阿司匹林了',
-    read: false,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 2,
-    title: '药品过期提醒',
-    message: '您的感冒药将在3天后过期',
-    read: true,
-    createdAt: new Date(Date.now() - 86400000).toISOString()
-  }
-])
+// 通知项类型与数据
+interface NotificationItem {
+  id: string
+  title: string
+  message: string
+  read: boolean
+  createdAt: string
+}
+
+// 用真实数据替换模拟通知
+const notifications = ref<NotificationItem[]>([])
 
 const hasUnreadNotifications = computed(() => 
   notifications.value.some(n => !n.read)
 )
+
+// 工具：单位展示
+const unitLabel = (unit?: string) => {
+  const map: Record<string, string> = {
+    tablet: '片',
+    capsule: '粒',
+    ml: 'ml',
+    mg: 'mg',
+    g: 'g',
+    drop: '滴',
+    spray: '喷',
+    patch: '贴',
+    injection: '支'
+  }
+  return unit && map[unit] ? map[unit] : ''
+}
+
+// 工具：格式化日期为 YYYY-MM-DD
+const formatDateYMD = (iso?: string) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+// 从各来源抓取通知
+const loadingNotifications = ref(false)
+const fetchNotifications = async () => {
+  if (!isAuthenticated.value) return
+  try {
+    loadingNotifications.value = true
+    const results = await Promise.allSettled([
+      reminderService.getTodayReminders(),
+      medicineApi.getExpiredMedicines(),
+      medicineApi.getExpiringSoonMedicines(),
+      medicineApi.getLowStockMedicines()
+    ])
+
+    const now = new Date().toISOString()
+    const tmp: NotificationItem[] = []
+
+    // 今日用药提醒
+    {
+      const r = results[0]
+      if (r.status === 'fulfilled' && r.value?.success) {
+        const list = r.value.data as Reminder[]
+        list.forEach((rem, idx) => {
+          const time = rem.reminder_time?.slice(0,5) || ''
+          const medName = rem.medicine?.name || '药品'
+          const dose = rem.dosage ? `${rem.dosage}${unitLabel(rem.dosage_unit)}` : ''
+          tmp.push({
+            id: `rem-${rem.id}-${idx}`,
+            title: '用药提醒',
+            message: `今天${time} 服用 ${medName}${dose ? ` · ${dose}` : ''}`,
+            read: false,
+            createdAt: rem.last_reminded_at || now
+          })
+        })
+      }
+    }
+
+    // 已过期药品
+    {
+      const r = results[1]
+      if (r.status === 'fulfilled' && r.value?.success) {
+        const list = r.value.data as Medicine[]
+        list.forEach((m, idx) => {
+          tmp.push({
+            id: `exp-${m.id}-${idx}`,
+            title: '药品过期提醒',
+            message: `${m.name} 已过期${m.expiry_date ? `（有效期：${formatDateYMD(m.expiry_date)}）` : ''}`,
+            read: false,
+            createdAt: now
+          })
+        })
+      }
+    }
+
+    // 即将过期药品
+    {
+      const r = results[2]
+      if (r.status === 'fulfilled' && r.value?.success) {
+        const list = r.value.data as Medicine[]
+        list.forEach((m, idx) => {
+          const days = (m as any).days_until_expiry
+          const suffix = days !== undefined && days !== null ? `（约${days}天后过期）` : ''
+          tmp.push({
+            id: `expsoon-${m.id}-${idx}`,
+            title: '药品即将过期',
+            message: `${m.name} ${suffix}`,
+            read: false,
+            createdAt: now
+          })
+        })
+      }
+    }
+
+    // 库存不足药品
+    {
+      const r = results[3]
+      if (r.status === 'fulfilled' && r.value?.success) {
+        const list = r.value.data as Medicine[]
+        list.forEach((m, idx) => {
+          tmp.push({
+            id: `low-${m.id}-${idx}`,
+            title: '库存不足提醒',
+            message: `${m.name} 库存不足（当前${m.quantity}），请尽快补购`,
+            read: false,
+            createdAt: now
+          })
+        })
+      }
+    }
+
+    // 按时间/重要性可排序（简单按创建时间降序）
+    notifications.value = tmp.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  } catch (e) {
+    // 失败不打断UI，仅记录
+    console.error('[通知] 获取失败:', e)
+  } finally {
+    loadingNotifications.value = false
+  }
+}
 
 /**
  * 切换用户菜单
@@ -287,11 +411,15 @@ const toggleMobileMenu = () => {
 }
 
 /**
- * 切换通知面板
+ * 切换通知面板（打开时拉取最新数据）
  */
-const toggleNotifications = () => {
-  showNotifications.value = !showNotifications.value
+const toggleNotifications = async () => {
+  const next = !showNotifications.value
+  showNotifications.value = next
   showUserMenu.value = false
+  if (next) {
+    await fetchNotifications()
+  }
 }
 
 /**
@@ -305,8 +433,9 @@ const handleLogout = async () => {
 /**
  * 标记通知为已读
  */
-const markAsRead = (id: number) => {
-  const notification = notifications.value.find(n => n.id === id)
+const markAsRead = (id: string | number) => {
+  const nid = String(id)
+  const notification = notifications.value.find(n => n.id === nid)
   if (notification) {
     notification.read = true
   }

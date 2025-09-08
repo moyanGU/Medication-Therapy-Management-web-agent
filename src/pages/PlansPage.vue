@@ -38,16 +38,16 @@
       <div class="mb-6">
         <div class="border-b border-gray-200">
           <nav class="-mb-px flex space-x-8">
-            <button class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm">
+            <button :class="tabClass('all')" @click="setTab('all')">
               全部计划
             </button>
-            <button class="border-blue-500 text-blue-600 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm">
+            <button :class="tabClass('long')" @click="setTab('long')">
               长期用药
             </button>
-            <button class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm">
+            <button :class="tabClass('short')" @click="setTab('short')">
               短期用药
             </button>
-            <button class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm">
+            <button :class="tabClass('completed')" @click="setTab('completed')">
               已完成
             </button>
           </nav>
@@ -57,7 +57,7 @@
       <!-- 用药计划列表 -->
       <div class="space-y-6">
         <!-- 长期用药计划 -->
-        <div class="bg-white rounded-lg shadow">
+        <div v-show="activeTab === 'all' || activeTab === 'long'" class="bg-white rounded-lg shadow">
           <div class="px-6 py-4 border-b border-gray-200">
             <div class="flex items-center justify-between">
               <div>
@@ -132,7 +132,7 @@
         </div>
 
         <!-- 短期用药计划 -->
-        <div class="bg-white rounded-lg shadow">
+        <div v-show="activeTab === 'all' || activeTab === 'short'" class="bg-white rounded-lg shadow">
           <div class="px-6 py-4 border-b border-gray-200">
             <div class="flex items-center justify-between">
               <div>
@@ -206,7 +206,7 @@
         </div>
 
         <!-- 已完成的计划 -->
-        <div class="bg-white rounded-lg shadow opacity-75">
+        <div v-show="activeTab === 'all' || activeTab === 'completed'" class="bg-white rounded-lg shadow opacity-75">
           <div class="px-6 py-4 border-b border-gray-200">
             <div class="flex items-center justify-between">
               <div>
@@ -261,8 +261,8 @@
         </div>
       </div>
 
-      <!-- 冲突检测结果 -->
-      <div class="mt-8 bg-white rounded-lg shadow">
+      <!-- 冲突检测结果（暂时隐藏） -->
+      <div v-if="false" class="mt-8 bg-white rounded-lg shadow">
         <div class="px-6 py-4 border-b border-gray-200">
           <h3 class="text-lg font-medium text-gray-900">药物相互作用检测</h3>
         </div>
@@ -286,8 +286,32 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 /**
  * 用药计划页面组件
  * 管理长期和短期用药计划，检测药物冲突
  */
+
+// 标签交互：默认显示“全部计划”
+const activeTab = ref<'all' | 'long' | 'short' | 'completed'>('all')
+
+/**
+ * 切换标签
+ * @param tab 目标标签
+ */
+const setTab = (tab: 'all' | 'long' | 'short' | 'completed') => {
+  console.log('[PlansPage] setTab ->', tab)
+  activeTab.value = tab
+}
+
+/**
+ * 计算标签按钮样式
+ * @param tab 标签名
+ */
+const tabClass = (tab: 'all' | 'long' | 'short' | 'completed') => {
+  const base = 'whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm'
+  const active = 'border-blue-500 text-blue-600'
+  const inactive = 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+  return `${base} ${activeTab.value === tab ? active : inactive}`
+}
 </script>
