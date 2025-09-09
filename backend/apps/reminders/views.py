@@ -191,7 +191,7 @@ class ReminderViewSet(viewsets.ModelViewSet):
                 'success': True,
                 'message': '提醒删除成功',
                 'data': None
-            }, status=status.HTTP_204_NO_CONTENT)
+            }, status=status.HTTP_200_OK)
             
         except Exception as e:
             logger.error(f"删除提醒失败: {str(e)}")
@@ -336,8 +336,7 @@ class ReminderViewSet(viewsets.ModelViewSet):
                 'total_reminders': queryset.count(),
                 'active_reminders': queryset.filter(is_active=True).count(),
                 'inactive_reminders': queryset.filter(is_active=False).count(),
--                'expired_reminders': len([r for r in queryset if r.is_expired()]),
-+                'expired_reminders': len([r for r in queryset if r.is_expired]),
+                'expired_reminders': len([r for r in queryset if r.is_expired]),
                 'today_reminders': len([r for r in queryset if r.should_remind_today()]),
                 'response_rate': 0,  # 需要从历史记录计算
                 'total_responses': 0,  # 需要从历史记录计算

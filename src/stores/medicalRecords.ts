@@ -272,7 +272,26 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
       })
       
       if (response.success) {
-        statistics.value = response.data
+        const s: any = response.data || {}
+        // 规范化键名映射，确保与页面使用的字段一致
+        const normalized: any = {
+          // 页面需要的四个核心指标
+          totalRecords: Number(
+            s.total_records ?? s.totalVisits ?? s.total_records_count ?? 0
+          ),
+          monthlyRecords: Number(
+            s.monthly_records ?? s.recentVisits ?? (Array.isArray(s.monthlyVisits) && s.monthlyVisits.length > 0
+              ? s.monthlyVisits[s.monthlyVisits.length - 1]?.count
+              : 0)
+          ),
+          totalCost: Number(s.total_cost ?? s.totalCost ?? 0),
+          avgSatisfaction: Number(s.avg_satisfaction ?? s.avg_effectiveness ?? 0),
+          
+          // 保留原始返回，供其他页面或图表使用
+          ...s
+        }
+        statistics.value = normalized
+        console.log('[medicalRecords] normalized statistics:', statistics.value)
       }
     } catch (err: any) {
       console.error('获取统计信息失败:', err)

@@ -175,6 +175,22 @@ class MedicationRecordViewSet(viewsets.ModelViewSet):
             'success': True,
             'data': serializer.data
         })
+
+    @action(detail=False, methods=['get'])
+    def categories(self, request):
+        """
+        分类数据占位接口（与前端期望的分类筛选结构对齐）
+        注意：MedicationRecord 模型不包含医院/科室/医生/诊断等字段，此处返回空列表结构，避免 404 并保持接口契约一致。
+        """
+        data = {
+            'hospitals': [],
+            'departments': [],
+            'doctors': [],
+            'diagnoses': [],
+            'visit_types': [],
+            'urgency_levels': []
+        }
+        return Response({'success': True, 'data': data})
     
     @action(detail=False, methods=['get'])
     def trends(self, request):

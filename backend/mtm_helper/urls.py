@@ -27,6 +27,8 @@ api_urlpatterns = [
     path('reminders/today/', ReminderViewSet.as_view({'get': 'today'}), name='reminders-today'),
     path('reminders/stats/', ReminderViewSet.as_view({'get': 'stats'}), name='reminders-stats'),
     path('reminders/upcoming/', ReminderViewSet.as_view({'get': 'upcoming'}), name='reminders-upcoming'),
+    # 显式注册批量切换激活状态的路由，避免 Router 未注册导致 404
+    path('reminders/batch_toggle/', ReminderViewSet.as_view({'post': 'batch_toggle'}), name='reminders-batch-toggle'),
     # 其余 reminders 路由（history、扩展 action 等）
     path('reminders/', include('apps.reminders.urls')),
     path('plans/', include('apps.plans.urls')),

@@ -392,7 +392,13 @@ const handleSubmit = async () => {
     
     // 确保medicine字段是数字类型
     if (typeof submitData.medicine === 'string') {
-      submitData.medicine = parseInt(submitData.medicine, 10)
+      const parsed = Number(submitData.medicine)
+      if (Number.isNaN(parsed) || parsed <= 0) {
+        console.error('🔴 [RecordForm] medicine 解析失败:', submitData.medicine)
+        errors.value.medicine = '请选择药品'
+        return
+      }
+      submitData.medicine = parsed
     }
     
     console.log('提交数据:', submitData)
@@ -422,12 +428,20 @@ const handleSubmit = async () => {
 
 // 生命周期
 onMounted(async () => {
+  console.log('🔵 [RecordForm] onMounted - 开始加载药品列表')
+  console.log('🔵 [RecordForm] 当前药品列表:', medicines.value)
+  
   // 加载药品列表
   if (!medicines.value || medicines.value.length === 0) {
+    console.log('🔵 [RecordForm] 药品列表为空，开始获取药品列表')
     await fetchMedicines()
+    console.log('🟢 [RecordForm] 药品列表获取完成:', medicines.value)
+  } else {
+    console.log('🟢 [RecordForm] 药品列表已存在，无需重新获取')
   }
   
   // 初始化表单
   initForm()
+  console.log('🟢 [RecordForm] 表单初始化完成')
 })
 </script>

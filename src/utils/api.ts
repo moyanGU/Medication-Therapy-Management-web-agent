@@ -111,6 +111,14 @@ class ApiClient {
    * 处理响应
    */
   private async handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
+    // 处理204 No Content响应
+    if (response.status === 204) {
+      return {
+        success: true,
+        data: null as T
+      }
+    }
+    
     let data: any
     
     try {
@@ -132,6 +140,14 @@ class ApiClient {
     // 如果响应数据不是标准格式，包装成标准格式
     if (typeof data === 'object' && data !== null && 'success' in data) {
       return data as ApiResponse<T>
+    }
+
+    // 处理双重data结构：如果后端返回 { data: { data: [...] } }，则提取内层data
+    if (typeof data === 'object' && data !== null && 'data' in data) {
+      return {
+        success: true,
+        data: data.data as T
+      }
     }
 
     return {

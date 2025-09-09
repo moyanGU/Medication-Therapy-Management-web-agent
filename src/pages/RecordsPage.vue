@@ -750,4 +750,19 @@ watchEffect(async () => {
 onMounted(() => {
   console.log('🔵 [RecordsPage] 组件挂载完成')
 })
+
+// 表单操作
+const closeForm = () => {
+  showCreateForm.value = false
+  showEditForm.value = false
+  editingRecord.value = null
+}
+
+const handleFormSuccess = async () => {
+  closeForm()
+  // 重新加载数据
+  await loadRecords()
+  await fetchStatistics()
+  await updateTodayMedicineTypes()
+}
 </script>

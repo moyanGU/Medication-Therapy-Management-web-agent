@@ -49,22 +49,24 @@ export const useMedicineStore = defineStore('medicine', () => {
       console.log('🔵 [Medicine Store] fetchMedicines 响应:', response)
       
       if (response.success) {
-        const data: any = response.data
+        // API工具已处理双重data结构，直接使用response.data
+        const actualData = response.data
+        
         // 判断是否为分页数据结构
-        const isPaginated = data && Array.isArray(data.results)
+        const isPaginated = actualData && Array.isArray(actualData.results)
         
         if (isPaginated) {
-          const results: Medicine[] = data.results ?? []
+          const results: Medicine[] = actualData.results ?? []
           medicines.value = results
           const firstImagePath = results[0]?.image_path
           console.log('🔵 [Medicine Store] 分页数据 results.length:', results.length)
           console.log('🔵 [Medicine Store] 第一个药品的 image_path:', firstImagePath)
           
           // 兼容不同字段命名
-          const currentPage = data.current_page ?? data.page ?? 1
-          const pageSize = data.page_size ?? data.pageSize ?? results.length
-          const total = data.total ?? data.count ?? results.length
-          const totalPages = data.total_pages ?? (
+          const currentPage = actualData.current_page ?? actualData.page ?? 1
+          const pageSize = actualData.page_size ?? actualData.pageSize ?? results.length
+          const total = actualData.total ?? actualData.count ?? results.length
+          const totalPages = actualData.total_pages ?? (
             pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1
           )
           
@@ -77,10 +79,10 @@ export const useMedicineStore = defineStore('medicine', () => {
         } else {
           // 非分页：后端可能直接返回数组，或者返回 { items: [], medicines: [] }
           let list: any = []
-          if (Array.isArray(data)) {
-            list = data
+          if (Array.isArray(actualData)) {
+            list = actualData
           } else {
-            list = data?.medicines ?? data?.items ?? []
+            list = actualData?.medicines ?? actualData?.items ?? []
           }
           if (!Array.isArray(list)) list = []
           medicines.value = list
