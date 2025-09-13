@@ -97,10 +97,15 @@ export const useMedicineStore = defineStore('medicine', () => {
         }
       } else {
         error.value = response.message || '获取药品列表失败'
+        console.error('🔴 [Medicine Store] 服务器返回失败', { message: error.value })
+        // 向上抛出错误，供调用方处理
+        throw new Error(error.value)
       }
     } catch (err: any) {
       error.value = err.message || '获取药品列表失败'
       console.error('获取药品列表失败:', err)
+      // 继续向上抛出，避免调用方误判成功
+      throw err
     } finally {
       loading.value = false
     }

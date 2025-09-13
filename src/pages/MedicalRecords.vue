@@ -7,7 +7,7 @@
         <p class="text-gray-600 mt-1">管理您的就医记录和病历信息</p>
       </div>
       <button
-        @click="showCreateModal = true"
+        @click="router.push({ name: 'MedicalRecordCreate' })"
         class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
       >
         <Plus class="w-4 h-4" />
@@ -161,8 +161,8 @@
       </div>
     </div>
 
-    <!-- 统计卡片 -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+    <!-- 统计卡片（临时隐藏：总病历数、本月新增、总费用、平均满意度） -->
+    <div v-if="false" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
       <!-- 总病历数 -->
       <div class="bg-white rounded-lg shadow-sm border p-6">
         <div class="flex items-center justify-between">
@@ -207,7 +207,7 @@
         <div class="flex items-center justify-between">
           <div>
             <p class="text-sm font-medium text-gray-600">平均满意度</p>
-            <p class="text-2xl font-bold text-gray-900">{{ statistics.avgSatisfaction.toFixed(1) }}</p>
+            <p class="text-2xl font-bold text-gray-900">{{ safeToFixed(statistics.avgSatisfaction, 1) }}</p>
           </div>
           <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
             <Star class="w-6 h-6 text-purple-600" />
@@ -251,7 +251,7 @@
         <FileText class="w-12 h-12 text-gray-400 mb-4" />
         <p class="text-gray-600 mb-4">暂无病历记录</p>
         <button
-          @click="showCreateModal = true"
+          @click="router.push({ name: 'MedicalRecordCreate' })"
           class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
         >
           添加第一条病历
@@ -459,9 +459,9 @@ const pagination = reactive({
 })
 
 // 模态框状态
-const showCreateModal = ref(false)
-const showEditModal = ref(false)
-const editingRecord = ref(null)
+// const showCreateModal = ref(false)
+// const showEditModal = ref(false)
+// const editingRecord = ref(null)
 
 // 计算属性
 const hasFilters = computed(() => {
@@ -511,16 +511,42 @@ const loadRecords = async () => {
  * 加载统计数据
  */
 const loadStatistics = async () => {
+  isLoading.value = true
+  error.value = ''
   try {
-    console.log('Loading medical records statistics')
-    await medicalRecordsStore.fetchStatistics()
-    
-    // 直接使用 store 状态
+    const params = {
+      dateFrom: searchParams.dateFrom || undefined,
+      dateTo: searchParams.dateTo || undefined,
+      hospital: searchParams.hospital || undefined,
+      department: searchParams.department || undefined,
+      visitType: searchParams.visitType || undefined,
+    }
+    await medicalRecordsStore.fetchStatistics(params)
+    // 将 store 的统计结果同步到本地，供模板渲染使用
     statistics.value = medicalRecordsStore.statistics
-    console.log('Statistics loaded:', statistics.value)
+    console.log('[MedicalRecords] Statistics loaded:', statistics.value)
   } catch (err) {
-    console.error('Error loading statistics:', err)
+    console.error('[MedicalRecords] 统计加载失败:', err)
+    error.value = '统计信息加载失败，请稍后重试。'
+    // 设置安全默认值到 store 和本地，避免渲染报错
+    const fallback = {
+      totalRecords: 0,
+      monthlyRecords: 0,
+      totalCost: 0,
+      avgSatisfaction: 0
+    }
+    medicalRecordsStore.statistics = fallback
+    statistics.value = fallback
+  } finally {
+    isLoading.value = false
   }
+}
+
+// 安全格式化函数，避免 undefined.toFixed 报错
+function safeToFixed(value, digits = 2) {
+  const num = Number(value)
+  if (Number.isFinite(num)) return num.toFixed(digits)
+  return (0).toFixed(digits)
 }
 
 /**
@@ -587,8 +613,8 @@ const viewRecord = (recordId: number) => {
  * 编辑病历
  */
 const editRecord = (record: any) => {
-  editingRecord.value = record
-  showEditModal.value = true
+  console.log('[MedicalRecords] Edit clicked, navigating to edit page for id:', record?.id)
+  router.push({ name: 'MedicalRecordEdit', params: { id: record.id } })
 }
 
 /**
@@ -619,21 +645,21 @@ const deleteRecord = async (recordId: number) => {
 /**
  * 关闭模态框
  */
-const closeModal = () => {
-  showCreateModal.value = false
-  showEditModal.value = false
-  editingRecord.value = null
-}
+// const closeModal = () => {
+//   showCreateModal.value = false
+//   showEditModal.value = false
+//   editingRecord.value = null
+// }
 
 /**
  * 表单提交成功处理
  */
-const handleFormSuccess = () => {
-  closeModal()
-  loadRecords()
-  loadStatistics()
-  toast.success(editingRecord.value ? '病历更新成功' : '病历创建成功')
-}
+// const handleFormSuccess = () => {
+//   closeModal()
+//   loadRecords()
+//   loadStatistics()
+//   toast.success(editingRecord.value ? '病历更新成功' : '病历创建成功')
+// }
 
 /**
  * 格式化日期

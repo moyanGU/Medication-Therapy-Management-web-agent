@@ -10,6 +10,7 @@ from apps.users.models import User
 # # from apps.core.utils import generate_verification_code, send_sms
 import re
 import logging
+from rest_framework.exceptions import ParseError
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +32,23 @@ def register(request):
     - data: 用户信息和令牌
     - message: 提示信息
     """
+    # 仅捕获请求体解析错误，避免误将客户端错误转为500
+    try:
+        data = request.data
+    except ParseError as pe:
+        logger.warning(f"用户注册请求体解析失败: {str(pe)}")
+        return Response({
+            'success': False,
+            'message': '请求体格式错误，请使用application/json提交',
+            'data': None
+        }, status=status.HTTP_400_BAD_REQUEST)
+
     try:
         # 获取请求参数
-        username = request.data.get('username', '').strip()
-        phone = request.data.get('phone', '').strip()
-        password = request.data.get('password', '').strip()
-        verification_code = request.data.get('verification_code', '').strip()
+        username = (data.get('username') or '').strip()
+        phone = (data.get('phone') or '').strip()
+        password = (data.get('password') or '').strip()
+        verification_code = (data.get('verification_code') or '').strip()
         
         logger.info(f"用户注册请求: username={username}, phone={phone}")
         
@@ -133,7 +145,7 @@ def register(request):
             }, status=status.HTTP_201_CREATED)
             
     except Exception as e:
-        logger.error(f"用户注册失败: {str(e)}")
+        logger.exception("用户注册失败")
         return Response({
             'success': False,
             'message': '注册失败，请稍后重试',
@@ -156,10 +168,21 @@ def login(request):
     - data: 用户信息和令牌
     - message: 提示信息
     """
+    # 仅捕获请求体解析错误，避免误将客户端错误转为500
+    try:
+        data = request.data
+    except ParseError as pe:
+        logger.warning(f"用户登录请求体解析失败: {str(pe)}")
+        return Response({
+            'success': False,
+            'message': '请求体格式错误，请使用application/json提交',
+            'data': None
+        }, status=status.HTTP_400_BAD_REQUEST)
+
     try:
         # 获取请求参数
-        username = request.data.get('username', '').strip()
-        password = request.data.get('password', '').strip()
+        username = (data.get('username') or '').strip()
+        password = (data.get('password') or '').strip()
         
         logger.info(f"用户登录请求: username={username}")
         
@@ -213,6 +236,13 @@ def login(request):
         
         logger.info(f"用户登录成功: user_id={user.id}, username={user.username}")
         
+        # 注意：avatar字段需可JSON序列化，这里返回URL或None
+        avatar_value = None
+        try:
+            avatar_value = user.avatar.url if getattr(user, 'avatar', None) and user.avatar.name else None
+        except Exception:
+            avatar_value = None
+        
         return Response({
             'success': True,
             'message': '登录成功',
@@ -223,7 +253,7 @@ def login(request):
                     'phone': user.phone,
                     'email': user.email,
                     'is_admin': user.is_admin,
-                    'avatar': (user.avatar or None),
+                    'avatar': avatar_value,
                     'created_at': user.created_at.isoformat()
                 },
                 'tokens': {
@@ -234,7 +264,7 @@ def login(request):
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
-        logger.error(f"用户登录失败: {str(e)}")
+        logger.exception("用户登录失败")
         return Response({
             'success': False,
             'message': '登录失败，请稍后重试',
@@ -289,7 +319,7 @@ def send_verification_code(request):
         logger.error(f"发送验证码失败: {str(e)}")
         return Response({
             'success': False,
-            'message': '发送验证码失败，请稍后重试',
+            'message': '发送失败，请稍后重试',
             'data': None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

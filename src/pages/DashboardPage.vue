@@ -151,7 +151,7 @@
 
         <!-- 个人设置 -->
         <router-link
-          to="/profile"
+          to="/settings"
           class="bg-white rounded-lg shadow hover:shadow-md transition-shadow duration-200 p-6 group"
         >
           <div class="flex items-center mb-4">

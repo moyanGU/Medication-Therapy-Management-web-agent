@@ -207,10 +207,11 @@ def api_docs(request):
                 'refresh': 'POST /api/auth/refresh/',
                 'logout': 'POST /api/auth/logout/'
             },
-            'users': {
-                'profile': 'GET /api/users/profile/',
-                'update_profile': 'PUT /api/users/profile/',
-                'change_password': 'POST /api/users/change-password/'
+            # 与实际路由一致，使用 /api/user/profile/
+            'user': {
+                'profile': 'GET /api/user/profile/',
+                'update_profile': 'PUT /api/user/profile/',
+                'change_password': 'POST /api/user/change-password/'
             },
             'medicines': {
                 'list': 'GET /api/medicines/',
@@ -220,51 +221,31 @@ def api_docs(request):
                 'delete': 'DELETE /api/medicines/{id}/',
                 'search': 'GET /api/medicines/search/'
             },
+            # 修正 records 文档端点，准确反映 DRF Router 挂载的 medication-records 子路由
             'records': {
-                'list': 'GET /api/records/',
-                'create': 'POST /api/records/',
-                'statistics': 'GET /api/records/statistics/'
+                'list': 'GET /api/records/medication-records/',
+                'create': 'POST /api/records/medication-records/',
+                'detail': 'GET /api/records/medication-records/{id}/',
+                'update': 'PUT /api/records/medication-records/{id}/',
+                'delete': 'DELETE /api/records/medication-records/{id}/',
+                'statistics': 'GET /api/records/medication-records/statistics/',
+                'trends': 'GET /api/records/medication-records/trends/',
+                'export': 'GET /api/records/medication-records/export/',
+                'recent': 'GET /api/records/medication-records/recent/'
             },
             'reminders': {
                 'list': 'GET /api/reminders/',
                 'create': 'POST /api/reminders/',
+                'detail': 'GET /api/reminders/{id}/',
                 'update': 'PUT /api/reminders/{id}/',
-                'delete': 'DELETE /api/reminders/{id}/'
-            },
-            'plans': {
-                'list': 'GET /api/plans/',
-                'create': 'POST /api/plans/',
-                'detail': 'GET /api/plans/{id}/',
-                'update': 'PUT /api/plans/{id}/',
-                'delete': 'DELETE /api/plans/{id}/'
-            },
-            'medical_records': {
-                'list': 'GET /api/medical-records/',
-                'create': 'POST /api/medical-records/',
-                'detail': 'GET /api/medical-records/{id}/',
-                'update': 'PUT /api/medical-records/{id}/',
-                'delete': 'DELETE /api/medical-records/{id}/'
-            }
-        },
-        'authentication': {
-            'type': 'JWT Bearer Token',
-            'header': 'Authorization: Bearer <token>'
-        },
-        'response_format': {
-            'success': {
-                'success': True,
-                'data': 'response_data',
-                'message': 'success_message'
-            },
-            'error': {
-                'success': False,
-                'data': None,
-                'message': 'error_message',
-                'error_code': 'ERROR_CODE'
+                'delete': 'DELETE /api/reminders/{id}/',
+                'today': 'GET /api/reminders/today/',
+                'stats': 'GET /api/reminders/stats/',
+                'upcoming': 'GET /api/reminders/upcoming/'
             }
         }
     }
-    
+    # 统一返回格式：success/data/message
     return success_response(docs_info, 'API文档获取成功')
 
 

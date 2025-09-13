@@ -4,17 +4,19 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from rest_framework.routers import DefaultRouter
 from django.http import HttpResponse
 from apps.core.views import api_docs
 from apps.reminders.views import ReminderViewSet
 
 # API路由配置（注意顺序）
 api_urlpatterns = [
-    path('', include('apps.core.urls')),
     path('auth/', include('apps.authentication.urls')),
-    path('medicines/', include('apps.medicines.urls')),
     path('records/', include('apps.records.urls')),
+    path('medical-records/', include('apps.medical_records.urls')),
+    # 用户资料接口：/api/user/profile
+    path('user/', include('apps.users.urls')),
+    # 新增：挂载药品管理路由，修复 /api/medicines/ 404
+    path('medicines/', include('apps.medicines.urls')),
     # 显式别名：确保 /api/reminders/ 与 /api/reminders/<pk>/ 支持 POST/PUT/PATCH/DELETE
     # 必须放在 include('apps.reminders.urls') 之前，避免被 DRF Router 根视图拦截导致 405
     path('reminders/', ReminderViewSet.as_view({'get': 'list', 'post': 'create'}), name='reminders-list-create'),

@@ -260,6 +260,17 @@ interface NotificationItem {
   createdAt: string
 }
 
+/**
+ * 通知列表状态
+ */
+const notifications = ref<NotificationItem[]>([])
+
+/**
+ * 是否存在未读通知
+ * 基于通知列表中 read 字段计算
+ */
+const hasUnreadNotifications = computed(() => notifications.value.some(n => !n.read))
+
 // 从各来源抓取通知
 const loadingNotifications = ref(false)
 const fetchNotifications = async () => {
@@ -299,6 +310,39 @@ const fetchNotifications = async () => {
       const nowDate = new Date()
       const diffMs = end.getTime() - nowDate.getTime()
       return Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+    }
+
+    /**
+     * 单位标签映射
+     * 将后端返回或存储的单位代码转换为可读中文/符号
+     */
+    const unitLabel = (unit?: string | null): string => {
+      const map: Record<string, string> = {
+        mg: 'mg',
+        g: 'g',
+        ml: 'ml',
+        tablet: '片',
+        capsule: '粒',
+        drop: '滴',
+        patch: '贴',
+        puff: '喷',
+      }
+      if (!unit) return ''
+      const key = String(unit).toLowerCase()
+      return map[key] ?? unit
+    }
+
+    /**
+     * 格式化日期为 YYYY-MM-DD
+     */
+    const formatDateYMD = (d?: string | Date | null): string => {
+      if (!d) return ''
+      const date = typeof d === 'string' ? new Date(d) : d
+      if (isNaN(date.getTime())) return ''
+      const y = date.getFullYear()
+      const m = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${y}-${m}-${day}`
     }
 
     // 今日用药提醒

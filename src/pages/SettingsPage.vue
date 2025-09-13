@@ -19,23 +19,25 @@
                 <label class="block text-sm font-medium text-gray-700 mb-2">用户名</label>
                 <input
                   type="text"
-                  v-model="userInfo.username"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  :value="userStore.userInfo?.username || ''"
+                  disabled
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-500 cursor-not-allowed"
                 />
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">手机号码</label>
                 <input
                   type="tel"
-                  v-model="userInfo.phone"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  :value="userStore.userInfo?.phone || ''"
+                  disabled
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-500 cursor-not-allowed"
                 />
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">邮箱地址</label>
                 <input
                   type="email"
-                  v-model="userInfo.email"
+                  v-model="form.email"
                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -43,43 +45,51 @@
                 <label class="block text-sm font-medium text-gray-700 mb-2">出生日期</label>
                 <input
                   type="date"
-                  v-model="userInfo.birthDate"
+                  v-model="form.birthDate"
                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">性别</label>
                 <select
-                  v-model="userInfo.gender"
+                  v-model="form.gender"
                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">请选择</option>
                   <option value="male">男</option>
                   <option value="female">女</option>
+                  <option value="other">其他</option>
                 </select>
               </div>
               <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">紧急联系人</label>
+                <input
+                  type="text"
+                  v-model="form.emergencyContact"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">紧急联系电话</label>
+                <input
+                  type="tel"
+                  v-model="form.emergencyPhone"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <!-- 以下字段暂未对接后端，先隐藏，避免展示模拟数据 -->
+              <div v-if="false">
                 <label class="block text-sm font-medium text-gray-700 mb-2">身高 (cm)</label>
-                <input
-                  type="number"
-                  v-model="userInfo.height"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
+                <input type="number" class="w-full px-3 py-2 border border-gray-300 rounded-md" />
               </div>
-              <div>
+              <div v-if="false">
                 <label class="block text-sm font-medium text-gray-700 mb-2">体重 (kg)</label>
-                <input
-                  type="number"
-                  v-model="userInfo.weight"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
+                <input type="number" class="w-full px-3 py-2 border border-gray-300 rounded-md" />
               </div>
-              <div>
+              <div v-if="false">
                 <label class="block text-sm font-medium text-gray-700 mb-2">血型</label>
-                <select
-                  v-model="userInfo.bloodType"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                >
+                <select class="w-full px-3 py-2 border border-gray-300 rounded-md">
                   <option value="">请选择</option>
                   <option value="A">A型</option>
                   <option value="B">B型</option>
@@ -88,23 +98,13 @@
                 </select>
               </div>
             </div>
-            <div class="mt-6">
+            <div class="mt-6" v-if="false">
               <label class="block text-sm font-medium text-gray-700 mb-2">过敏史</label>
-              <textarea
-                v-model="userInfo.allergies"
-                rows="3"
-                placeholder="请输入您的过敏史信息"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              ></textarea>
+              <textarea rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md"></textarea>
             </div>
-            <div class="mt-6">
+            <div class="mt-6" v-if="false">
               <label class="block text-sm font-medium text-gray-700 mb-2">既往病史</label>
-              <textarea
-                v-model="userInfo.medicalHistory"
-                rows="3"
-                placeholder="请输入您的既往病史"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              ></textarea>
+              <textarea rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md"></textarea>
             </div>
             <div class="mt-6 flex justify-end">
               <button
@@ -284,7 +284,7 @@
                 <div class="flex items-center justify-between">
                   <div>
                     <h3 class="text-sm font-medium text-gray-900">绑定手机</h3>
-                    <p class="text-sm text-gray-600">已绑定: 138****8888</p>
+                    <p class="text-sm text-gray-600">已绑定: {{ maskedPhone }}</p>
                   </div>
                   <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
@@ -346,61 +346,82 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
+import { useUserStore } from '@/stores/user'
 
-/**
- * 个人设置页面组件
- * 管理用户信息、提醒设置、隐私设置等
- */
+// 接入用户store
+const userStore = useUserStore()
 
-// 用户信息
-const userInfo = reactive({
-  username: '张三',
-  phone: '13888888888',
-  email: 'zhangsan@example.com',
-  birthDate: '1990-01-01',
-  gender: 'male',
-  height: 170,
-  weight: 65,
-  bloodType: 'A',
-  allergies: '青霉素过敏',
-  medicalHistory: '高血压病史3年'
-})
-
-// 设置选项
+// 本地提醒设置（当前未对接后端）
 const settings = reactive({
   medicationReminder: true,
   appointmentReminder: true,
   expiryReminder: true,
-  reminderAdvanceTime: '15',
   dataSync: true,
-  analytics: false
+  analytics: false,
+  reminderAdvanceTime: '15',
+})
+
+// 表单仅包含后端可写字段
+const form = reactive({
+  email: '',
+  birthDate: '',
+  gender: '',
+  emergencyContact: '',
+  emergencyPhone: '',
+  avatar: ''
+})
+
+// 已绑定手机号（脱敏显示）
+const maskedPhone = computed(() => {
+  const p = userStore.userInfo?.phone || ''
+  if (!p) return '未绑定'
+  // 将中间四位替换为*，仅在为11位数字时处理
+  return /^\d{11}$/.test(p) ? p.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2') : p
 })
 
 const saving = ref(false)
 
-/**
- * 切换设置开关
- */
-const toggleSetting = (key: keyof typeof settings) => {
-  if (typeof settings[key] === 'boolean') {
-    (settings[key] as boolean) = !(settings[key] as boolean)
+onMounted(async () => {
+  console.debug('[SettingsPage] onMounted: fetch user profile')
+  await userStore.fetchUserInfo()
+  const u = userStore.userInfo
+  if (u) {
+    form.email = u.email || ''
+    form.birthDate = u.birthDate || ''
+    form.gender = (u.gender as any) || ''
+    form.emergencyContact = u.emergencyContact || ''
+    form.emergencyPhone = u.emergencyPhone || ''
+    form.avatar = u.avatar || ''
   }
-}
+})
 
 /**
- * 保存用户信息
+ * 保存用户信息：仅提交允许的字段
  */
 const saveUserInfo = async () => {
   saving.value = true
   try {
-    // TODO: 调用API保存用户信息
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    console.log('保存用户信息:', userInfo)
+    console.debug('[SettingsPage] 保存用户信息 payload =', { ...form })
+    const res = await userStore.updateUserInfo({ ...form })
+    if (res.success) {
+      console.debug('[SettingsPage] 保存成功')
+    } else {
+      console.warn('[SettingsPage] 保存失败:', res.message)
+    }
   } catch (error) {
-    console.error('保存失败:', error)
+    console.error('[SettingsPage] 保存失败:', error)
   } finally {
     saving.value = false
+  }
+}
+
+/**
+ * 切换设置开关（保留原逻辑）
+ */
+const toggleSetting = (key: keyof typeof settings) => {
+  if (typeof settings[key] === 'boolean') {
+    ;(settings[key] as boolean) = !(settings[key] as boolean)
   }
 }
 </script>

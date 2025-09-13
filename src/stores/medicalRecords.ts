@@ -5,6 +5,8 @@ import { ApiClient } from '@/utils/api'
 const apiClient = new ApiClient()
 import type { MedicalRecord, MedicalRecordCreate, MedicalRecordUpdate } from '@/types/medicalRecord'
 
+const BASE_PATH = '/medical-records/records/'
+
 export const useMedicalRecordStore = defineStore('medicalRecord', () => {
   // 状态
   const records = ref<MedicalRecord[]>([])
@@ -65,43 +67,65 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
       loading.value = true
       error.value = null
       
-      const queryParams = {
+      const queryParams: Record<string, any> = {
         page: pagination.value.page,
         page_size: pagination.value.pageSize,
         ...searchParams.value,
         ...params
       }
-      
-      // 移除空值参数
-      Object.keys(queryParams).forEach(key => {
-        if (!queryParams[key]) {
-          delete queryParams[key]
+      // 规范化查询键名：camelCase -> snake_case（与后端 FilterSet 字段一致）
+      if (queryParams.dateFrom) {
+        queryParams.visit_date_from = queryParams.dateFrom
+        delete queryParams.dateFrom
+      }
+      if (queryParams.dateTo) {
+        queryParams.visit_date_to = queryParams.dateTo
+        delete queryParams.dateTo
+      }
+      if (queryParams.visitType) {
+        queryParams.visit_type = queryParams.visitType
+        delete queryParams.visitType
+      }
+      if (queryParams.keyword) {
+        queryParams.search = queryParams.keyword
+        delete queryParams.keyword
+      }
+      // 移除空值
+      Object.keys(queryParams).forEach(k => {
+        if (queryParams[k] === '' || queryParams[k] === undefined || queryParams[k] === null) {
+          delete queryParams[k]
         }
       })
       
       console.log('[medicalRecords] fetchRecords params:', queryParams)
-      const response = await apiClient.get('/records/medication-records/', {
-        params: queryParams
-      })
+      const response = await apiClient.get(BASE_PATH, { params: queryParams })
       
       if (response.success) {
-        // 按标准结构解包 { success, data: { results: [], count: number } }
         const list = response.data?.results ?? []
-        const count = response.data?.count ?? 0
+        // 兼容新的分页结构(data.pagination.count)与旧结构(data.count)
+        const count = response.data?.pagination?.count ?? response.data?.count ?? 0
         records.value = list
         
-        // 更新分页信息
-        pagination.value.total = count
-        pagination.value.totalPages = Math.ceil(count / pagination.value.pageSize)
-        console.log('[medicalRecords] fetchRecords success: size=', list.length, 'total=', count)
+        // 更新分页信息（优先采用服务端返回的分页信息）
+        const serverPg = response.data?.pagination
+        const pageSize = Number(serverPg?.page_size ?? pagination.value.pageSize)
+        pagination.value.pageSize = pageSize
+        pagination.value.total = Number(count)
+        pagination.value.totalPages = Number(serverPg?.total_pages ?? Math.ceil(Number(count) / pageSize))
+        console.log('[medicalRecords] fetchRecords success:', {
+          size: list.length,
+          total: pagination.value.total,
+          pageSize: pagination.value.pageSize,
+          totalPages: pagination.value.totalPages
+        })
       } else {
         throw new Error(response.message || '获取病历列表失败')
       }
     } catch (err: any) {
       error.value = err.message || '获取病历列表失败'
-       console.error('获取病历列表失败:', err)
-       throw err
-     } finally {
+      console.error('获取病历列表失败:', err)
+      throw err
+    } finally {
       loading.value = false
     }
   }
@@ -113,7 +137,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
       error.value = null
       
       console.log('[medicalRecords] fetchRecord id=', id)
-      const response = await apiClient.get(`/records/medication-records/${id}/`)
+      const response = await apiClient.get(`${BASE_PATH}${id}/`)
       
       if (response.success) {
         currentRecord.value = response.data
@@ -137,7 +161,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
       error.value = null
       
       console.log('[medicalRecords] createRecord payload:', recordData)
-      const response = await apiClient.post('/records/medication-records/', recordData)
+      const response = await apiClient.post(BASE_PATH, recordData)
       
       if (response.success) {
         // 重新获取列表
@@ -162,7 +186,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
       error.value = null
       
       console.log('[medicalRecords] updateRecord id=', id, 'payload:', recordData)
-      const response = await apiClient.put(`/records/medication-records/${id}/`, recordData)
+      const response = await apiClient.put(`${BASE_PATH}${id}/`, recordData)
       
       if (response.success) {
         // 更新当前记录
@@ -196,7 +220,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
       error.value = null
       
       console.log('[medicalRecords] deleteRecord id=', id)
-      const response = await apiClient.delete(`/records/medication-records/${id}/`)
+      const response = await apiClient.delete(`${BASE_PATH}${id}/`)
       
       if (response.success) {
         // 从列表中移除
@@ -253,7 +277,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
   const fetchCategories = async () => {
     try {
       console.log('[medicalRecords] fetchCategories')
-      const response = await apiClient.get('/records/medication-records/categories/')
+      const response = await apiClient.get(`${BASE_PATH}categories/`)
       
       if (response.success) {
         categories.value = response.data
@@ -267,25 +291,67 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
   const fetchStatistics = async (params: any = {}) => {
     try {
       console.log('[medicalRecords] fetchStatistics params:', params)
-      const response = await apiClient.get('/records/medication-records/statistics/', {
-        params
+      const statsParams: Record<string, any> = { ...params }
+
+      // 统一参数命名与格式（后端需要 snake_case 与 YYYY-MM-DD）
+      if (statsParams.dateFrom) {
+        statsParams.date_from = statsParams.dateFrom
+        delete statsParams.dateFrom
+      }
+      if (statsParams.dateTo) {
+        statsParams.date_to = statsParams.dateTo
+        delete statsParams.dateTo
+      }
+      if (statsParams.visitType) {
+        statsParams.visit_type = statsParams.visitType
+        delete statsParams.visitType
+      }
+
+      // 将日期对象或ISO字符串格式化为 YYYY-MM-DD，避免后端解析错误导致400
+      const toYMD = (input: any) => {
+        try {
+          const d = input instanceof Date ? input : new Date(input)
+          if (Number.isNaN(d.getTime())) return undefined
+          const y = d.getFullYear()
+          const m = String(d.getMonth() + 1).padStart(2, '0')
+          const day = String(d.getDate()).padStart(2, '0')
+          return `${y}-${m}-${day}`
+        } catch {
+          return undefined
+        }
+      }
+      if (statsParams.date_from) statsParams.date_from = toYMD(statsParams.date_from)
+      if (statsParams.date_to) statsParams.date_to = toYMD(statsParams.date_to)
+
+      console.log('[medicalRecords] fetchStatistics final params:', statsParams)
+      const response = await apiClient.get(`${BASE_PATH}statistics/`, {
+        params: statsParams
       })
+      console.log('[medicalRecords] fetchStatistics response:', response)
       
       if (response.success) {
         const s: any = response.data || {}
+        // 处理 monthly_visits 数组，取最近一个月的计数作为回退
+        const monthlyArr = Array.isArray(s.monthly_visits)
+          ? s.monthly_visits
+          : (Array.isArray(s.monthlyVisits) ? s.monthlyVisits : [])
+        const lastMonthCount = monthlyArr.length
+          ? Number(monthlyArr[monthlyArr.length - 1]?.count ?? 0)
+          : 0
+
         // 规范化键名映射，确保与页面使用的字段一致
         const normalized: any = {
           // 页面需要的四个核心指标
           totalRecords: Number(
-            s.total_records ?? s.totalVisits ?? s.total_records_count ?? 0
+            s.total_visits ?? s.total_records ?? s.total_records_count ?? 0
           ),
           monthlyRecords: Number(
-            s.monthly_records ?? s.recentVisits ?? (Array.isArray(s.monthlyVisits) && s.monthlyVisits.length > 0
-              ? s.monthlyVisits[s.monthlyVisits.length - 1]?.count
-              : 0)
+            s.recent_visits ?? s.monthly_records ?? lastMonthCount
           ),
           totalCost: Number(s.total_cost ?? s.totalCost ?? 0),
-          avgSatisfaction: Number(s.avg_satisfaction ?? s.avg_effectiveness ?? 0),
+          avgSatisfaction: Number(
+            s.average_satisfaction ?? s.avg_satisfaction ?? s.avg_effectiveness ?? 0
+          ),
           
           // 保留原始返回，供其他页面或图表使用
           ...s
@@ -302,7 +368,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
   const fetchRecentRecords = async (days: number = 30) => {
     try {
       console.log('[medicalRecords] fetchRecentRecords days=', days)
-      const response = await apiClient.get('/records/medication-records/recent/', {
+      const response = await apiClient.get(`${BASE_PATH}recent/`, {
         params: { days }
       })
       
@@ -318,7 +384,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
   const fetchFollowUpDue = async () => {
     try {
       console.log('[medicalRecords] fetchFollowUpDue')
-      const response = await apiClient.get('/records/medication-records/follow_up_due/')
+      const response = await apiClient.get(`${BASE_PATH}follow_up_due/`)
       
       if (response.success) {
         return response.data

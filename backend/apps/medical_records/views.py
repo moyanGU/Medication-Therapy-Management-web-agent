@@ -302,7 +302,7 @@ class MedicalRecordViewSet(viewsets.ModelViewSet):
                 'total_cost': cost_stats['total_cost'] or 0,
                 'average_cost': cost_stats['avg_cost'] or 0,
                 'average_satisfaction': satisfaction_stats['avg_satisfaction'] or 0,
-                'follow_up_due_count': follow_up_due_count
+                'follow_up_due': follow_up_due_count  # 修正字段名，与序列化器一致
             }
             
             serializer = MedicalRecordStatisticsSerializer(statistics_data)
