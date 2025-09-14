@@ -26,3 +26,26 @@ dist-ssr
 # temp files (maintenance)\r\n*.tmp
 *.vue.tmp
 
+# Env files (never commit secrets)
+.env
+.env.*
+backend/.env
+backend/.env.*
+# keep examples if any
+!.env.example
+!.env.prod.example
+backend/!.env.example
+
+# Database and dumps
+*.rdb
+*.sql
+backend/db.sqlite3
+
+# Certificates/keys (if present)
+*.pem
+*.key
+
+# Certbot artifacts
+certbot/conf/
+certbot/www/
+
