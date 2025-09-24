@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+import socket
 
 # Load environment variables
 load_dotenv()
@@ -16,7 +17,8 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-me-in-production')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# 规范化 ALLOWED_HOSTS（逗号分隔 + 去空白）
+ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if h.strip()]
 
 # Application definition
 DJANGO_APPS = [
@@ -85,20 +87,57 @@ TEMPLATES = [
 WSGI_APPLICATION = 'mtm_helper.wsgi.application'
 
 # Database
+# Connection recycling seconds for persistent connections
+DB_CONN_MAX_AGE = int(os.getenv('DB_CONN_MAX_AGE', '0'))
+
+
+def get_db_host():
+    """
+    返回数据库主机地址。
+    优先使用环境变量 DB_HOST；若未设置，默认使用 RDS 内网域名 'db-prod.mtm-helper.com'。
+    在非生产环境（DEBUG=True）且无法解析时，回退到 'localhost' 以防开发阻塞。
+    同时打印解析结果，便于确认是否为内网地址（RFC1918）。
+    """
+    host = os.getenv('DB_HOST', 'db-prod.mtm-helper.com')
+    try:
+        ip = socket.gethostbyname(host)
+        is_private = (
+            ip.startswith('10.') or
+            ip.startswith('172.') or
+            ip.startswith('192.168.')
+        )
+        print(f"[DB_HOST] 解析 {host} -> {ip} (private={is_private})")
+        # 如果是生产且解析到公网IP，给出告警
+        if not DEBUG and not is_private:
+            print("⚠️ 警告：DB_HOST解析到公网IP，请确认使用RDS内网域名并启用内网白名单。")
+    except Exception as e:
+        print(f"⚠️ DB_HOST解析失败: {host}, {e}")
+        if DEBUG:
+            host = 'localhost'
+    return host
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': os.getenv('DB_NAME', 'mtm_helper'),
         'USER': os.getenv('DB_USER', 'root'),
         'PASSWORD': os.getenv('DB_PASSWORD', '{Ghp880218}.'),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'HOST': get_db_host(),
         'PORT': os.getenv('DB_PORT', '3306'),
+        'CONN_MAX_AGE': DB_CONN_MAX_AGE,
         'OPTIONS': {
             'charset': 'utf8mb4',
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
         }
     }
 }
+
+# Optional MySQL SSL
+if os.getenv('DB_USE_SSL', 'false').lower() == 'true':
+    ssl_ca = os.getenv('DB_SSL_CA')
+    # Only add SSL options when CA is provided to avoid driver errors
+    if ssl_ca:
+        DATABASES['default']['OPTIONS']['ssl'] = {'ca': ssl_ca}
 
 # Redis Cache
 CACHES = {
@@ -190,9 +229,23 @@ SIMPLE_JWT = {
 }
 
 # CORS Settings
-CORS_ALLOWED_ORIGINS = [
+# 允许通过环境变量以逗号分隔的形式传入白名单，生产环境不回退到本地清单
+# 示例：CORS_ALLOWED_ORIGINS=https://mtm-helper.com,https://admin.mtm-helper.com
+#       CSRF_TRUSTED_ORIGINS=https://mtm-helper.com
+
+def _csv_env(name: str, default_list: list[str] | None = None) -> list[str]:
+    value = os.getenv(name)
+    if value is not None and value.strip() != '':
+        return [item.strip() for item in value.split(',') if item.strip()]
+    return (default_list or [])
+
+DEV_CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    # 预览端口 4173（vite preview）
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+    # 开发端口 5173、5174、5175
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:5174",
@@ -200,6 +253,11 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5175",
     "http://127.0.0.1:5175",
 ]
+DEV_CSRF_TRUSTED_ORIGINS = DEV_CORS_ALLOWED_ORIGINS
+
+# 统一CORS/CSRF配置读取，开发环境提供默认白名单，生产环境仅从环境变量读取
+CORS_ALLOWED_ORIGINS = _csv_env('CORS_ALLOWED_ORIGINS', DEV_CORS_ALLOWED_ORIGINS if DEBUG else [])
+CSRF_TRUSTED_ORIGINS = _csv_env('CSRF_TRUSTED_ORIGINS', DEV_CSRF_TRUSTED_ORIGINS if DEBUG else [])
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -246,3 +304,28 @@ LOGGING = {
 
 # Create logs directory if it doesn't exist
 os.makedirs(BASE_DIR / 'logs', exist_ok=True)
+
+# ---------------- SMS/Verification Settings ----------------
+# 短信验证码有效期（秒），默认5分钟。生产环境请通过环境变量覆盖。
+SMS_CODE_TTL = int(os.getenv('SMS_CODE_TTL', '300'))
+# 发送频率限制（秒），同一手机号两次发送之间的最小间隔，默认60秒。
+SMS_RATE_LIMIT_SECONDS = int(os.getenv('SMS_RATE_LIMIT_SECONDS', '60'))
+# 开发环境是否在响应中回显验证码（仅用于联调与本地测试，生产务必设为False）
+SMS_DEV_ECHO = os.getenv('SMS_DEV_ECHO', 'true' if DEBUG else 'false').lower() == 'true'
+# 短信模板占位（服务商未落地前用于统一格式化文案）
+SMS_TEMPLATES = {
+    'verification': os.getenv('SMS_TEMPLATE_VERIFICATION', '【MTM用药助手】您的验证码是 {code}，{ttl} 分钟内有效。如非本人操作，请忽略本短信。'),
+    'reminder': os.getenv('SMS_TEMPLATE_REMINDER', '【MTM用药助手】{title}：{message}')
+}
+# -----------------------------------------------------------
+
+# ---------------- Spug Push Settings ----------------
+# 是否启用Spug推送平台发送短信
+SPUG_PUSH_ENABLED = os.getenv('SPUG_PUSH_ENABLED', 'false').lower() == 'true'
+# Spug推送平台基础URL
+SPUG_PUSH_URL = os.getenv('SPUG_PUSH_URL', 'https://push.spug.cc')
+# Spug模板ID（必须配置，否则不会发送）
+SPUG_TEMPLATE_ID = os.getenv('SPUG_TEMPLATE_ID', '')
+# Spug应用名称，用于模板中展示
+SPUG_APP_NAME = os.getenv('SPUG_APP_NAME', 'MTM用药助手')
+# ---------------------------------------------------
