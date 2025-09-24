@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 import socket
+from django.core.exceptions import ImproperlyConfigured
 
 # Load environment variables
 load_dotenv()
@@ -119,12 +120,19 @@ def get_db_host():
             host = 'localhost'
     return host
 
+DB_USER_ENV = os.getenv('DB_USER')
+DB_PASSWORD_ENV = os.getenv('DB_PASSWORD')
+if not DB_USER_ENV or not DB_PASSWORD_ENV:
+    # 关键位置打印日志，便于定位启动失败原因
+    print("❌ 缺少必需的数据库环境变量：DB_USER/DB_PASSWORD。为安全起见不再提供默认 root 用户，请在 .env 中配置强口令用户。")
+    raise ImproperlyConfigured("Missing DB_USER or DB_PASSWORD environment variables.")
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': os.getenv('DB_NAME', 'mtm_helper'),
-        'USER': os.getenv('DB_USER', 'root'),
-        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'USER': DB_USER_ENV,
+        'PASSWORD': DB_PASSWORD_ENV,
         'HOST': get_db_host(),
         'PORT': os.getenv('DB_PORT', '3306'),
         'CONN_MAX_AGE': DB_CONN_MAX_AGE,

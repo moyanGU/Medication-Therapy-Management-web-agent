@@ -18,10 +18,15 @@ def test_mysql_connection():
     config = {
         'host': os.getenv('DB_HOST', 'localhost'),
         'port': int(os.getenv('DB_PORT', '3306')),
-        'user': os.getenv('DB_USER', 'root'),
+        'user': os.getenv('DB_USER'),
         'password': os.getenv('DB_PASSWORD'),
         'charset': 'utf8mb4'
     }
+
+    # 必填校验，避免误用默认 root
+    if not config['user'] or not config['password']:
+        print("❌ 缺少必需的数据库环境变量：DB_USER/DB_PASSWORD，请在 .env 中设置后再运行测试。")
+        return False
 
     print(f"连接配置: {config['host']}:{config['port']}")
     print(f"用户: {config['user']}")
