@@ -89,7 +89,10 @@ WSGI_APPLICATION = 'mtm_helper.wsgi.application'
 # Database
 # Connection recycling seconds for persistent connections
 DB_CONN_MAX_AGE = int(os.getenv('DB_CONN_MAX_AGE', '0'))
-
+# MySQL connection/read/write timeouts (seconds)
+DB_CONNECT_TIMEOUT = int(os.getenv('DB_CONNECT_TIMEOUT', '5'))
+DB_READ_TIMEOUT = int(os.getenv('DB_READ_TIMEOUT', '15'))
+DB_WRITE_TIMEOUT = int(os.getenv('DB_WRITE_TIMEOUT', str(DB_READ_TIMEOUT)))
 
 def get_db_host():
     """
@@ -128,6 +131,10 @@ DATABASES = {
         'OPTIONS': {
             'charset': 'utf8mb4',
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            # Timeouts effective for PyMySQL/MySQLdb (PyMySQL installed_as_MySQLdb)
+            'connect_timeout': DB_CONNECT_TIMEOUT,
+            'read_timeout': DB_READ_TIMEOUT,
+            'write_timeout': DB_WRITE_TIMEOUT,
         }
     }
 }
