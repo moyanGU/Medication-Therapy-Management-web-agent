@@ -151,17 +151,24 @@ if os.getenv('DB_USE_SSL', 'false').lower() == 'true':
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
-        # 默认值仅用于本地开发；生产环境必须通过环境变量覆盖
-        'LOCATION': f"redis://:{os.getenv('REDIS_PASSWORD', 'ghp880218')}@{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', '6379')}/0",
+        # 默认值只用于本地开发；生产必须通过环境变量覆盖，且默认不再提供明文密码
+        'LOCATION': (
+            lambda host, port, pwd: (
+                f"redis://:{pwd}@{host}:{port}/0" if pwd else f"redis://{host}:{port}/0"
+            )
+        )(
+            os.getenv('REDIS_HOST', 'localhost'),
+            os.getenv('REDIS_PORT', '6379'),
+            os.getenv('REDIS_PASSWORD')
+        ),
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            # 连接与操作超时，避免请求长期阻塞
             'CONNECTION_POOL_KWARGS': {
                 'max_connections': 50,
                 'retry_on_timeout': True,
             },
-            'SOCKET_CONNECT_TIMEOUT': 2,  # 连接超时秒
-            'SOCKET_TIMEOUT': 2,          # 读写超时秒
+            'SOCKET_CONNECT_TIMEOUT': 2,
+            'SOCKET_TIMEOUT': 2,
         }
     }
 }
