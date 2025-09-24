@@ -29,6 +29,7 @@ services:
       - DB_CONN_MAX_AGE=${DB_CONN_MAX_AGE:-120}
       - DB_CONNECT_TIMEOUT=${DB_CONNECT_TIMEOUT:-5}
       - DB_READ_TIMEOUT=${DB_READ_TIMEOUT:-15}
+      - DB_WRITE_TIMEOUT=${DB_WRITE_TIMEOUT:-15}
       # Redis 统一从环境注入
       - REDIS_HOST=redis
       - REDIS_PORT=6379
