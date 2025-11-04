@@ -9,8 +9,114 @@ from django.utils.deprecation import MiddlewareMixin
 from django.conf import settings
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+import requests
 
 logger = logging.getLogger('mtm_helper')
+
+# Redis 异常聚合计数相关全局状态（使用双端队列记录时间戳，并通过锁保证线程安全）
+from collections import deque
+import threading
+_redis_error_times = deque()
+_redis_error_lock = threading.Lock()
+_last_redis_alert_at = 0.0
+
+def _mask_redis_location():
+    """
+    返回脱敏后的Redis连接信息（不包含密码）。
+    """
+    try:
+        loc = getattr(settings, 'CACHES', {}).get('default', {}).get('LOCATION')
+        if isinstance(loc, str) and '@' in loc:
+            # 形如 redis://:pwd@host:port/0 → redis://****@host:port/0
+            right = loc.split('@', 1)[1]
+            return f"redis://****@{right}"
+        return str(loc)
+    except Exception:
+        return 'unknown'
+
+def _notify_spug_alert(op: str, count: int, window: int, threshold: int, cooldown: int, masked_loc: str) -> None:
+    """
+    向 Spug 推送 Redis 聚合告警（可选，需开启配置）。
+    为避免引入不必要的风险，推送失败不会影响业务流程，仅记录日志。
+
+    Args:
+        op: 操作类型（如 'get' 或 'set'）
+        count: 窗口内异常次数
+        window: 时间窗口（秒）
+        threshold: 告警阈值
+        cooldown: 冷却时间（秒）
+        masked_loc: 脱敏后的 Redis 连接信息
+    """
+    try:
+        if not getattr(settings, 'SPUG_PUSH_ENABLED', False):
+            return
+        template_id = getattr(settings, 'SPUG_TEMPLATE_ID', '')
+        base_url = getattr(settings, 'SPUG_PUSH_URL', '')
+        app_name = getattr(settings, 'SPUG_APP_NAME', 'MTM用药助手')
+        token = getattr(settings, 'SPUG_PUSH_TOKEN', '')
+        timeout = int(getattr(settings, 'SPUG_PUSH_TIMEOUT_SECONDS', 3))
+        if not template_id or not base_url:
+            logger.debug('[SpugPush] 未配置模板或URL，跳过推送。')
+            return
+        payload = {
+            'template_id': template_id,
+            'title': f'{app_name} Redis异常聚合告警',
+            'content': {
+                'op': op,
+                'count': count,
+                'window_seconds': window,
+                'threshold': threshold,
+                'cooldown_seconds': cooldown,
+                'redis_location_masked': masked_loc,
+                'pool_max': getattr(settings, 'REDIS_POOL_MAX_CONNECTIONS', 'unknown'),
+                'connect_timeout': getattr(settings, 'REDIS_SOCKET_CONNECT_TIMEOUT', 'unknown'),
+                'socket_timeout': getattr(settings, 'REDIS_SOCKET_TIMEOUT', 'unknown'),
+                'key_prefix': getattr(settings, 'REDIS_KEY_PREFIX', 'mtm-helper'),
+            }
+        }
+        headers = {'Content-Type': 'application/json'}
+        if token:
+            headers['Authorization'] = f'Bearer {token}'
+        url = f"{base_url.rstrip('/')}/api/push"
+        resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
+        if resp.status_code >= 300:
+            logger.warning(f"[SpugPush] 发送失败: status={resp.status_code}, body={resp.text[:200]}")
+        else:
+            logger.info(f"[SpugPush] 已发送Redis聚合告警，返回: {resp.text[:200]}")
+    except Exception as e:
+        logger.warning(f"[SpugPush] 推送异常(已忽略): {e}")
+
+def _inc_redis_error(op: str, exc: Exception):
+    """
+    记录一次Redis异常，并在达到阈值时输出聚合告警。
+    Args:
+        op: 操作类型，如 'get' 或 'set'
+        exc: 捕获的异常对象
+    """
+    global _last_redis_alert_at
+    now = time.time()
+    window = getattr(settings, 'REDIS_ERROR_ALERT_WINDOW_SECONDS', 60)
+    threshold = getattr(settings, 'REDIS_ERROR_ALERT_THRESHOLD', 8)
+    cooldown = getattr(settings, 'REDIS_ERROR_ALERT_COOLDOWN_SECONDS', 120)
+    # 入队并清理窗口外事件
+    with _redis_error_lock:
+        _redis_error_times.append(now)
+        while _redis_error_times and (now - _redis_error_times[0]) > window:
+            _redis_error_times.popleft()
+        count = len(_redis_error_times)
+    # 仅在达到阈值且冷却时间已过时输出聚合告警（避免日志风暴）
+    if count >= threshold and (now - _last_redis_alert_at) >= cooldown:
+        _last_redis_alert_at = now
+        masked_loc = _mask_redis_location()
+        logger.error(
+            f"🔴 [CacheMiddleware][Redis异常聚合告警] 最近{window}s内捕获到{count}次Redis异常(阈值={threshold}, 操作={op})；"
+            f"连接(脱敏)：{masked_loc}，POOL_MAX={getattr(settings, 'REDIS_POOL_MAX_CONNECTIONS', 'unknown')}, "
+            f"CONNECT_TIMEOUT={getattr(settings, 'REDIS_SOCKET_CONNECT_TIMEOUT', 'unknown')}, "
+            f"SOCKET_TIMEOUT={getattr(settings, 'REDIS_SOCKET_TIMEOUT', 'unknown')}, "
+            f"KEY_PREFIX={getattr(settings, 'REDIS_KEY_PREFIX', 'mtm-helper')}"
+        )
+        # 可选推送至 Spug
+        _notify_spug_alert(op, count, window, threshold, cooldown, masked_loc)
 
 
 class RequestLoggingMiddleware(MiddlewareMixin):
@@ -149,6 +255,7 @@ class CacheMiddleware(MiddlewareMixin):
         try:
             cached_response = cache.get(cache_key)
         except Exception as e:
+            _inc_redis_error('get', e)
             logger.warning(f"[CacheMiddleware] 缓存读取失败，将降级为直通请求: {e}")
             return None
         
@@ -191,6 +298,7 @@ class CacheMiddleware(MiddlewareMixin):
                 cache.set(cache_key, cache_data, self.cache_timeout)
                 logger.debug(f"设置缓存: {cache_key}")
             except Exception as e:
+                _inc_redis_error('set', e)
                 logger.warning(f"[CacheMiddleware] 缓存写入失败(已忽略): {e}")
         
         return response

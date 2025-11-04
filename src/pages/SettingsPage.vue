@@ -348,6 +348,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useUserStore } from '@/stores/user'
+import type { UserInfo } from '@/stores/user'
 
 // 接入用户store
 const userStore = useUserStore()
@@ -363,7 +364,15 @@ const settings = reactive({
 })
 
 // 表单仅包含后端可写字段
-const form = reactive({
+type GenderOption = '' | 'male' | 'female' | 'other'
+const form = reactive<{ 
+  email: string
+  birthDate: string
+  gender: GenderOption
+  emergencyContact: string
+  emergencyPhone: string
+  avatar: string
+}>({
   email: '',
   birthDate: '',
   gender: '',
@@ -402,8 +411,19 @@ onMounted(async () => {
 const saveUserInfo = async () => {
   saving.value = true
   try {
-    console.debug('[SettingsPage] 保存用户信息 payload =', { ...form })
-    const res = await userStore.updateUserInfo({ ...form })
+    // 构建严格类型的 payload，仅包含允许字段，并对 gender 做类型收敛
+    const payload: Partial<UserInfo> = {}
+    if (form.email !== '') payload.email = form.email
+    if (form.birthDate !== '') payload.birthDate = form.birthDate
+    if (form.avatar !== '') payload.avatar = form.avatar
+    if (form.emergencyContact !== '') payload.emergencyContact = form.emergencyContact
+    if (form.emergencyPhone !== '') payload.emergencyPhone = form.emergencyPhone
+    const g = form.gender
+    if (g === 'male' || g === 'female' || g === 'other') {
+      payload.gender = g
+    }
+    console.debug('[SettingsPage] 保存用户信息 payload =', payload)
+    const res = await userStore.updateUserInfo(payload)
     if (res.success) {
       console.debug('[SettingsPage] 保存成功')
     } else {

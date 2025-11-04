@@ -52,7 +52,7 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label class="block text-sm font-medium text-gray-600">服药数量</label>
-              <p class="text-gray-900">{{ record.quantity_taken }} {{ medicineInfo?.unit || '片' }}</p>
+              <p class="text-gray-900">{{ record.quantity_taken }} 片</p>
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-600">服药方式</label>
@@ -146,7 +146,7 @@
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-600">时间差</label>
-              <p class="text-gray-900">{{ record.time_difference || '-' }}</p>
+              <p class="text-gray-900">{{ getTimeDifference(record) }}</p>
             </div>
           </div>
         </div>
@@ -179,6 +179,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useMedicineStore } from '../stores/medicine'
 import {
   ADMINISTRATION_METHOD_OPTIONS,
@@ -202,12 +203,15 @@ const emit = defineEmits<{
 
 // 状态管理
 const medicineStore = useMedicineStore()
-const { medicines, fetchMedicines } = medicineStore
+// 使用 storeToRefs 保持响应式引用，避免 Pinia 的自动解包导致 .value 访问报错
+// 重命名为 medicinesRef，避免与潜在的同名数组变量混淆导致类型推断问题
+const { medicines: medicinesRef } = storeToRefs(medicineStore)
+const { fetchMedicines } = medicineStore
 
 // 计算属性
 const medicineInfo = computed(() => {
   if (!props.record) return null
-  return medicines.value.find(m => m.id === props.record!.medicine)
+  return medicinesRef.value.find(m => m.id === props.record!.medicine) || null
 })
 
 // 格式化日期时间
@@ -221,6 +225,28 @@ const formatDateTime = (dateTime: string) => {
     minute: '2-digit',
     second: '2-digit'
   })
+}
+
+// 计算并格式化记录时间与服药时间的差异
+const getTimeDifference = (record: MedicationRecord | null) => {
+  if (!record) return '-'
+  try {
+    const taken = new Date(record.taken_at).getTime()
+    const created = new Date(record.created_at).getTime()
+    if (isNaN(taken) || isNaN(created)) return '-'
+    const diffMs = Math.abs(created - taken)
+    const totalMinutes = Math.floor(diffMs / 60000)
+    const days = Math.floor(totalMinutes / (60 * 24))
+    const hours = Math.floor((totalMinutes % (60 * 24)) / 60)
+    const minutes = totalMinutes % 60
+    const parts: string[] = []
+    if (days) parts.push(`${days}天`)
+    if (hours) parts.push(`${hours}小时`)
+    parts.push(`${minutes}分钟`)
+    return parts.join(' ')
+  } catch (e) {
+    return '-'
+  }
 }
 
 // 获取服药方式标签
@@ -255,7 +281,7 @@ const getSourceLabel = (source: string) => {
 // 生命周期
 onMounted(async () => {
   // 确保药品数据已加载
-  if (medicines.value.length === 0) {
+  if (medicinesRef.value.length === 0) {
     await fetchMedicines()
   }
 })

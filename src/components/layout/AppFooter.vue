@@ -123,7 +123,15 @@
       <!-- 备案信息 (如果需要) -->
       <div class="mt-4 text-center">
         <p class="text-gray-400 text-xs">
-          <!-- 这里可以添加ICP备案号等信息 -->
+          <a
+            href="https://beian.miit.gov.cn/"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="工业和信息化部ICP备案查询"
+            class="hover:text-gray-600"
+          >
+            豫ICP备2025149475号
+          </a>
         </p>
       </div>
     </div>

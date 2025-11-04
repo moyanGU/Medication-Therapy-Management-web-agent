@@ -530,10 +530,20 @@ const loadStatistics = async () => {
     error.value = '统计信息加载失败，请稍后重试。'
     // 设置安全默认值到 store 和本地，避免渲染报错
     const fallback = {
+      // 前端展示字段
       totalRecords: 0,
       monthlyRecords: 0,
       totalCost: 0,
-      avgSatisfaction: 0
+      avgSatisfaction: 0,
+      // 后端字段（保持完整类型，避免 TS 报错）
+      total_visits: 0,
+      recent_visits: 0,
+      total_cost: 0,
+      average_cost: 0,
+      follow_up_due: 0,
+      monthly_visits: [],
+      department_distribution: [],
+      cost_trend: []
     }
     medicalRecordsStore.statistics = fallback
     statistics.value = fallback

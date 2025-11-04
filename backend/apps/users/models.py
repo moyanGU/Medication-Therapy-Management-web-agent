@@ -8,6 +8,9 @@ class User(AbstractUser):
     自定义用户模型
     继承Django内置的AbstractUser，添加额外字段
     """
+    # 在交互式 createsuperuser 时强制要求填写邮箱和手机号
+    REQUIRED_FIELDS = ['email', 'phone']
+
     phone = models.CharField(
         max_length=20,
         unique=True,

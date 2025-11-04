@@ -19,7 +19,12 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-me-in-production')
 DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 
 # 规范化 ALLOWED_HOSTS（逗号分隔 + 去空白）
-ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if h.strip()]
+# 默认包含本机与 api.mtm-helper.com，生产环境建议通过环境变量 ALLOWED_HOSTS 明确设置域名白名单
+ALLOWED_HOSTS = [
+    h.strip()
+    for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,api.mtm-helper.com').split(',')
+    if h.strip()
+]
 
 # Application definition
 DJANGO_APPS = [
@@ -36,6 +41,7 @@ THIRD_PARTY_APPS = [
     'rest_framework_simplejwt',
     'corsheaders',
     'django_extensions',
+    'django_filters',
 ]
 
 LOCAL_APPS = [
@@ -89,11 +95,41 @@ WSGI_APPLICATION = 'mtm_helper.wsgi.application'
 
 # Database
 # Connection recycling seconds for persistent connections
-DB_CONN_MAX_AGE = int(os.getenv('DB_CONN_MAX_AGE', '0'))
+DB_CONN_MAX_AGE = int(os.getenv('DB_CONN_MAX_AGE', '0' if DEBUG else '120'))
 # MySQL connection/read/write timeouts (seconds)
 DB_CONNECT_TIMEOUT = int(os.getenv('DB_CONNECT_TIMEOUT', '5'))
 DB_READ_TIMEOUT = int(os.getenv('DB_READ_TIMEOUT', '15'))
 DB_WRITE_TIMEOUT = int(os.getenv('DB_WRITE_TIMEOUT', str(DB_READ_TIMEOUT)))
+# Redis 连接池与超时（生产默认更保守，环境变量可覆盖）
+REDIS_POOL_MAX_CONNECTIONS = int(os.getenv('REDIS_POOL_MAX_CONNECTIONS', '50' if DEBUG else '100'))
+REDIS_SOCKET_CONNECT_TIMEOUT = float(os.getenv('REDIS_SOCKET_CONNECT_TIMEOUT', '2'))
+REDIS_SOCKET_TIMEOUT = float(os.getenv('REDIS_SOCKET_TIMEOUT', '2'))
+# 运行期Redis异常聚合告警参数（可通过环境变量覆盖）
+REDIS_ERROR_ALERT_WINDOW_SECONDS = int(os.getenv('REDIS_ERROR_ALERT_WINDOW_SECONDS', '60'))
+REDIS_ERROR_ALERT_THRESHOLD = int(os.getenv('REDIS_ERROR_ALERT_THRESHOLD', '8'))
+REDIS_ERROR_ALERT_COOLDOWN_SECONDS = int(os.getenv('REDIS_ERROR_ALERT_COOLDOWN_SECONDS', '120'))
+# 统一缓存默认TTL与Key前缀，避免跨环境键冲突（生产可通过环境变量覆盖）
+CACHE_DEFAULT_TTL = int(os.getenv('CACHE_DEFAULT_TTL', '300'))
+REDIS_KEY_PREFIX = os.getenv('REDIS_KEY_PREFIX', 'mtm-helper')
+# Redis 值压缩开关（生产默认启用 zlib 压缩）
+REDIS_ENABLE_COMPRESSION = os.getenv('REDIS_ENABLE_COMPRESSION', 'true' if not DEBUG else 'false').lower() == 'true'
+
+# 新增：Redis连接字符串构造函数，兼容IPv6地址（自动加方括号）
+def build_redis_location(host: str, port: str, pwd: str | None) -> str:
+    """
+    构建Redis连接字符串，兼容IPv6地址。
+    - 当host包含":"且不以"["开头时，自动加方括号，例如::1 -> [::1]
+    - 根据是否提供密码生成 redis://:{pwd}@host:port/0 或 redis://host:port/0
+    """
+    host_fmt = host
+    try:
+        if host and (":" in host) and not host.startswith("["):
+            host_fmt = f"[{host}]"
+    except Exception:
+        host_fmt = host
+    if pwd:
+        return f"redis://:{pwd}@{host_fmt}:{port}/0"
+    return f"redis://{host_fmt}:{port}/0"
 
 def get_db_host():
     """
@@ -136,6 +172,7 @@ DATABASES = {
         'HOST': get_db_host(),
         'PORT': os.getenv('DB_PORT', '3306'),
         'CONN_MAX_AGE': DB_CONN_MAX_AGE,
+        'CONN_HEALTH_CHECKS': True,
         'OPTIONS': {
             'charset': 'utf8mb4',
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
@@ -159,23 +196,27 @@ CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
         # 默认值只用于本地开发；生产必须通过环境变量覆盖，且默认不再提供明文密码
-        'LOCATION': (
-            lambda host, port, pwd: (
-                f"redis://:{pwd}@{host}:{port}/0" if pwd else f"redis://{host}:{port}/0"
-            )
-        )(
+        'LOCATION': build_redis_location(
             os.getenv('REDIS_HOST', 'localhost'),
             os.getenv('REDIS_PORT', '6379'),
             os.getenv('REDIS_PASSWORD')
         ),
+        'KEY_PREFIX': REDIS_KEY_PREFIX,
+        'TIMEOUT': CACHE_DEFAULT_TTL,
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
             'CONNECTION_POOL_KWARGS': {
-                'max_connections': 50,
+                'max_connections': REDIS_POOL_MAX_CONNECTIONS,
                 'retry_on_timeout': True,
             },
-            'SOCKET_CONNECT_TIMEOUT': 2,
-            'SOCKET_TIMEOUT': 2,
+            'SOCKET_CONNECT_TIMEOUT': REDIS_SOCKET_CONNECT_TIMEOUT,
+            'SOCKET_TIMEOUT': REDIS_SOCKET_TIMEOUT,
+            # 使用 JSON 序列化，避免 pickle 带来的安全风险
+            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
+            # 启用 zlib 压缩以减少内存占用（生产默认开启）。当未启用时使用 IdentityCompressor，避免 None 触发 import_string 错误
+            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor' if REDIS_ENABLE_COMPRESSION else 'django_redis.compressors.identity.IdentityCompressor',
+            # 忽略缓存异常以避免请求失败（生产推荐）
+            'IGNORE_EXCEPTIONS': True,
         }
     }
 }
@@ -283,7 +324,39 @@ CSRF_TRUSTED_ORIGINS = _csv_env('CSRF_TRUSTED_ORIGINS', DEV_CSRF_TRUSTED_ORIGINS
 
 CORS_ALLOW_CREDENTIALS = True
 
+# ---------------- Security & Proxy Settings (Production-safe defaults) ----------------
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+# 在生产默认开启 HTTPS 重定向，可通过环境变量关闭（如只在内网HTTP）
+SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'true' if not DEBUG else 'false').lower() == 'true'
+# Cookie 安全策略（生产环境默认启用）
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SAMESITE = os.getenv('SESSION_COOKIE_SAMESITE', 'Lax')
+CSRF_COOKIE_SAMESITE = os.getenv('CSRF_COOKIE_SAMESITE', 'Lax')
+CSRF_COOKIE_HTTPONLY = True
+# HSTS 与浏览器安全策略（仅生产）
+SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '31536000' if not DEBUG else '0'))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv('SECURE_HSTS_INCLUDE_SUBDOMAINS', 'true' if not DEBUG else 'false').lower() == 'true'
+SECURE_HSTS_PRELOAD = os.getenv('SECURE_HSTS_PRELOAD', 'true' if not DEBUG else 'false').lower() == 'true'
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = os.getenv('X_FRAME_OPTIONS', 'DENY')
+# Align with Nginx default for better privacy while preserving analytics
+SECURE_REFERRER_POLICY = os.getenv('SECURE_REFERRER_POLICY', 'strict-origin-when-cross-origin')
+# 会话有效期（默认14天）与后端缓存化存储，提升性能
+SESSION_COOKIE_AGE = int(os.getenv('SESSION_COOKIE_AGE', '1209600'))
+SESSION_ENGINE = os.getenv('SESSION_ENGINE', 'django.contrib.sessions.backends.db' if DEBUG else 'django.contrib.sessions.backends.cached_db')
+# -------------------------------------------------------------------------------
+
 # Logging
+# 日志级别与滚动策略可通过环境变量调控，避免单文件无限增长
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'DEBUG' if DEBUG else 'INFO')
+CONSOLE_LOG_LEVEL = os.getenv('CONSOLE_LOG_LEVEL', 'DEBUG' if DEBUG else 'INFO')
+# 模块定制日志级别：提醒相关模块可单独调到 DEBUG，便于观察调度细节
+REMINDERS_LOG_LEVEL = os.getenv('REMINDERS_LOG_LEVEL', 'DEBUG' if DEBUG else 'INFO')
+REMINDER_WORKER_LOG_LEVEL = os.getenv('REMINDER_WORKER_LOG_LEVEL', REMINDERS_LOG_LEVEL)
+LOG_MAX_BYTES = int(os.getenv('LOG_MAX_BYTES', str(10 * 1024 * 1024)))  # 10MB
+LOG_BACKUP_COUNT = int(os.getenv('LOG_BACKUP_COUNT', '7'))
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -299,26 +372,54 @@ LOGGING = {
     },
     'handlers': {
         'file': {
-            'level': 'INFO',
-            'class': 'logging.FileHandler',
+            'level': LOG_LEVEL,
+            'class': 'logging.handlers.RotatingFileHandler',
             'filename': BASE_DIR / 'logs' / 'django.log',
             'formatter': 'verbose',
+            'maxBytes': LOG_MAX_BYTES,
+            'backupCount': LOG_BACKUP_COUNT,
         },
         'console': {
-            'level': 'DEBUG',
+            'level': CONSOLE_LOG_LEVEL,
             'class': 'logging.StreamHandler',
             'formatter': 'simple',
         },
     },
+    'root': {
+        'handlers': ['console', 'file'],
+        'level': LOG_LEVEL,
+    },
     'loggers': {
         'django': {
             'handlers': ['console', 'file'],
-            'level': 'INFO',
+            'level': LOG_LEVEL,
             'propagate': True,
         },
         'mtm_helper': {
             'handlers': ['console', 'file'],
-            'level': 'INFO',
+            'level': LOG_LEVEL,
+            'propagate': False,
+        },
+        # 降低数据库SQL的日志噪音，如需查看SQL细节可改为 INFO/DEBUG
+        'django.db.backends': {
+            'handlers': ['console', 'file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        # 细化：提醒相关模块日志（apps.reminders.*）
+        'apps.reminders': {
+            'handlers': ['console', 'file'],
+            'level': REMINDERS_LOG_LEVEL,
+            'propagate': False,
+        },
+        'apps.reminders.scheduler': {
+            'handlers': ['console', 'file'],
+            'level': REMINDERS_LOG_LEVEL,
+            'propagate': False,
+        },
+        'apps.reminders.management.commands.run_reminder_worker': {
+            'handlers': ['console', 'file'],
+            'level': REMINDER_WORKER_LOG_LEVEL,
             'propagate': False,
         },
     },
@@ -339,6 +440,12 @@ SMS_TEMPLATES = {
     'verification': os.getenv('SMS_TEMPLATE_VERIFICATION', '【MTM用药助手】您的验证码是 {code}，{ttl} 分钟内有效。如非本人操作，请忽略本短信。'),
     'reminder': os.getenv('SMS_TEMPLATE_REMINDER', '【MTM用药助手】{title}：{message}')
 }
+# 注册策略：是否需要管理员审批验证码后才能注册
+# 默认保守：生产环境默认启用，开发环境默认关闭；可通过环境变量 REGISTRATION_REQUIRE_APPROVAL 覆盖
+REGISTRATION_REQUIRE_APPROVAL = os.getenv(
+    'REGISTRATION_REQUIRE_APPROVAL',
+    'false' if DEBUG else 'true'
+).lower() == 'true'
 # -----------------------------------------------------------
 
 # ---------------- Spug Push Settings ----------------
@@ -350,4 +457,8 @@ SPUG_PUSH_URL = os.getenv('SPUG_PUSH_URL', 'https://push.spug.cc')
 SPUG_TEMPLATE_ID = os.getenv('SPUG_TEMPLATE_ID', '')
 # Spug应用名称，用于模板中展示
 SPUG_APP_NAME = os.getenv('SPUG_APP_NAME', 'MTM用药助手')
+# 新增：Spug授权令牌（如平台需要鉴权），为空则不携带Authorization头
+SPUG_PUSH_TOKEN = os.getenv('SPUG_PUSH_TOKEN', '')
+# 新增：Spug推送HTTP超时（秒），避免阻塞请求线程，建议 2-5 秒
+SPUG_PUSH_TIMEOUT_SECONDS = int(os.getenv('SPUG_PUSH_TIMEOUT_SECONDS', '3'))
 # ---------------------------------------------------

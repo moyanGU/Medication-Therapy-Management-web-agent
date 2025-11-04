@@ -160,7 +160,7 @@ export interface MedicalRecordSearchParams {
   cost_max?: number
   satisfaction_min?: number
   has_follow_up?: boolean
-  sort_by?: string
+  ordering?: string
   page?: number
   page_size?: number
 }
@@ -303,4 +303,14 @@ export const URGENCY_OPTIONS = [
   { value: 'urgent', label: '紧急' },
   { value: 'emergency', label: '急诊' },
   { value: 'critical', label: '危重' }
+]
+
+// 排序选项（与后端 ordering 字段对齐）
+export const SORT_OPTIONS = [
+  { value: '-visit_date', label: '就诊时间（新→旧）' },
+  { value: 'visit_date', label: '就诊时间（旧→新）' },
+  { value: '-total_cost', label: '总费用（高→低）' },
+  { value: 'total_cost', label: '总费用（低→高）' },
+  { value: '-satisfaction_score', label: '满意度（高→低）' },
+  { value: 'satisfaction_score', label: '满意度（低→高）' }
 ]

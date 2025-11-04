@@ -154,6 +154,16 @@
           </div>
         </div>
         
+        <!-- 成功信息显示 -->
+        <div v-if="successMessage" class="bg-green-50 border border-green-200 rounded-md p-3">
+          <div class="flex">
+            <span class="text-green-500">✅</span>
+            <div class="ml-3">
+              <p class="text-sm text-green-800">{{ successMessage }}</p>
+            </div>
+          </div>
+        </div>
+        
         <!-- 注册按钮 -->
         <button
           type="submit"
@@ -214,6 +224,7 @@ const countdown = ref(0)
 const showPassword = ref(false)
 const showConfirmPassword = ref(false)
 const errorMessage = ref('')
+const successMessage = ref('')
 
 // 计算属性
 const isPhoneValid = computed(() => {
@@ -303,25 +314,33 @@ const sendCode = async () => {
   }
   
   codeSending.value = true
+  successMessage.value = ''
+  errorMessage.value = ''
   
   try {
     console.log('发送验证码到:', form.phone)
-    await authStore.sendVerificationCode(form.phone)
+    const res = await authStore.sendVerificationCode(form.phone)
     
-    console.log('验证码发送成功！')
-    
-    // 开始倒计时
-    countdown.value = 60
-    const timer = setInterval(() => {
-      countdown.value--
-      if (countdown.value <= 0) {
-        clearInterval(timer)
+    if (res && res.success) {
+      successMessage.value = '验证码已发送，请查收短信'
+      if ((res as any).code) {
+        successMessage.value += `（开发环境验证码：${(res as any).code}）`
       }
-    }, 1000)
-    
+      
+      // 开始倒计时（仅在发送成功时）
+      countdown.value = 60
+      const timer = setInterval(() => {
+        countdown.value--
+        if (countdown.value <= 0) {
+          clearInterval(timer)
+        }
+      }, 1000)
+    } else {
+      errorMessage.value = res?.message || '验证码发送失败'
+    }
   } catch (error: any) {
     console.error('发送验证码失败:', error)
-    console.error('验证码发送失败:', error.message || '验证码发送失败')
+    errorMessage.value = error.message || '验证码发送失败，请稍后重试'
   } finally {
     codeSending.value = false
   }
@@ -340,22 +359,25 @@ const handleRegister = async () => {
   
   loading.value = true
   errorMessage.value = ''
+  successMessage.value = ''
   
   try {
     console.log('调用注册API')
-    await authStore.register({
+    const result = await authStore.register({
       username: form.username.trim(),
       phone: form.phone,
       password: form.password,
       verification_code: form.verification_code
     })
     
-    console.log('注册成功，跳转到登录页')
-    console.log('注册成功！请登录')
-    
-    // 跳转到登录页
-    await router.push('/login')
-    
+    if (result.success) {
+      successMessage.value = result.message || '注册成功！请登录'
+      console.log('注册成功，跳转到登录页')
+      await router.push('/login')
+    } else {
+      errorMessage.value = result.message || '注册失败，请稍后重试'
+      console.error('注册失败:', errorMessage.value)
+    }
   } catch (error: any) {
     console.error('注册失败:', error)
     

@@ -1,4 +1,5 @@
 import logging
+import sys
 from datetime import datetime, timedelta
 from django.utils import timezone
 from django.db.models import Q
@@ -6,6 +7,18 @@ from .models import Reminder
 from .notifications import NotificationService
 
 logger = logging.getLogger(__name__)
+
+# Fallback logging to ensure INFO-level messages from scheduler are visible in container logs
+# If Django's LOGGING doesn't attach a handler to this module, we attach one.
+if not logger.handlers:
+    logger.propagate = False  # avoid duplicate logs if parent handlers exist
+    _handler = logging.StreamHandler(sys.stdout)
+    _handler.setFormatter(logging.Formatter(
+        fmt="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    ))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
 
 
 class ReminderScheduler:
@@ -21,7 +34,8 @@ class ReminderScheduler:
         """
         检查并发送当前时间需要的提醒
         """
-        now = timezone.now()
+        # 统一使用本地时区时间，避免 USE_TZ=True 时出现 UTC 与本地时间不一致导致匹配失败
+        now = timezone.localtime()
         current_time = now.time()
         current_date = now.date()
         
@@ -34,11 +48,21 @@ class ReminderScheduler:
         ).filter(
             Q(end_date__isnull=True) | Q(end_date__gte=current_date)
         ).select_related('user', 'medicine')
-        
+
+        logger.info(f"激活提醒数量: {active_reminders.count()} (date={current_date}, time={current_time})")
+
         sent_count = 0
-        
+
         for reminder in active_reminders:
             try:
+                # Snapshot key fields for visibility when evaluating each reminder
+                last_local = timezone.localtime(reminder.last_reminded_at) if reminder.last_reminded_at else None
+                logger.info(
+                    f"[candidate:{reminder.id}] user={reminder.user_id} time={reminder.reminder_time} "
+                    f"advance={reminder.advance_minutes} freq={reminder.frequency} weekdays={getattr(reminder, 'weekdays', None)} "
+                    f"start={reminder.start_date} end={reminder.end_date} last={last_local} "
+                    f"types={getattr(reminder, 'notification_types', None)} active={reminder.is_active}"
+                )
                 if self._should_send_reminder(reminder, now):
                     self._send_reminder(reminder)
                     sent_count += 1
@@ -52,20 +76,26 @@ class ReminderScheduler:
         """
         判断是否应该发送提醒
         """
-        current_time = now.time()
-        current_date = now.date()
+        # 确保比较均使用本地时区
+        now_local = timezone.localtime(now)
+        current_time = now_local.time()
+        current_date = now_local.date()
+        logger.debug(f"[check:{reminder.id}] now_local={now_local} original_time={reminder.reminder_time} advance={reminder.advance_minutes}")
         
         # 检查今天是否应该提醒
         if not reminder.should_remind_today():
+            logger.info(f"[skip:{reminder.id}] 今天不需要提醒 (frequency={reminder.frequency}, start={reminder.start_date}, end={reminder.end_date})")
             return False
         
         # 计算提醒时间（考虑提前提醒）
         reminder_time = reminder.reminder_time
         if reminder.advance_minutes > 0:
             reminder_datetime = timezone.datetime.combine(current_date, reminder_time)
-            reminder_datetime = timezone.make_aware(reminder_datetime)
+            # 转为本地时区的 aware datetime 再进行提前分钟处理
+            reminder_datetime = timezone.localtime(timezone.make_aware(reminder_datetime))
             reminder_datetime -= timedelta(minutes=reminder.advance_minutes)
             reminder_time = reminder_datetime.time()
+        logger.debug(f"[adjusted_time:{reminder.id}] current={current_time} reminder={reminder_time} advance={reminder.advance_minutes}")
         
         # 检查时间是否匹配（允许1分钟误差）
         time_diff = abs(
@@ -74,22 +104,28 @@ class ReminderScheduler:
         )
         
         if time_diff > 1:  # 超过1分钟误差
+            logger.info(f"[skip:{reminder.id}] 时间未命中 current={current_time} reminder={reminder_time} diff={time_diff}min advance={reminder.advance_minutes}")
             return False
+        else:
+            logger.debug(f"[hit_time:{reminder.id}] current={current_time} reminder={reminder_time} diff={time_diff}min advance={reminder.advance_minutes}")
         
         # 检查是否已经在今天发送过
         if reminder.last_reminded_at:
-            last_reminded_date = reminder.last_reminded_at.date()
+            last_reminded_local = timezone.localtime(reminder.last_reminded_at)
+            last_reminded_date = last_reminded_local.date()
             if last_reminded_date == current_date:
                 # 如果设置了重复提醒，检查重复间隔
                 if reminder.repeat_interval > 0 and reminder.max_repeats > 0:
-                    time_since_last = now - reminder.last_reminded_at
+                    time_since_last = now_local - last_reminded_local
                     if time_since_last.total_seconds() >= reminder.repeat_interval * 60:
                         # 检查今天的重复次数
                         today_count = self._get_today_reminder_count(reminder, current_date)
+                        logger.info(f"[repeat:{reminder.id}] last={last_reminded_local}, since={int(time_since_last.total_seconds())}s, today_count={today_count}/{reminder.max_repeats}")
                         if today_count < reminder.max_repeats:
                             return True
+                logger.info(f"[skip:{reminder.id}] 今天已提醒过 (last={last_reminded_local}, repeat_interval={reminder.repeat_interval}, max_repeats={reminder.max_repeats})")
                 return False
-        
+
         return True
     
     def _get_today_reminder_count(self, reminder, date):

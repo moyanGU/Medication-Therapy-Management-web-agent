@@ -240,12 +240,13 @@ const formatDateTime = (dateString: string): string => {
  * 若 image_path 为 http/https 开头的绝对地址则直接返回；
  * 否则拼接后端基地址 + /media + 相对路径。
  */
+import { getBackendOrigin } from '@/utils/api'
 const getImageUrl = (imagePath?: string | null) => {
   if (!imagePath) return ''
   if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
     return imagePath
   }
-  const baseURL = 'http://127.0.0.1:8000'
+  const baseURL = getBackendOrigin()
   const path = imagePath.startsWith('/') ? imagePath : `/${imagePath}`
   return `${baseURL}/media${path}`
 }

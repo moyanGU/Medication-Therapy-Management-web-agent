@@ -817,7 +817,7 @@ services:
   
   redis:
     image: redis:7.0
-    command: redis-server --requirepass Med_Helper_Redis_2025!
+    command: redis-server  # 请使用 redis.conf 或环境变量注入 requirepass，勿在仓库或文档中明文写入
     volumes:
       - redis_data:/data
   

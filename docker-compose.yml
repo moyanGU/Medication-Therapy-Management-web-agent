@@ -1,8 +1,6 @@
-version: '3.8'
-
 services:
-  # 前端服务
-  frontend:
+  # 前端服务（开发版）
+  frontend-dev:
     build:
       context: .
       dockerfile: Dockerfile.frontend
@@ -14,12 +12,14 @@ services:
     environment:
       - NODE_ENV=development
     depends_on:
-      - backend
+      - backend-dev
     networks:
       - mtm-network
+    profiles:
+      - dev
 
-  # 后端服务
-  backend:
+  # 后端服务（开发版）
+  backend-dev:
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -32,22 +32,24 @@ services:
     environment:
       - DEBUG=True
       - DB_HOST=mysql
-      - REDIS_HOST=redis
+      - REDIS_HOST=redis-dev
       - REDIS_PORT=6379
     depends_on:
       - mysql
-      - redis
+      - redis-dev
     networks:
       - mtm-network
+    profiles:
+      - dev
 
-  # MySQL数据库
+  # MySQL数据库（开发版）
   mysql:
     image: mysql:8.0
     environment:
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-not-used-in-prod}
       - MYSQL_DATABASE=${MYSQL_DATABASE:-mtm_helper}
       - MYSQL_USER=${MYSQL_USER:-mtm_user}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-not-used-in-prod}
     ports:
       - "3306:3306"
     volumes:
@@ -55,9 +57,11 @@ services:
       - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - mtm-network
+    profiles:
+      - dev
 
-  # Redis缓存
-  redis:
+  # Redis缓存（开发版）
+  redis-dev:
     image: redis:7.0-alpine
     command: redis-server
     ports:
@@ -66,6 +70,8 @@ services:
       - redis_data:/data
     networks:
       - mtm-network
+    profiles:
+      - dev
 
   # Nginx代理（生产环境）
   nginx:
@@ -78,7 +84,6 @@ services:
       - backend_static:/var/www/static
       - backend_media:/var/www/media
     depends_on:
-      - frontend
       - backend
     networks:
       - mtm-network

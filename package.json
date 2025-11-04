@@ -4,19 +4,19 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --config vite1.config.ts",
-    "build": "vue-tsc -b && vite build --config vite1.config.ts",
-    "preview": "vite preview --config vite1.config.ts",
-    "check": "vue-tsc -b",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "dev": "vite --config vite.config.ts",
+    "build": "vue-tsc -b && vite build --config vite.config.ts",
+    "build:fast": "vite build --config vite.config.ts",
+    "preview": "vite preview --config vite.config.ts",
+    "postbuild": "node ./scripts/ci/copy-icons.mjs",
+    "guard:dist:linux": "bash ./scripts/ci/check-dist-no-localhost.sh dist",
+    "guard:dist:win": "powershell -ExecutionPolicy Bypass -File ./scripts/windows/check-dist-no-localhost.ps1 dist"
   },
   "dependencies": {
     "axios": "^1.11.0",
     "chart.js": "^4.5.0",
     "clsx": "^2.1.1",
+    "@heroicons/vue": "^2.1.5",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.1",
     "lodash-es": "^4.17.21",
@@ -47,6 +47,7 @@
     "typescript": "~5.3.3",
     "unplugin-vue-dev-locator": "^1.0.0",
     "vite": "^5.0.12",
+    "vite-plugin-pwa": "^1.0.3",
     "vite-plugin-trae-solo-badge": "^1.0.0",
     "vue-tsc": "^1.8.27"
   }

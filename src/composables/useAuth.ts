@@ -132,8 +132,10 @@ export function useAuth() {
    * 检查是否为管理员
    */
   const isAdmin = computed(() => {
-    // TODO: 根据用户角色判断
-    return user.value?.role === 'admin'
+    // 根据用户角色判断（兼容不同 user 结构）
+    // 将 user 进行类型收窄，避免直接访问未声明属性导致的 TS 报错
+    const u = user.value as { role?: string } | null
+    return !!u && u.role === 'admin'
   })
 
   return {

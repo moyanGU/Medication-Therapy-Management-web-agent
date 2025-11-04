@@ -265,7 +265,8 @@ class Reminder(models.Model):
         """
         检查今天是否应该提醒
         """
-        today = timezone.now().date()
+        # 使用本地时区日期，避免 UTC 与本地日期不一致
+        today = timezone.localtime().date()
         
         # 检查是否在有效期内
         if today < self.start_date:
@@ -287,7 +288,8 @@ class Reminder(models.Model):
             days_diff = (today - self.start_date).days
             return days_diff % 7 == 0
         elif self.frequency == 'custom':
-            weekday = today.weekday() + 1  # 转换为1-7
+            # 1-7 表示周一到周日；today.weekday() 为 0-6（周一=0）
+            weekday = today.weekday() + 1
             return weekday in self.weekdays
         
         return True

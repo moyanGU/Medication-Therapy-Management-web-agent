@@ -41,7 +41,7 @@
               医生姓名 <span class="text-red-500">*</span>
             </label>
             <input
-              v-model="form.doctor_name"
+              v-model="form.doctor"
               type="text"
               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
@@ -89,7 +89,7 @@
               治疗方案 <span class="text-red-500">*</span>
             </label>
             <textarea
-              v-model="form.treatment_plan"
+              v-model="form.treatment"
               rows="3"
               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
@@ -123,6 +123,7 @@ import { ref, reactive, computed, watch } from 'vue'
 import { useMedicalRecordStore } from '@/stores/medicalRecords'
 import { toast } from 'vue-sonner'
 import { X } from 'lucide-vue-next'
+import type { MedicalRecordCreate, MedicalRecordUpdate, UrgencyLevel, MedicalStatus, VisitType } from '@/types/medicalRecord'
 
 interface Props {
   visible: boolean
@@ -142,20 +143,21 @@ const emit = defineEmits<{
 const medicalRecordsStore = useMedicalRecordStore()
 const isSubmitting = ref(false)
 
-const form = reactive({
+// 表单采用与类型定义一致的字段命名，避免 TS 类型错误
+const form = reactive<MedicalRecordCreate>({
   hospital: '',
   department: '',
-  doctor_name: '',
+  doctor: '',
   visit_date: '',
-  visit_type: 'outpatient',
-  urgency_level: 'medium',
+  visit_type: 'outpatient' as VisitType,
+  urgency: 'routine' as UrgencyLevel,
   chief_complaint: '',
   present_illness: '',
   diagnosis: '',
-  treatment_plan: '',
+  treatment: '',
   total_cost: 0,
   satisfaction_score: 5,
-  status: 'active',
+  status: 'completed' as MedicalStatus,
   notes: ''
 })
 
@@ -163,37 +165,46 @@ const isEdit = computed(() => !!props.record)
 
 watch(() => props.record, (newRecord) => {
   if (newRecord) {
+    // 兼容历史字段命名（doctor_name/urgency_level/treatment_plan）到新字段（doctor/urgency/treatment）
+    const mappedUrgency: UrgencyLevel =
+      (newRecord.urgency as UrgencyLevel) ||
+      (newRecord.urgency_level === 'low' ? 'routine'
+        : newRecord.urgency_level === 'medium' ? 'urgent'
+        : newRecord.urgency_level === 'high' ? 'critical'
+        : (newRecord.urgency_level as UrgencyLevel)) ||
+      'routine'
+
     Object.assign(form, {
       hospital: newRecord.hospital || '',
       department: newRecord.department || '',
-      doctor_name: newRecord.doctor_name || '',
+      doctor: newRecord.doctor ?? newRecord.doctor_name ?? '',
       visit_date: newRecord.visit_date || '',
-      visit_type: newRecord.visit_type || 'outpatient',
-      urgency_level: newRecord.urgency_level || 'medium',
+      visit_type: (newRecord.visit_type as VisitType) || 'outpatient',
+      urgency: mappedUrgency,
       chief_complaint: newRecord.chief_complaint || '',
       present_illness: newRecord.present_illness || '',
       diagnosis: newRecord.diagnosis || '',
-      treatment_plan: newRecord.treatment_plan || '',
+      treatment: newRecord.treatment ?? newRecord.treatment_plan ?? '',
       total_cost: newRecord.total_cost ?? 0,
       satisfaction_score: newRecord.satisfaction_score ?? 5,
-      status: newRecord.status || 'active',
+      status: (newRecord.status as MedicalStatus) || 'completed',
       notes: newRecord.notes || ''
     })
   } else {
     Object.assign(form, {
       hospital: '',
       department: '',
-      doctor_name: '',
+      doctor: '',
       visit_date: '',
-      visit_type: 'outpatient',
-      urgency_level: 'medium',
+      visit_type: 'outpatient' as VisitType,
+      urgency: 'routine' as UrgencyLevel,
       chief_complaint: '',
       present_illness: '',
       diagnosis: '',
-      treatment_plan: '',
+      treatment: '',
       total_cost: 0,
       satisfaction_score: 5,
-      status: 'active',
+      status: 'completed' as MedicalStatus,
       notes: ''
     })
   }
@@ -204,9 +215,42 @@ const handleSubmit = async () => {
     isSubmitting.value = true
 
     if (isEdit.value) {
-      await medicalRecordsStore.updateRecord(props.record!.id, form)
+      const payload: MedicalRecordUpdate = {
+        hospital: form.hospital,
+        department: form.department,
+        doctor: form.doctor,
+        visit_date: form.visit_date,
+        // 显式断言为枚举字面量类型，避免 TS 将 v-model 的值推断为普通 string
+        visit_type: form.visit_type as VisitType,
+        urgency: form.urgency as UrgencyLevel,
+        chief_complaint: form.chief_complaint,
+        present_illness: form.present_illness,
+        diagnosis: form.diagnosis,
+        treatment: form.treatment,
+        total_cost: form.total_cost,
+        satisfaction_score: form.satisfaction_score,
+        status: form.status as MedicalStatus,
+        notes: form.notes,
+      }
+      await medicalRecordsStore.updateRecord(props.record!.id, payload)
     } else {
-      await medicalRecordsStore.createRecord(form)
+      const payload: MedicalRecordCreate = {
+        hospital: form.hospital,
+        department: form.department,
+        doctor: form.doctor,
+        visit_date: form.visit_date,
+        visit_type: form.visit_type as VisitType,
+        urgency: form.urgency as UrgencyLevel,
+        chief_complaint: form.chief_complaint,
+        present_illness: form.present_illness,
+        diagnosis: form.diagnosis,
+        treatment: form.treatment,
+        total_cost: form.total_cost,
+        satisfaction_score: form.satisfaction_score,
+        status: form.status as MedicalStatus,
+        notes: form.notes,
+      }
+      await medicalRecordsStore.createRecord(payload)
     }
 
     // 成功即触发事件与提示

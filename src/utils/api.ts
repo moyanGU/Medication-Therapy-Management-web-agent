@@ -18,6 +18,8 @@ interface RequestConfig extends RequestInit {
   skipErrorHandler?: boolean
   params?: Record<string, any>
   isFormData?: boolean
+  // 明确指定响应解析方式：不指定时按 Content-Type 自动解析
+  responseType?: 'json' | 'text' | 'blob'
 }
 
 // 错误类型
@@ -34,15 +36,51 @@ class ApiError extends Error {
 }
 
 /**
+ * 安全解析 VITE_API_BASE_URL，回退到同域 /api
+ */
+function resolveApiBaseURL(): string {
+  const envVal = (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.VITE_API_BASE_URL) || ''
+  const fromEnv = typeof envVal === 'string' ? envVal.trim() : ''
+  if (fromEnv) return fromEnv
+  if (typeof window !== 'undefined' && window.location) {
+    return `${window.location.origin}/api`
+  }
+  // SSR/测试环境兜底：使用相对路径，避免硬编码主机
+  return '/api'
+}
+
+/**
+ * 返回后端 Origin（不带 /api），用于拼接 /media 等静态/媒体资源
+ */
+export function getBackendOrigin(): string {
+  const base = resolveApiBaseURL()
+  try {
+    if (base.startsWith('http')) {
+      const u = new URL(base)
+      // 去掉末尾的 /api 片段
+      const path = u.pathname.replace(/\/?api\/?$/, '')
+      return `${u.origin}${path}` || u.origin
+    }
+  } catch (_) {
+    // ignore
+  }
+  // 若为相对路径（如 /api），在浏览器环境下退回到当前 origin
+  if (typeof window !== 'undefined' && window.location) return window.location.origin
+  // SSR/测试环境兜底：返回空串，调用处以相对路径访问同源
+  return ''
+}
+
+/**
  * API客户端类
  */
 class ApiClient {
   private baseURL: string
   private defaultTimeout: number
   
-  constructor(baseURL: string = 'http://127.0.0.1:8000/api', timeout: number = 10000) {
+  constructor(baseURL: string = resolveApiBaseURL(), timeout: number = 10000) {
     this.baseURL = baseURL
     this.defaultTimeout = timeout
+    console.log('[ApiClient] baseURL =', this.baseURL)
   }
 
   /**
@@ -109,8 +147,10 @@ class ApiClient {
 
   /**
    * 处理响应
+   * - 当显式指定 responseType 时，按指定类型解析
+   * - 否则按 Content-Type 自动解析
    */
-  private async handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
+  private async handleResponse<T>(response: Response, responseType?: RequestConfig['responseType']): Promise<ApiResponse<T>> {
     // 处理204 No Content响应
     if (response.status === 204) {
       return {
@@ -122,18 +162,30 @@ class ApiClient {
     let data: any
     
     try {
-      const contentType = response.headers.get('content-type')
-      if (contentType && contentType.includes('application/json')) {
+      if (responseType === 'blob') {
+        data = await response.blob()
+      } else if (responseType === 'text') {
+        data = await response.text()
+      } else if (responseType === 'json') {
         data = await response.json()
       } else {
-        data = await response.text()
+        // 未指定时根据 Content-Type 自动判断
+        const contentType = response.headers.get('content-type')
+        if (contentType && contentType.includes('application/json')) {
+          data = await response.json()
+        } else if (contentType && (contentType.includes('application/') || contentType.includes('image/') || contentType.includes('video/') || contentType.includes('audio/'))) {
+          // 其它二进制类型按 blob 处理
+          data = await response.blob()
+        } else {
+          data = await response.text()
+        }
       }
     } catch (error) {
       throw new ApiError('响应解析失败', response.status, response)
     }
 
     if (!response.ok) {
-      const message = data?.message || `HTTP ${response.status}: ${response.statusText}`
+      const message = (data as any)?.message || `HTTP ${response.status}: ${response.statusText}`
       throw new ApiError(message, response.status, response)
     }
 
@@ -146,7 +198,7 @@ class ApiClient {
     if (typeof data === 'object' && data !== null && 'data' in data) {
       return {
         success: true,
-        data: data.data as T
+        data: (data as any).data as T
       }
     }
 
@@ -157,7 +209,7 @@ class ApiClient {
   }
 
   /**
-   * 处理错误
+   * 处理错误：支持 401 清理并跳转
    */
   private handleError(error: any, config: RequestConfig): never {
     console.error('API请求错误:', error)
@@ -169,14 +221,22 @@ class ApiClient {
 
     // 处理不同类型的错误
     if (error instanceof ApiError) {
-      // 401 未授权 - 清除token并跳转登录
+      // 401 未授权 - 清除token并在必要时跳转登录
       if (error.code === 401) {
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
         localStorage.removeItem('token')
         localStorage.removeItem('userInfo')
         localStorage.removeItem('user_info')
-        window.location.href = '/login'
+
+        // 在访客页（登录/注册/欢迎/忘记密码）不触发跳转，避免打断当前流程
+        const guestPaths = ['/login', '/register', '/welcome', '/forgot-password']
+        const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
+        const shouldRedirect = currentPath ? !guestPaths.includes(currentPath) : true
+
+        if (shouldRedirect) {
+          window.location.href = '/login'
+        }
       }
       throw error
     }
@@ -197,6 +257,8 @@ class ApiClient {
 
   /**
    * 发送请求
+   * @param endpoint 接口路径
+   * @param config 请求配置，支持 responseType 指定响应解析方式
    */
   private async request<T>(
     endpoint: string,
@@ -219,11 +281,11 @@ class ApiClient {
 
       console.log(`API请求: ${config.method || 'GET'} ${url}`, {
         headers: requestConfig.headers,
-        body: config.body
+        body: (requestConfig as any).body
       })
 
       const response = await fetch(url, finalRequestConfig)
-      const result = await this.handleResponse<T>(response)
+      const result = await this.handleResponse<T>(response, config.responseType)
       
       console.log(`API响应: ${config.method || 'GET'} ${url}`, result)
       
@@ -235,9 +297,7 @@ class ApiClient {
     }
   }
 
-  /**
-   * GET请求
-   */
+  /** GET请求 */
   async get<T = any>(endpoint: string, config: RequestConfig = {}): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, {
       ...config,
@@ -245,9 +305,7 @@ class ApiClient {
     })
   }
 
-  /**
-   * POST请求
-   */
+  /** POST请求 */
   async post<T = any>(
     endpoint: string,
     data?: any,
@@ -262,9 +320,7 @@ class ApiClient {
     })
   }
 
-  /**
-   * PUT请求
-   */
+  /** PUT请求 */
   async put<T = any>(
     endpoint: string,
     data?: any,
@@ -279,9 +335,7 @@ class ApiClient {
     })
   }
 
-  /**
-   * PATCH请求
-   */
+  /** PATCH请求 */
   async patch<T = any>(
     endpoint: string,
     data?: any,
@@ -296,9 +350,7 @@ class ApiClient {
     })
   }
 
-  /**
-   * DELETE请求
-   */
+  /** DELETE请求 */
   async delete<T = any>(endpoint: string, config: RequestConfig = {}): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, {
       ...config,
@@ -306,9 +358,7 @@ class ApiClient {
     })
   }
 
-  /**
-   * 文件上传
-   */
+  /** 文件上传 */
   async upload<T = any>(
     endpoint: string,
     file: File,
@@ -325,9 +375,7 @@ class ApiClient {
     })
   }
 
-  /**
-   * 下载文件
-   */
+  /** 文件下载 */
   async download(
     endpoint: string,
     filename?: string,

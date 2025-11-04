@@ -435,7 +435,9 @@ const fetchReminder = async (id: string) => {
       const respData: any = (response as any).data
       const reminder = respData?.data ?? respData
       Object.assign(form, {
-        medicine_id: reminder.medicine.id,
+        // 兼容后端返回的联合类型：number | { id: number; ... }
+        // 若为对象则取其 id，若为 number 则直接使用该数值
+        medicine_id: typeof reminder.medicine === 'object' ? reminder.medicine.id : reminder.medicine,
         title: reminder.title,
         dosage: reminder.dosage,
         dosage_unit: reminder.dosage_unit,

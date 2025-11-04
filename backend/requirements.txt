@@ -1,6 +1,7 @@
 # Django核心框架
 Django==4.2.16
 djangorestframework==3.14.0
+django-filter==24.2
 
 # 数据库相关
 PyMySQL==1.1.1

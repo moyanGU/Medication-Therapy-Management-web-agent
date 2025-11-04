@@ -94,7 +94,7 @@
                 <!-- 调试信息 -->
                 <div class="text-xs text-gray-500 mb-1">{{ medicine.image_path || '无图片' }}</div>
                 <img
-                  :src="getImageUrl(medicine.image_path) || 'https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=medicine%20pill%20bottle&image_size=square'"
+                  :src="getImageUrl(medicine.image_path) || '/icons/app-icon.svg'"
                   :alt="`${medicine.name}图片`"
                   class="w-16 h-16 rounded-lg object-cover bg-gray-100"
                   @error="handleImageError"
@@ -194,8 +194,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useMedicineStore } from '@/stores/medicine'
+import { storeToRefs } from 'pinia'
 import MedicineForm from '@/components/MedicineForm.vue'
 import type { Medicine } from '@/types/medicine'
+import { getBackendOrigin } from '@/utils/api'
 
 /**
  * 药品管理页面组件
@@ -217,8 +219,9 @@ const filters = ref({
   sortBy: 'name'
 })
 
-// 计算属性
-const medicines = computed(() => medicineStore.medicines)
+// 计算属性（使用 storeToRefs 获取 Ref 再暴露为数组）
+const { medicines: medicinesRef } = storeToRefs(medicineStore)
+const medicines = computed(() => medicinesRef.value)
 const loading = computed(() => medicineStore.loading)
 const error = computed(() => medicineStore.error)
 
@@ -323,7 +326,7 @@ const handleFormSuccess = async () => {
 // 处理图片加载错误
 const handleImageError = (event: Event) => {
   const img = event.target as HTMLImageElement
-  img.src = 'https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=medicine%20pill%20bottle&image_size=square'
+  img.src = '/icons/app-icon.svg'
 }
 
 // 获取药品类型对应的单位
@@ -394,7 +397,7 @@ const getImageUrl = (imagePath: string | null | undefined) => {
     return imagePath
   }
   // 构建完整的服务器URL - 后端返回的path已经包含了相对路径
-  const baseURL = 'http://127.0.0.1:8000'
+  const baseURL = getBackendOrigin()
   // 确保路径以/开头
   const path = imagePath.startsWith('/') ? imagePath : `/${imagePath}`
   const fullUrl = `${baseURL}/media${path}`

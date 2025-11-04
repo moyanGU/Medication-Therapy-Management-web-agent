@@ -1,24 +1,47 @@
-version: '3.8'
-
 # 生产环境增量覆盖模板：与基础 docker-compose.yml 合并使用
 # 用法：docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile production up -d
 
 services:
-  # 明确将前端开发服务器置于 dev，仅生产不启用该容器
+  # 前端（生产构建容器）：构建 Vite 的 dist 并通过命名卷提供给 Nginx
   frontend:
-    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    # 构建需要 devDependencies（如 vue-tsc、类型检查等），避免 NODE_ENV=production 导致跳过安装
+    environment:
+      - NPM_CONFIG_PRODUCTION=false
+      # 显式指定前端打包时注入的 API 基地址，避免旧环境变量残留为 127.0.0.1
+      - VITE_API_BASE_URL=/api
+    # 生产构建兼容处理：安装依赖优先用 npm ci，如失败回退到 npm install；构建优先用 build，失败回退到 build:fast
+    command: sh -c "(npm ci --include=dev || npm install --include=dev) && (npm run build || npm run build:fast) && tail -f /dev/null"
+    # 显式覆盖 dev 的依赖与端口/挂载，防止合并泄漏
+    depends_on: []
+    ports: []
+    volumes:
+      - app_dist:/app/dist
+    # 与生产后端/Nginx置于同一网络，便于直接托管静态和前端
+    networks:
+      - mtm-network
+    profiles:
+      - production
 
-  # 本地 MySQL 仅用于开发环境，生产改连外部 RDS
+  # 本地 MySQL 仅用于开发环境，生产改连外部 RDS（保留在dev中）
   mysql:
     profiles: ["dev"]
 
   # 后端服务（Gunicorn）
   backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     restart: always
-    env_file:
-      - .env.prod
+    dns:
+      - 100.100.2.136
+      - 100.100.2.138
+    # 使用项目根 .env 注入变量（Compose自动读取），不再使用 .env.prod
     environment:
       - DEBUG=False
+      - DB_ENGINE=django.db.backends.mysql
       # RDS 连接信息从环境注入
       - DB_HOST=${DB_HOST:-db-prod.mtm-helper.com}
       - DB_PORT=${DB_PORT:-3306}
@@ -30,33 +53,43 @@ services:
       - DB_CONNECT_TIMEOUT=${DB_CONNECT_TIMEOUT:-5}
       - DB_READ_TIMEOUT=${DB_READ_TIMEOUT:-15}
       - DB_WRITE_TIMEOUT=${DB_WRITE_TIMEOUT:-15}
-      # Redis 统一从环境注入
+      # Redis（生产不启用密码）
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PASSWORD=
+      - REDIS_POOL_MAX_CONNECTIONS=${REDIS_POOL_MAX_CONNECTIONS:-100}
+      - REDIS_SOCKET_CONNECT_TIMEOUT=${REDIS_SOCKET_CONNECT_TIMEOUT:-2}
+      - REDIS_SOCKET_TIMEOUT=${REDIS_SOCKET_TIMEOUT:-2}
+      - CACHE_DEFAULT_TTL=${CACHE_DEFAULT_TTL:-300}
+      - REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX:-mtm-helper}
+      - REDIS_ENABLE_COMPRESSION=${REDIS_ENABLE_COMPRESSION:-true}
       # 安全相关（域名清单写入 .env）
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-mtm-helper.com}
-      - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS:-https://mtm-helper.com}
-      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://mtm-helper.com}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-mtm-helper.com,www.mtm-helper.com,api.mtm-helper.com}
+      - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS:-https://mtm-helper.com,https://www.mtm-helper.com,https://api.mtm-helper.com}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://mtm-helper.com,https://www.mtm-helper.com}
     command: >-
-      gunicorn app.wsgi:application
-      -w ${GUNICORN_WORKERS:-3}
-      -k gthread --threads ${GUNICORN_THREADS:-2}
+      gunicorn mtm_helper.wsgi:application
+      -w ${GUNICORN_WORKERS:-4}
+      -k gthread --threads ${GUNICORN_THREADS:-4}
       -b 0.0.0.0:8000
       --timeout ${GUNICORN_TIMEOUT:-60}
       --graceful-timeout ${GUNICORN_GRACEFUL_TIMEOUT:-30}
-    # 生产环境不需要源码热更新卷，保留静态与媒体卷
     volumes:
       - backend_media:/app/media
       - backend_static:/app/staticfiles
     healthcheck:
-      # 使用 Python TCP 探活，避免 curl/wget 不存在
       test: ["CMD-SHELL", "python -c \"import socket,sys; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1',8000)); s.close()\""]
       interval: 15s
       timeout: 3s
       retries: 5
       start_period: 20s
-    profiles: ["production"]
+    depends_on:
+      - redis
+    # 置于与 Nginx 同一自定义网络，确保 upstream 能解析到 backend
+    networks:
+      - mtm-network
+    profiles:
+      - production
 
   # 提醒调度 Worker（独立进程）
   worker:
@@ -65,9 +98,12 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - redis
-    env_file:
-      - .env.prod
+    dns:
+      - 100.100.2.136
+      - 100.100.2.138
+    # 使用项目根 .env 注入变量
     environment:
+      - DB_ENGINE=django.db.backends.mysql
       - DB_HOST=${DB_HOST:-db-prod.mtm-helper.com}
       - DB_PORT=${DB_PORT:-3306}
       - DB_NAME=${DB_NAME}
@@ -75,46 +111,79 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PASSWORD=
     command: python manage.py run_reminder_worker
     restart: always
-    profiles: ["production"]
+    networks:
+      - mtm-network
+    profiles:
+      - production
 
-  # Redis 在生产环境不暴露宿主端口，密码从 .env 注入
+  # Redis 在生产环境不暴露宿主端口，且不启用密码
   redis:
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    image: redis:7.0-alpine
+    command: redis-server
+    restart: always
     ports: []
-    profiles: ["production"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - mtm-network
+    profiles:
+      - production
 
   # Nginx 生产反代与静态托管
   nginx:
+    image: nginx:alpine
     restart: always
     depends_on:
-      - backend
-    # 前端静态与后端静态/媒体卷挂载
+      backend:
+        condition: service_healthy
     volumes:
       - backend_static:/var/www/static:ro
       - backend_media:/var/www/media:ro
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      # 使用与前端构建容器共享的命名卷提供 SPA 构建产物，避免误用宿主机旧的 dist
+      - app_dist:/var/www/app:ro
+      # 使用生产版配置文件，避免旧的临时HTTP-only模板被挂载
+      - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
       - ./certbot/www:/var/www/certbot:ro
       - ./certbot/conf:/etc/letsencrypt:ro
     ports:
       - "80:80"
       - "443:443"
-    profiles: ["production"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - mtm-network
+    profiles:
+      - production
 
-  # Certbot（可选：签发与续期，首次签发请按文档执行）
+  # Certbot（可选：签发与续期）
   certbot:
     image: certbot/certbot:latest
-    entrypoint: ["/bin/sh","-c"]
-    command: "trap : TERM INT; while :; do certbot renew --webroot -w /var/www/certbot --quiet && nginx -s reload || true; sleep 12h; done"
+    restart: always
+    entrypoint: ["/bin/sh"]
+    command: ["-c", "while true; do sleep 3600; done"]
     volumes:
       - ./certbot/www:/var/www/certbot
       - ./certbot/conf:/etc/letsencrypt
     depends_on:
       - nginx
-    profiles: ["production"]
+    networks:
+      - mtm-network
+    profiles:
+      - production
+
+  # 自动监控续期并跨容器重载 Nginx
 
 volumes:
   backend_media:
   backend_static:
+  app_dist:

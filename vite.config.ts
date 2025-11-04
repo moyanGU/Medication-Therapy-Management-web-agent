@@ -3,14 +3,31 @@ import vue from '@vitejs/plugin-vue'
 import path from 'path'
 import Inspector from 'unplugin-vue-dev-locator/vite'
 import traeBadgePlugin from 'vite-plugin-trae-solo-badge'
+import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
   build: {
     sourcemap: 'hidden',
+    outDir: 'dist',
+    emptyOutDir: true,
+    // 强制复制 public 目录到构建产物，避免某些环境下未拷贝导致 /icons/* 等资源缺失
+    copyPublicDir: true,
   },
+  // 明确声明 public 目录，确保 Vite 在不同环境下行为一致
+  publicDir: 'public',
+  base: '/',
   plugins: [
-    vue(),
+    vue({
+      // Ensure absolute URLs like "/icons/app-icon.svg" in Vue SFC templates
+      // are preserved as-is and not transformed into Rollup imports.
+      // This keeps references to assets in /public working in production builds.
+      template: {
+        transformAssetUrls: {
+          includeAbsolute: false,
+        },
+      },
+    }),
     Inspector(),
     traeBadgePlugin({
       variant: 'dark',
@@ -20,6 +37,58 @@ export default defineConfig({
       clickUrl: 'https://www.trae.ai/solo?showJoin=1',
       autoTheme: true,
       autoThemeTarget: '#app',
+    }),
+    VitePWA({
+      registerType: 'autoUpdate',
+      injectRegister: null,
+      includeAssets: ['favicon.svg', 'icons/app-icon.svg', 'icons/maskable-icon.svg', 'icons/app-icon-192.png', 'icons/app-icon-512.png'],
+      workbox: {
+        // 生命周期与清理
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: false, // 允许通过 UI 控制更新激活
+        navigateFallbackDenylist: [/^\/api\//],
+        runtimeCaching: [
+          // 构建产物静态资源：长期缓存，命中即取
+          {
+            urlPattern: ({ url }) => url.origin === self.location.origin && url.pathname.startsWith('/assets/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'assets-cache',
+              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
+            },
+          },
+          // 图片资源：使用 SWR，避免过时图片长期停留
+          {
+            urlPattern: ({ request }) => request.destination === 'image',
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'image-cache',
+              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 7 },
+            },
+          },
+        ],
+      },
+      manifest: {
+        name: 'MTM-用药助手',
+        short_name: 'MTM',
+        description: '用药管理与提醒助手',
+        theme_color: '#0ea5e9',
+        background_color: '#ffffff',
+        display: 'standalone',
+        start_url: '/',
+        lang: 'zh-CN',
+        id: '/',
+        scope: '/',
+        icons: [
+          { src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+          { src: '/icons/app-icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+          { src: '/icons/maskable-icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable' },
+          { src: '/icons/app-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icons/app-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+        ],
+        categories: ['health', 'medical'],
+      },
     }),
   ],
   resolve: {

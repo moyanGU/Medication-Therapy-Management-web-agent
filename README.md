@@ -134,10 +134,51 @@ docker-compose logs -f
 ```
 
 #### 生产环境
+使用独立的生产编排文件 `docker-compose.production.yml` 进行部署与运维。
+
+生产环境路径与域名（已确认）：
+- 服务器项目路径：`/opt/mtm-helper`
+- 站点域名：`https://mtm-helper.com` 与 `https://www.mtm-helper.com`
+- API 域名：`https://api.mtm-helper.com`
+
+快速启动（建议在服务器上执行）：
 ```bash
-# 启动生产环境（包含Nginx）
-docker-compose --profile production up -d
+# 进入项目目录
+cd /opt/mtm-helper
+
+# 使用生产编排文件启动（包含 nginx / backend / redis / certbot 等服务）
+docker compose -f docker-compose.production.yml up -d
+
+# 可选：仅启动后端与 Nginx（前端已构建的情况下）
+docker compose -f docker-compose.production.yml up -d backend nginx
+
+# 查看服务与日志
+docker compose -f docker-compose.production.yml ps
+docker compose -f docker-compose.production.yml logs -f nginx
 ```
+
+首次或发生前端依赖变更时，需进行一次性前端构建并挂载到 Nginx：
+```bash
+docker compose -f docker-compose.production.yml run --rm frontend \
+  sh -lc "(npm ci --include=dev || npm install --include=dev) && (npm run build || npm run build:fast)"
+
+# 验证构建产物是否挂载到 Nginx 容器
+docker compose -f docker-compose.production.yml exec nginx ls -lah /var/www/app
+
+# 校验并热重载 Nginx（如更新了 nginx.prod.conf）
+docker compose -f docker-compose.production.yml exec nginx nginx -t
+docker compose -f docker-compose.production.yml exec nginx nginx -s reload
+```
+
+注意事项：
+- 请务必使用正确的编排文件路径（`-f docker-compose.production.yml`）。若误用了其他文件，可能出现如 “backend has neither image nor build context specified” 的错误。
+- 前端服务的命令已内置构建回退逻辑：优先 `npm ci --include=dev`，失败时回退到 `npm install --include=dev`；构建优先 `npm run build`，失败时回退到 `npm run build:fast`（跳过 TS 检查，仅使用 Vite 构建）。
+- 同步到服务器前，请确保本地 `package.json`、`package-lock.json` 与 `vite.config.ts` 一致，且 `vite.config.ts` 中 `build.outDir` 为 `dist`，`base: '/'`。
+- 如遇到 `/webui/` 访问 500 或日志中出现 `rewrite or internal redirection cycle`，请更新本地 `nginx.prod.conf`，确保存在：
+  - `listen 443 ssl default_server;`（将 HTTPS 服务设置为默认）
+  - `location ^~ /webui/ { try_files $uri $uri/ /index.html; }`（为 SPA 路由提供回退）
+
+更多生产部署与运维细节，参见文档《docs/生产部署_docker-compose.production.yml.md》。
 
 ## 开发指南
 

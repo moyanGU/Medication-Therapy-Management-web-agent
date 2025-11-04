@@ -79,3 +79,14 @@ logs
 # Temporary files
 *.tmp
 *.temp
+ 
+# Server-only and restricted folders (prevent Docker build context permission errors)
+# Certbot writes root-only files under conf/accounts which breaks Docker build context packaging
+certbot/
+certbot/**
+
+# Not needed for frontend image build
+backend/
+db/
+backup/
+captures2/

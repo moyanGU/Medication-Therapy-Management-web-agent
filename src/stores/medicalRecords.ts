@@ -3,9 +3,22 @@ import { ref, computed } from 'vue'
 import { ApiClient } from '@/utils/api'
 
 const apiClient = new ApiClient()
-import type { MedicalRecord, MedicalRecordCreate, MedicalRecordUpdate } from '@/types/medicalRecord'
+import type {
+  MedicalRecord,
+  MedicalRecordCreate,
+  MedicalRecordUpdate,
+  MedicalRecordStatistics
+} from '@/types/medicalRecord'
 
 const BASE_PATH = '/medical-records/records/'
+
+// 归一化后的统计数据类型：在后端原始统计结构基础上，补充前端展示所需的字段
+type NormalizedMedicalRecordStatistics = MedicalRecordStatistics & {
+  totalRecords: number
+  monthlyRecords: number
+  totalCost: number
+  avgSatisfaction: number
+}
 
 export const useMedicalRecordStore = defineStore('medicalRecord', () => {
   // 状态
@@ -44,16 +57,23 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
     urgencyLevels: []
   })
   
-  // 统计数据
-  const statistics = ref({
-    totalVisits: 0,
-    recentVisits: 0,
+  // 统计数据（包含后端字段与前端展示需要的归一化字段）
+  const statistics = ref<NormalizedMedicalRecordStatistics>({
+    // 后端字段（snake_case）
+    total_visits: 0,
+    recent_visits: 0,
+    total_cost: 0,
+    average_cost: 0,
+    follow_up_due: 0,
+    monthly_visits: [],
+    department_distribution: [],
+    cost_trend: [],
+
+    // 前端展示字段（camelCase，页面直接使用）
+    totalRecords: 0,
+    monthlyRecords: 0,
     totalCost: 0,
-    averageCost: 0,
-    followUpDue: 0,
-    monthlyVisits: [],
-    departmentDistribution: [],
-    costTrend: []
+    avgSatisfaction: 0
   })
   
   // 计算属性
@@ -340,7 +360,7 @@ export const useMedicalRecordStore = defineStore('medicalRecord', () => {
           : 0
 
         // 规范化键名映射，确保与页面使用的字段一致
-        const normalized: any = {
+        const normalized: NormalizedMedicalRecordStatistics = {
           // 页面需要的四个核心指标
           totalRecords: Number(
             s.total_visits ?? s.total_records ?? s.total_records_count ?? 0

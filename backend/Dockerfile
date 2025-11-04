@@ -5,13 +5,17 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive
+# 进一步减少构建时间与镜像体积：禁用 pip 缓存与版本检查
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+# 为国内网络环境准备的默认 PyPI 镜像（可在构建时通过 --build-arg 覆盖）
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
+ENV PIP_DEFAULT_TIMEOUT=120
 
-# 安装系统依赖
-RUN apt-get update && apt-get install -y \
-    gcc \
-    default-libmysqlclient-dev \
-    pkg-config \
-    && rm -rf /var/lib/apt/lists/*
+# 精简系统依赖：项目使用 PyMySQL，无需 mysqlclient 的 C 扩展，去掉编译工具链以加快构建
+# 如后续改为使用 mysqlclient 或需编译其他依赖，再恢复 apt 安装
+RUN true
 
 # 设置工作目录
 WORKDIR /app
@@ -20,7 +24,11 @@ WORKDIR /app
 COPY requirements.txt .
 
 # 安装Python依赖
-RUN pip install --no-cache-dir -r requirements.txt
+# 先升级 pip/工具链，随后使用稳定镜像安装；若镜像不可达，回退到官方 PyPI
+RUN python -m pip install --upgrade pip setuptools wheel \
+    && echo "Using index: ${PIP_INDEX_URL}" \
+    && (pip install --no-cache-dir -r requirements.txt -i ${PIP_INDEX_URL} --trusted-host ${PIP_TRUSTED_HOST} --default-timeout=${PIP_DEFAULT_TIMEOUT} \
+        || pip install --no-cache-dir -r requirements.txt --default-timeout=${PIP_DEFAULT_TIMEOUT})
 
 # 复制项目文件
 COPY . .

@@ -11,6 +11,9 @@ interface UserInfo {
   email?: string
   createdAt: string
   updatedAt: string
+  // 可选的用户角色字段，后端若未返回则为 undefined
+  // 这样在其它地方访问 user.role 不会触发 TS 的属性不存在错误
+  role?: string
 }
 
 // 登录凭据接口
@@ -73,8 +76,7 @@ export const useAuthStore = defineStore('auth', () => {
   const userName = computed(() => user.value?.username || '')
   const userPhone = computed(() => user.value?.phone || '')
 
-  // API基础URL
-  const API_BASE_URL = 'http://127.0.0.1:8000/api'
+  // API基础URL: 使用 ApiClient 的 baseURL（由 import.meta.env.VITE_API_BASE_URL 控制）
 
   /**
    * 设置认证令牌
@@ -187,7 +189,7 @@ export const useAuthStore = defineStore('auth', () => {
       console.log('发送登录请求(ApiClient):', { username: credentials.username })
 
       // 使用统一 ApiClient 调用后端登录接口（跳过鉴权头）
-      const response = await api.post<LoginResponseData>('/auth/login/', credentials, { skipAuth: true })
+      const response = await api.post<LoginResponseData>('/auth/login/', credentials, { skipAuth: true, skipErrorHandler: true })
       console.log('🟢 [AuthStore] 登录响应(ApiClient):', response)
 
       if (response.success) {
@@ -241,7 +243,7 @@ export const useAuthStore = defineStore('auth', () => {
       console.log('发送注册请求(ApiClient):', { username: data.username, phone: data.phone })
 
       // 使用统一 ApiClient 调用后端注册接口（跳过鉴权头）
-      const response = await api.post('/auth/register/', data, { skipAuth: true })
+      const response = await api.post('/auth/register/', data, { skipAuth: true, skipErrorHandler: true })
       console.log('🟢 [AuthStore] 注册响应(ApiClient):', response)
 
       if (response.success) {
@@ -269,11 +271,12 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       console.log('发送验证码请求:', { phone })
       
-      const response = await api.post('/auth/send-code/', { phone })
+      const response = await api.post('/auth/send-code/', { phone }, { skipAuth: true, skipErrorHandler: true })
       console.log('验证码响应(ApiClient):', response)
       
       if (response.success) {
-        return { success: true, message: response.message || '验证码发送成功' }
+        const devCode = (response as any)?.data?.code
+        return { success: true, message: response.message || '验证码发送成功', code: devCode }
       } else {
         throw new Error(response.message || '验证码发送失败')
       }
@@ -298,8 +301,9 @@ export const useAuthStore = defineStore('auth', () => {
     
     try {
       if (accessToken.value) {
-        console.log('🔵 [AuthStore] 发送登出请求到服务器')
-        console.log('🔵 [AuthStore] API URL:', `${API_BASE_URL}/auth/logout/`)
+        console.log('🔵 [AuthStore] 发送登出请求到服务器(ApiClient)')
+        console.log('🔵 [AuthStore] Request endpoint:', '/auth/logout/')
+        console.log('🔵 [AuthStore] VITE_API_BASE_URL (effective):', (import.meta as any)?.env?.VITE_API_BASE_URL || '(not set, using default)')
         console.log('🔵 [AuthStore] Request payload:', {
           refresh_token: refreshToken.value?.substring(0, 30) + '...'
         })

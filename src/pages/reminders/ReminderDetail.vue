@@ -87,10 +87,10 @@
               <div class="info-value">
                 <div class="font-medium">{{ reminder.medicine_name }}</div>
                 <div class="text-sm text-gray-600">
-                  {{ reminder.medicine?.specification || '无规格信息' }}
+                  {{ medicineObj?.specification || '无规格信息' }}
                 </div>
                 <div class="text-sm text-gray-600">
-                  {{ getMedicineTypeText(reminder.medicine?.medicine_type) || '无类型信息' }}
+                  {{ getMedicineTypeText(medicineObj?.medicine_type) || '无类型信息' }}
                 </div>
               </div>
             </div>
@@ -412,6 +412,12 @@ const historyFilter = ref('all')
 const reminderId = computed(() => Number(route.params.id))
 
 // 计算属性
+// 将可能为 number 的 medicine 收窄为对象，避免模板访问 union 类型属性时报 TS 错误
+const medicineObj = computed(() => {
+  const m = reminder.value?.medicine as any
+  return m && typeof m === 'object' ? m : undefined
+})
+
 const responseRate = computed(() => {
   if (!reminder.value || reminder.value.reminder_count === 0) return 0
   return Math.round((reminder.value.response_count / reminder.value.reminder_count) * 100)

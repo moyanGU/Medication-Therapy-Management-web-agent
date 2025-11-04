@@ -4,16 +4,16 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- iOS PWA 相关元信息，提高安装识别与图标显示效果 -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="MTM-用药助手" />
+    <meta name="theme-color" content="#0ea5e9" />
+    <!-- 提供 Apple Touch Icon（若后续需要更佳效果可补充 180x180 PNG，目前使用 192x192 作为占位） -->
+    <link rel="apple-touch-icon" href="/icons/app-icon-192.png" />
     <title>MTM-用药助手</title>
-    <script type="module">
-      if (import.meta.hot?.on) {
-        import.meta.hot.on('vite:error', (error) => {
-          if (error.err) {
-            console.error([error.err.message, error.err.frame].filter(Boolean).join('\n'));
-          }
-        });
-      }
-    </script>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- 移除手动 Service Worker 注册，改为在 main.ts 通过 virtual:pwa-register 注册并处理更新提示 -->
   </head>
   <body>
     <div id="app"></div>

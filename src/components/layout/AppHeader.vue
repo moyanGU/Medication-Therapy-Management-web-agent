@@ -1,7 +1,35 @@
 <template>
   <header class="bg-white shadow-sm border-b border-gray-200">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex justify-between items-center h-16">
+      <!-- PWA 更新横幅 -->
+      <div v-if="showUpdateBanner" class="bg-blue-50 border-b border-blue-200 text-blue-800 text-sm px-4 py-2 flex justify-between items-center">
+        <span>发现新版本，点击更新以应用最新功能。</span>
+        <div class="space-x-2">
+          <button @click="applyUpdate" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded">更新</button>
+          <button @click="showUpdateBanner = false" class="text-blue-600 px-3 py-1">稍后</button>
+        </div>
+      </div>
+      <!-- PWA 安装横幅（Android Chrome 等支持 beforeinstallprompt 的浏览器） -->
+      <div v-if="showInstallBanner" class="bg-green-50 border-b border-green-200 text-green-800 text-sm px-4 py-2 flex justify-between items-center">
+        <span>将 MTM-用药助手 安装到设备，获得类原生体验。</span>
+        <div class="space-x-2">
+          <button @click="triggerInstall" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded">安装</button>
+          <button @click="showInstallBanner = false" class="text-green-600 px-3 py-1">稍后</button>
+        </div>
+      </div>
+
+      <!-- iOS 安装引导横幅（Safari 不支持 beforeinstallprompt） -->
+      <div v-if="showIosInstallGuide" class="bg-amber-50 border-b border-amber-200 text-amber-800 text-sm px-4 py-2 flex justify-between items-start">
+        <span>
+          iPhone/iPad 安装指引：
+          1) 使用 Safari 打开；
+          2) 点击底部“分享”按钮；
+          3) 选择“添加到主屏幕”；
+          4) 添加后即可以独立应用方式使用。
+        </span>
+        <button @click="showIosInstallGuide = false" class="text-amber-700 px-3 py-1">知道了</button>
+      </div>
+      <div class="flex justify之间 items-center h-16">
         <!-- Logo和标题 -->
         <div class="flex items-center">
           <router-link to="/" class="flex items-center space-x-3">
@@ -231,6 +259,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '@/composables/useAuth'
+// 新增：通知服务
+import { getGlobalNotification } from '@/composables/useNotification'
 // 新增：服务与类型
 import { reminderService, type Reminder } from '@/services/reminderService'
 import { medicineApi } from '@/api/medicine'
@@ -242,11 +272,23 @@ import type { Medicine } from '@/types/medicine'
  */
 
 const { isAuthenticated, user, logout } = useAuth()
+const notificationService = getGlobalNotification()
 
 // 组件状态
 const showUserMenu = ref(false)
 const showMobileMenu = ref(false)
 const showNotifications = ref(false)
+
+// 新增：PWA 横幅状态（Android 安装 + 通用更新提示）
+const showUpdateBanner = ref(false)
+const showInstallBanner = ref(false)
+let deferredPrompt: any = null
+
+// 新增：iOS 安装引导（Safari 不支持 beforeinstallprompt，只能通过“分享 -> 添加到主屏幕”）
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+// iOS 已安装判断：iOS Safari 安装后 (navigator as any).standalone 为 true；其他浏览器可用 display-mode 媒体查询
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true
+const showIosInstallGuide = ref(false)
 
 // 计算属性
 const userName = computed(() => user.value?.username || '')
@@ -270,6 +312,55 @@ const notifications = ref<NotificationItem[]>([])
  * 基于通知列表中 read 字段计算
  */
 const hasUnreadNotifications = computed(() => notifications.value.some(n => !n.read))
+
+// PWA 事件处理
+function handleBeforeInstallPrompt(event: Event) {
+  console.log('[PWA] beforeinstallprompt 触发')
+  // 阻止自动弹窗，改为我们自定义横幅控制
+  event.preventDefault()
+  deferredPrompt = event as any
+  showInstallBanner.value = true
+}
+
+function handleAppInstalled() {
+  console.log('[PWA] appinstalled: 应用已安装')
+  showInstallBanner.value = false
+  deferredPrompt = null
+  // 前台通知（如果权限允许）
+  notificationService.showNotification('MTM-用药助手已安装', {
+    body: '已添加到设备，支持离线使用',
+    icon: '/favicon.svg',
+  })
+}
+
+function handlePwaNeedRefresh() {
+  console.log('[PWA] need-refresh: 显示更新横幅')
+  showUpdateBanner.value = true
+}
+
+function applyUpdate() {
+  const fn = (window as any).__pwa_update__
+  if (typeof fn === 'function') {
+    console.log('[PWA] 用户点击更新，执行 skipWaiting + reload')
+    fn(true)
+  } else {
+    console.warn('[PWA] 更新函数不可用')
+  }
+  showUpdateBanner.value = false
+}
+
+function triggerInstall() {
+  if (!deferredPrompt) {
+    console.warn('[PWA] 暂无安装事件')
+    return
+  }
+  ;(deferredPrompt as any).prompt()
+  ;(deferredPrompt as any).userChoice?.then((choice: any) => {
+    console.log('[PWA] 安装选择:', choice)
+    deferredPrompt = null
+    showInstallBanner.value = false
+  })
+}
 
 // 从各来源抓取通知
 const loadingNotifications = ref(false)
@@ -353,7 +444,10 @@ const fetchNotifications = async () => {
         console.log('🔔 [通知] 今日提醒数:', list.length)
         list.forEach((rem, idx) => {
           const time = rem.reminder_time?.slice(0,5) || ''
-          const medName = rem.medicine?.name || '药品'
+          // medicine 可能是 number（ID）或对象，这里进行类型收窄，避免 TS 报错
+          // 优先使用后端派生字段 medicine_name，其次再从对象中读取 name
+          const medName = rem.medicine_name
+            || (typeof rem.medicine === 'object' && rem.medicine ? (rem.medicine.name ?? '药品') : '药品')
           const dose = rem.dosage ? `${rem.dosage}${unitLabel(rem.dosage_unit)}` : ''
           tmp.push({
             id: `rem-${rem.id}-${idx}`,
@@ -518,9 +612,23 @@ const handleClickOutside = (event: Event) => {
 // 生命周期
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  // 监听 PWA 事件
+  window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt as EventListener)
+  window.addEventListener('appinstalled', handleAppInstalled as EventListener)
+  window.addEventListener('pwa:need-refresh', handlePwaNeedRefresh as EventListener)
+
+  // iOS：在未安装且使用 Safari 的情况下，显示安装引导横幅
+  const isSafariOnIOS = isIOS && /Safari/i.test(navigator.userAgent) && !/CriOS|FxiOS|EdgiOS/i.test(navigator.userAgent)
+  if (isSafariOnIOS && !isStandalone) {
+    console.log('[PWA][iOS] Safari 检测到未安装，显示引导横幅')
+    showIosInstallGuide.value = true
+  }
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt as EventListener)
+  window.removeEventListener('appinstalled', handleAppInstalled as EventListener)
+  window.removeEventListener('pwa:need-refresh', handlePwaNeedRefresh as EventListener)
 })
 </script>

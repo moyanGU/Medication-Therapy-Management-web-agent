@@ -148,6 +148,24 @@
           </label>
         </div>
 
+        <!-- 提示信息（错误/成功） -->
+        <div v-if="errorMessage" class="bg-red-50 border border-red-200 rounded-md p-3">
+          <div class="flex">
+            <span class="text-red-400">⚠️</span>
+            <div class="ml-3">
+              <p class="text-sm text-red-800">{{ errorMessage }}</p>
+            </div>
+          </div>
+        </div>
+        <div v-if="successMessage" class="bg-green-50 border border-green-200 rounded-md p-3">
+          <div class="flex">
+            <span class="text-green-500">✅</span>
+            <div class="ml-3">
+              <p class="text-sm text-green-800">{{ successMessage }}</p>
+            </div>
+          </div>
+        </div>
+
         <!-- 注册按钮 -->
         <div>
           <button
@@ -180,6 +198,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 /**
  * 注册页面组件
@@ -187,6 +206,7 @@ import { useRouter } from 'vue-router'
  */
 
 const router = useRouter()
+const authStore = useAuthStore()
 
 // 表单数据
 const registerForm = reactive({
@@ -203,12 +223,15 @@ const showPassword = ref(false)
 const isLoading = ref(false)
 const isSendingCode = ref(false)
 const countdown = ref(0)
+const errorMessage = ref('')
+const successMessage = ref('')
 
 // 表单验证
+const isPhoneValid = computed(() => /^1[3-9]\d{9}$/.test(registerForm.phone))
 const isFormValid = computed(() => {
   return (
     registerForm.username.trim() &&
-    registerForm.phone.trim() &&
+    isPhoneValid.value &&
     registerForm.verificationCode.trim() &&
     registerForm.password.length >= 6 &&
     registerForm.password === registerForm.confirmPassword &&
@@ -217,43 +240,49 @@ const isFormValid = computed(() => {
 })
 
 /**
- * 发送验证码
+ * 发送验证码（调用后端API）
  */
 const sendVerificationCode = async () => {
-  if (!registerForm.phone.trim()) {
-    alert('请先输入手机号')
+  if (!isPhoneValid.value) {
+    alert('请输入正确的手机号')
     return
   }
 
-  console.log('发送验证码到:', registerForm.phone)
-  
+  errorMessage.value = ''
+  successMessage.value = ''
   isSendingCode.value = true
-  
+
   try {
-    // TODO: 调用发送验证码API
-    // 模拟发送过程
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    // 开始倒计时
-    countdown.value = 60
-    const timer = setInterval(() => {
-      countdown.value--
-      if (countdown.value <= 0) {
-        clearInterval(timer)
+    console.log('发送验证码到:', registerForm.phone)
+    const res = await authStore.sendVerificationCode(registerForm.phone)
+
+    if (res && res.success) {
+      successMessage.value = '验证码已发送，请查收短信'
+      if ((res as any).code) {
+        successMessage.value += `（开发环境验证码：${(res as any).code}）`
       }
-    }, 1000)
-    
-    console.log('验证码发送成功')
-  } catch (error) {
+
+      // 开始倒计时（仅在发送成功时）
+      countdown.value = 60
+      const timer = setInterval(() => {
+        countdown.value--
+        if (countdown.value <= 0) {
+          clearInterval(timer)
+        }
+      }, 1000)
+    } else {
+      errorMessage.value = res?.message || '验证码发送失败'
+    }
+  } catch (error: any) {
     console.error('验证码发送失败:', error)
-    // TODO: 显示错误提示
+    errorMessage.value = error?.message || '验证码发送失败，请稍后重试'
   } finally {
     isSendingCode.value = false
   }
 }
 
 /**
- * 处理注册提交
+ * 处理注册提交（调用后端API，仅成功时跳转）
  */
 const handleRegister = async () => {
   if (!isFormValid.value) {
@@ -261,19 +290,30 @@ const handleRegister = async () => {
   }
 
   console.log('注册表单提交:', registerForm)
-  
+
   isLoading.value = true
-  
+  errorMessage.value = ''
+  successMessage.value = ''
+
   try {
-    // TODO: 调用注册API
-    // 模拟注册过程
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    // 注册成功后跳转到登录页面
-    router.push('/login')
-  } catch (error) {
+    const result = await authStore.register({
+      username: registerForm.username.trim(),
+      phone: registerForm.phone,
+      password: registerForm.password,
+      verification_code: registerForm.verificationCode
+    })
+
+    if (result.success) {
+      successMessage.value = result.message || '注册成功！请登录'
+      console.log('注册成功，跳转到登录页')
+      await router.push('/login')
+    } else {
+      errorMessage.value = result.message || '注册失败，请稍后重试'
+      console.error('注册失败:', errorMessage.value)
+    }
+  } catch (error: any) {
     console.error('注册失败:', error)
-    // TODO: 显示错误提示
+    errorMessage.value = error?.message || '注册失败，请稍后重试'
   } finally {
     isLoading.value = false
   }

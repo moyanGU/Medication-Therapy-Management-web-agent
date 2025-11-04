@@ -12,6 +12,9 @@ urlpatterns = [
     
     # 发送验证码
     path('send-code/', views.send_verification_code, name='send_verification_code'),
+
+    # 管理员审批验证码（只有管理员登录后可调用）
+    path('admin/approve-code/', views.approve_verification_code, name='approve_verification_code'),
     
     # 用户登出
     path('logout/', views.logout, name='logout'),

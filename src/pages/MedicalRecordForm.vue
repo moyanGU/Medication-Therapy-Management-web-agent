@@ -798,11 +798,77 @@ const handleSubmit = async () => {
     
     if (isEdit.value && recordId.value) {
       // 更新病历
-      await medicalRecordStore.updateRecord(recordId.value, form as MedicalRecordUpdate)
+      // 构造类型安全的更新载荷，显式断言枚举字段，避免 v-model 推断为普通 string
+      const updatePayload: MedicalRecordUpdate = {
+        visit_date: form.visit_date,
+        visit_time: form.visit_time,
+        hospital: form.hospital,
+        hospital_address: form.hospital_address,
+        department: form.department,
+        doctor: form.doctor,
+        doctor_title: form.doctor_title,
+        visit_type: form.visit_type as import('@/types/medicalRecord').VisitType,
+        chief_complaint: form.chief_complaint,
+        present_illness: form.present_illness,
+        diagnosis: form.diagnosis,
+        diagnosis_code: form.diagnosis_code,
+        treatment: form.treatment,
+        prescribed_medicines: form.prescribed_medicines,
+        examinations: form.examinations,
+        examination_results: form.examination_results,
+        lab_results: form.lab_results,
+        medical_orders: form.medical_orders,
+        notes: form.notes,
+        total_cost: form.total_cost,
+        insurance_coverage: form.insurance_coverage,
+        self_pay_amount: form.self_pay_amount,
+        follow_up_date: form.follow_up_date,
+        follow_up_notes: form.follow_up_notes,
+        symptom_score_before: form.symptom_score_before,
+        symptom_score_after: form.symptom_score_after,
+        satisfaction_score: form.satisfaction_score,
+        status: form.status as import('@/types/medicalRecord').MedicalStatus,
+        urgency: form.urgency as import('@/types/medicalRecord').UrgencyLevel,
+        attachments: form.attachments,
+      }
+      await medicalRecordStore.updateRecord(recordId.value, updatePayload)
       toast.success('病历更新成功')
     } else {
       // 创建病历
-      await medicalRecordStore.createRecord(form)
+      // 构造类型安全的创建载荷，显式断言枚举字段
+      const createPayload: import('@/types/medicalRecord').MedicalRecordCreate = {
+        visit_date: form.visit_date,
+        visit_time: form.visit_time,
+        hospital: form.hospital,
+        hospital_address: form.hospital_address,
+        department: form.department,
+        doctor: form.doctor,
+        doctor_title: form.doctor_title,
+        visit_type: form.visit_type as import('@/types/medicalRecord').VisitType,
+        chief_complaint: form.chief_complaint,
+        present_illness: form.present_illness,
+        diagnosis: form.diagnosis,
+        diagnosis_code: form.diagnosis_code,
+        treatment: form.treatment,
+        prescribed_medicines: form.prescribed_medicines,
+        examinations: form.examinations,
+        examination_results: form.examination_results,
+        lab_results: form.lab_results,
+        medical_orders: form.medical_orders,
+        notes: form.notes,
+        total_cost: form.total_cost,
+        insurance_coverage: form.insurance_coverage,
+        self_pay_amount: form.self_pay_amount,
+        follow_up_date: form.follow_up_date,
+        follow_up_notes: form.follow_up_notes,
+        symptom_score_before: form.symptom_score_before,
+        symptom_score_after: form.symptom_score_after,
+        satisfaction_score: form.satisfaction_score,
+        status: form.status as import('@/types/medicalRecord').MedicalStatus,
+        urgency: form.urgency as import('@/types/medicalRecord').UrgencyLevel,
+        attachments: form.attachments,
+      }
+      await medicalRecordStore.createRecord(createPayload)
       toast.success('病历创建成功')
     }
     

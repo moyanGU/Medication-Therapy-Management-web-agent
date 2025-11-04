@@ -505,6 +505,15 @@ const { records, statistics, loading, error, pagination, hasRecords } = storeToR
 // 方法可直接从 store 解构
 const { fetchRecords, fetchStatistics, deleteRecord, exportRecords: storeExportRecords } = recordStore
 
+// 为模板暴露导出函数别名，避免 @click="exportRecords" 未定义导致的类型错误
+const exportRecords = async () => {
+  try {
+    await storeExportRecords()
+  } catch (e) {
+    console.error('[RecordsPage] 导出记录失败:', e)
+  }
+}
+
 // 防抖搜索
 const debouncedSearch = debounce(() => {
   applyFilters()

@@ -283,6 +283,7 @@ import { X, Upload } from 'lucide-vue-next'
 import { useMedicineStore } from '@/stores/medicine'
 import type { Medicine, MedicineCreateData, MedicineUpdateData } from '@/types/medicine'
 import { toast } from 'vue-sonner'
+import { getBackendOrigin } from '@/utils/api'
 
 // Props
 interface Props {
@@ -513,7 +514,7 @@ const getImagePreviewUrl = (imagePath: string): string => {
     return imagePath
   }
   // 构建完整的服务器URL - 后端返回的path已经包含了相对路径
-  const baseUrl = 'http://127.0.0.1:8000'
+  const baseUrl = getBackendOrigin()
   // 确保路径以/开头
   const path = imagePath.startsWith('/') ? imagePath : `/${imagePath}`
   return `${baseUrl}/media${path}`

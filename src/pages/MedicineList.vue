@@ -70,8 +70,8 @@
         />
       </div>
       <div class="filter-controls">
-        <select v-model="filters.medicine_type" @change="handleFilter" class="filter-select">
-          <option value="">所有类型</option>
+        <select v-model="filters.dosage_form" @change="handleFilter" class="filter-select">
+          <option value="">所有剂型</option>
           <option value="tablet">片剂</option>
           <option value="capsule">胶囊</option>
           <option value="liquid">液体</option>
@@ -80,7 +80,7 @@
           <option value="drops">滴剂</option>
           <option value="other">其他</option>
         </select>
-        <select v-model="filters.is_prescription" @change="handleFilter" class="filter-select">
+        <select v-model="filters.prescription_required" @change="handleFilter" class="filter-select">
           <option value="">所有药品</option>
           <option value="true">处方药</option>
           <option value="false">非处方药</option>
@@ -280,6 +280,7 @@ import {
 import MedicineForm from '@/components/MedicineForm.vue'
 import MedicineDetail from '@/components/MedicineDetail.vue'
 import QuantityDialog from '@/components/QuantityDialog.vue'
+import { getBackendOrigin } from '@/utils/api'
 
 // Store
 const medicineStore = useMedicineStore()
@@ -297,8 +298,8 @@ const selectedMedicine = ref<Medicine | null>(null)
 
 // 筛选条件
 const filters = reactive({
-  medicine_type: '',
-  is_prescription: '',
+  dosage_form: '',
+  prescription_required: '',
   status: ''
 })
 
@@ -321,18 +322,18 @@ const loadMedicines = async () => {
       params.search = searchQuery.value
     }
 
-    if (filters.medicine_type) {
-      params.medicine_type = filters.medicine_type as any
+    if (filters.dosage_form) {
+      params.dosage_form = filters.dosage_form as any
     }
 
-    if (filters.is_prescription) {
-      params.is_prescription = filters.is_prescription === 'true'
+    if (filters.prescription_required) {
+      params.prescription_required = filters.prescription_required === 'true'
     }
 
     if (filters.status === 'expired') {
-      params.expired = true
+      params.is_expired = true
     } else if (filters.status === 'low_stock') {
-      params.low_stock = true
+      params.is_low_stock = true
     }
 
     await medicineStore.fetchMedicines(params)
@@ -379,6 +380,7 @@ const editMedicine = (medicine: Medicine) => {
 }
 
 const showQuantityDialog = (medicine: Medicine) => {
+  console.log('🟡 [MedicineList] 打开库存调整对话框: ', medicine?.id, medicine?.name)
   selectedMedicine.value = medicine
   showQuantityDialogVisible.value = true
 }
@@ -427,7 +429,7 @@ const getImageUrl = (imagePath?: string | null) => {
   if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
     return imagePath
   }
-  const baseURL = 'http://127.0.0.1:8000'
+  const baseURL = getBackendOrigin()
   const path = imagePath.startsWith('/') ? imagePath : `/${imagePath}`
   return `${baseURL}/media${path}`
 }
@@ -437,7 +439,7 @@ const getImageUrl = (imagePath?: string | null) => {
  */
 const handleImageError = (event: Event) => {
   const img = event.target as HTMLImageElement
-  img.src = 'https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=medicine%20pill%20bottle&image_size=square'
+  img.src = '/icons/app-icon.svg'
 }
 
 // 生命周期

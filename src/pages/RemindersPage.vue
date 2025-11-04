@@ -50,7 +50,7 @@
                 <div class="flex items-center space-x-4">
                   <div class="flex-shrink-0">
                     <img
-                      src="https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=medicine%20capsule&image_size=square"
+                      src="/icons/app-icon.svg"
                       alt="药品图片"
                       class="w-12 h-12 rounded-lg object-cover bg-gray-100"
                     />
@@ -89,7 +89,7 @@
                 <div class="flex items-center space-x-4">
                   <div class="flex-shrink-0">
                     <img
-                      src="https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=medicine%20capsule&image_size=square"
+                      src="/icons/app-icon.svg"
                       alt="药品图片"
                       class="w-12 h-12 rounded-lg object-cover bg-gray-100"
                     />
@@ -128,7 +128,7 @@
                 <div class="flex items-center space-x-4">
                   <div class="flex-shrink-0">
                     <img
-                      src="https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=medicine%20capsule&image_size=square"
+                      src="/icons/app-icon.svg"
                       alt="药品图片"
                       class="w-12 h-12 rounded-lg object-cover bg-gray-100"
                     />
@@ -175,7 +175,7 @@
                 <div class="flex items-center space-x-4">
                   <div class="flex-shrink-0">
                     <img
-                      src="https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=medicine%20capsule&image_size=square"
+                      src="/icons/app-icon.svg"
                       alt="药品图片"
                       class="w-12 h-12 rounded-lg object-cover bg-gray-100"
                     />

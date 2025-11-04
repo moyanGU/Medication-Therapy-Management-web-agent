@@ -1,6 +1,6 @@
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
@@ -10,7 +10,11 @@ from apps.users.models import User
 # # from apps.core.utils import generate_verification_code, send_sms
 import re
 import logging
+import os
 from rest_framework.exceptions import ParseError
+from django.core.cache import cache
+from django.conf import settings
+from apps.core.utils import generate_verification_code
 
 logger = logging.getLogger(__name__)
 
@@ -85,13 +89,57 @@ def register(request):
                 'data': None
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # 验证码验证（模拟实现）
-        if verification_code != '123456':  # 临时使用固定验证码
+        # 从缓存校验验证码
+        cache_key = f"sms:code:{phone}"
+        cached_code = None
+        try:
+            cached_code = cache.get(cache_key)
+        except Exception as ce:
+            logger.error(f"读取验证码缓存失败，将回退到Session: {str(ce)}")
+            # Session 回退
+            cached_code = request.session.get(cache_key)
+
+        if not cached_code or verification_code != str(cached_code):
             return Response({
                 'success': False,
-                'message': '验证码错误',
+                'message': '验证码错误或已过期',
                 'data': None
             }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 新增（可配置）：是否需要管理员审批后方可使用验证码
+        # 通过 settings.REGISTRATION_REQUIRE_APPROVAL 控制，默认 True
+        approved_key = f"sms:approved:{phone}:{verification_code}"
+        require_approval = getattr(settings, 'REGISTRATION_REQUIRE_APPROVAL', True)
+        if require_approval:
+            is_approved = False
+            try:
+                is_approved = bool(cache.get(approved_key))
+            except Exception as ce:
+                logger.warning(f"读取审批标记缓存失败，尝试Session回退: {str(ce)}")
+                try:
+                    is_approved = bool(request.session.get(approved_key))
+                except Exception:
+                    is_approved = False
+
+            if not is_approved:
+                return Response({
+                    'success': False,
+                    'message': '验证码尚未审批，请等待管理员确认',
+                    'data': None
+                }, status=status.HTTP_403_FORBIDDEN)
+        else:
+            logger.info("注册审批开关关闭：验证码无需管理员审批")
+        
+        # 验证成功后删除验证码，避免重复使用
+        try:
+            cache.delete(cache_key)
+            cache.delete(approved_key)
+        except Exception as ce:
+            logger.warning(f"删除验证码缓存/审批标记失败，尝试删除Session: {str(ce)}")
+            if cache_key in request.session:
+                del request.session[cache_key]
+            if approved_key in request.session:
+                del request.session[approved_key]
         
         # 检查用户名是否已存在
         if User.objects.filter(username=username).exists():
@@ -284,10 +332,22 @@ def send_verification_code(request):
     返回:
     - success: 是否成功
     - message: 提示信息
+    - data: 开发模式可回显验证码（生产环境不返回）
     """
+    # 仅捕获请求体解析错误，避免客户端提交格式问题导致500
     try:
-        phone = request.data.get('phone', '').strip()
-        
+        data = request.data
+    except ParseError as pe:
+        logger.warning(f"发送验证码请求体解析失败: {str(pe)}")
+        return Response({
+            'success': False,
+            'message': '请求体格式错误，请使用application/json提交',
+            'data': None
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        phone = (data.get('phone') or '').strip()
+
         logger.info(f"发送验证码请求: phone={phone}")
         
         # 手机号格式验证
@@ -299,20 +359,120 @@ def send_verification_code(request):
                 'data': None
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # 生成验证码（模拟实现）
-        verification_code = '123456'  # 临时使用固定验证码
+        # 频率限制：同一手机号60秒内只允许发送一次
+        rate_key = f"sms:rate:{phone}"
+        try:
+            if cache.get(rate_key):
+                return Response({
+                    'success': False,
+                    'message': '发送过于频繁，请稍后再试',
+                    'data': None
+                }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        except Exception as ce:
+            logger.warning(f"读取频率限制缓存失败，尝试使用Session回退: {str(ce)}")
+            # Session 回退读取：在 Redis 异常时仍保障限流有效
+            try:
+                if request.session.get(rate_key):
+                    logger.info(f"Session 限流命中: rate_key={rate_key}")
+                    return Response({
+                        'success': False,
+                        'message': '发送过于频繁，请稍后再试',
+                        'data': None
+                    }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            except Exception as se:
+                logger.warning(f"读取Session限流失败，忽略: {str(se)}")
         
-        # 发送短信（模拟实现）
-        # 在实际项目中，这里应该调用短信服务API
-        logger.info(f"模拟发送验证码: phone={phone}, code={verification_code}")
+        # 生成验证码
+        verification_code = generate_verification_code(6)
+        cache_key = f"sms:code:{phone}"
+        ttl = getattr(settings, 'SMS_CODE_TTL', 300)
+        rate_limit_seconds = getattr(settings, 'SMS_RATE_LIMIT_SECONDS', 60)
+        
+        # 持久化验证码
+        try:
+            cache.set(cache_key, verification_code, ttl)
+            # 设置频率限制标记
+            cache.set(rate_key, 1, rate_limit_seconds)
+        except Exception as ce:
+            logger.error(f"写入验证码/限流缓存失败，将回退到Session: {str(ce)}")
+            # Session 回退：验证码与限流标记同时写入
+            request.session[cache_key] = verification_code
+            request.session[rate_key] = 1
+            # 使用 Session 有效期，避免长时间保留（取验证码TTL、限流TTL与上限的最小值）
+            try:
+                fallback_expiry = min(ttl, rate_limit_seconds, 300)
+                request.session.set_expiry(fallback_expiry)
+            except Exception:
+                pass
+        
+        # 模板化短信内容
+        try:
+            minutes = max(1, int(round(ttl / 60)))
+        except Exception:
+            minutes = 5
+        sms_text = getattr(settings, 'SMS_TEMPLATES', {}).get('verification', '【MTM用药助手】您的验证码是 {code}，{ttl} 分钟内有效。').format(code=verification_code, ttl=minutes)
+        
+        # 集成 Spug 推送平台
+        spug_enabled = getattr(settings, 'SPUG_PUSH_ENABLED', os.getenv('SPUG_PUSH_ENABLED', 'false').lower() == 'true')
+        logger.info(f"Spug推送启用: {spug_enabled}")
+        if spug_enabled:
+            try:
+                import requests
+                base_url = getattr(settings, 'SPUG_PUSH_URL', os.getenv('SPUG_PUSH_URL', 'https://push.spug.cc'))
+                template_id = getattr(settings, 'SPUG_TEMPLATE_ID', os.getenv('SPUG_TEMPLATE_ID', '')).strip()
+                app_name = getattr(settings, 'SPUG_APP_NAME', os.getenv('SPUG_APP_NAME', 'MTM用药助手'))
+                if not template_id:
+                    logger.error('SPUG_TEMPLATE_ID 未配置')
+                    return Response({
+                        'success': False,
+                        'message': '短信通道异常，请稍后重试',
+                        'data': None
+                    }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+                url = f"{base_url.rstrip('/')}/send/{template_id}"
+                payload = {
+                    "name": app_name,
+                    "code": verification_code,
+                    "targets": phone  # 即时传入的注册手机号
+                }
+                timeout = int(getattr(settings, 'SPUG_PUSH_TIMEOUT_SECONDS', 3))
+                token = getattr(settings, 'SPUG_PUSH_TOKEN', '')
+                headers = {
+                    "Content-Type": "application/x-www-form-urlencoded"
+                }
+                if token:
+                    headers["Authorization"] = f"Bearer {token}"
+                # 避免在日志中泄露敏感信息（手机号与验证码做脱敏）
+                masked_phone = (phone[:3] + '****' + phone[-4:]) if isinstance(phone, str) and len(phone) == 11 else '[masked]'
+                masked_payload = {**payload, 'code': '****', 'targets': masked_phone}
+                logger.info(f"调用Spug发送验证码: url={url}, payload={masked_payload}, timeout={timeout}, auth={'yes' if token else 'no'}")
+                r = requests.post(url, data=payload, headers=headers, timeout=timeout)
+                # 记录响应但不泄露敏感信息
+                logger.info(f"Spug响应: status={r.status_code}, text={r.text[:200]}")
+                r.raise_for_status()
+            except Exception as se:
+                logger.error(f"Spug 短信发送失败: {str(se)}")
+                return Response({
+                    'success': False,
+                    'message': '短信通道异常，请稍后重试',
+                    'data': None
+                }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        else:
+            # 未启用Spug时，按原逻辑打印（仅开发环境允许回显）
+            if getattr(settings, 'DEBUG', False) or getattr(settings, 'SMS_DEV_ECHO', False):
+                logger.info(f"模拟发送短信验证码: phone={phone}, content={sms_text}")
+            else:
+                logger.info(f"模拟发送短信验证码: phone={phone}, content=[masked]")
+        
+        resp_data = {'phone': phone}
+        # 开发环境可回显验证码，生产环境不返回
+        sms_dev_echo = getattr(settings, 'SMS_DEV_ECHO', bool(getattr(settings, 'DEBUG', False)))
+        if sms_dev_echo:
+            resp_data['code'] = verification_code
         
         return Response({
             'success': True,
             'message': '验证码发送成功',
-            'data': {
-                'phone': phone,
-                'code': verification_code  # 开发环境返回验证码，生产环境不应返回
-            }
+            'data': resp_data
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
@@ -455,3 +615,72 @@ def verify_token(request):
             'message': '令牌验证失败',
             'data': None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def approve_verification_code(request):
+    """
+    管理员审批验证码，使其在注册时可被识别为有效。
+
+    请求参数:
+    - phone: 手机号
+    - code: 验证码
+
+    返回:
+    - success
+    - message
+    """
+    try:
+        # 运行时权限校验：允许 is_superuser / is_staff / 自定义 is_admin
+        user = getattr(request, 'user', None)
+        if not user or not (getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False) or getattr(user, 'is_admin', False)):
+            return Response({'success': False, 'message': '需要管理员权限'}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            data = request.data
+        except ParseError as pe:
+            logger.warning(f"审批验证码请求体解析失败: {str(pe)}")
+            return Response({'success': False, 'message': '请求体格式错误，请使用application/json提交', 'data': None}, status=status.HTTP_400_BAD_REQUEST)
+
+        phone = (data.get('phone') or '').strip()
+        code = (data.get('code') or '').strip()
+
+        if not phone or not code:
+            return Response({'success': False, 'message': '手机号和验证码均为必填', 'data': None}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 校验当前缓存中是否存在该验证码（未过期）
+        cache_key = f"sms:code:{phone}"
+        try:
+            cached_code = cache.get(cache_key)
+        except Exception as ce:
+            logger.error(f"读取验证码缓存失败，将回退到Session: {str(ce)}")
+            cached_code = request.session.get(cache_key)
+
+        if not cached_code:
+            return Response({'success': False, 'message': '验证码不存在或已过期', 'data': None}, status=status.HTTP_404_NOT_FOUND)
+
+        if str(cached_code) != str(code):
+            return Response({'success': False, 'message': '验证码不匹配', 'data': None}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 设置审批标记
+        approved_key = f"sms:approved:{phone}:{code}"
+        ttl = getattr(settings, 'SMS_CODE_TTL', 300)
+        try:
+            cache.set(approved_key, 1, ttl)
+        except Exception as ce:
+            logger.error(f"写入审批标记失败，将回退到Session: {str(ce)}")
+            request.session[approved_key] = 1
+            try:
+                request.session.set_expiry(min(ttl, 300))
+            except Exception:
+                pass
+
+        masked_phone = (phone[:3] + '****' + phone[-4:]) if isinstance(phone, str) and len(phone) == 11 else '[masked]'
+        logger.info(f"管理员({getattr(request.user, 'username', 'admin')})已审批验证码: phone={masked_phone}")
+
+        return Response({'success': True, 'message': '已审批，验证码现在有效'}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.exception("审批验证码失败")
+        return Response({'success': False, 'message': '审批失败，请稍后重试', 'data': None}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

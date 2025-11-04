@@ -30,7 +30,7 @@
             >
               <option value="">请选择药品</option>
               <option
-                v-for="medicine in medicines"
+                v-for="medicine in medicinesRef"
                 :key="medicine.id"
                 :value="medicine.id"
               >
@@ -235,6 +235,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRecordStore } from '../stores/record'
 import { useMedicineStore } from '../stores/medicine'
 import {
@@ -262,7 +263,9 @@ const emit = defineEmits<{
 const recordStore = useRecordStore()
 const medicineStore = useMedicineStore()
 const { loading, createRecord, updateRecord } = recordStore
-const { medicines, fetchMedicines } = medicineStore
+const { fetchMedicines } = medicineStore
+// 使用 storeToRefs 获取 Ref，并重命名为 medicinesRef，避免与可能的同名数组混淆导致类型推断问题
+const { medicines: medicinesRef } = storeToRefs(medicineStore)
 
 // 表单状态
 const isEdit = computed(() => !!props.record)
@@ -429,13 +432,13 @@ const handleSubmit = async () => {
 // 生命周期
 onMounted(async () => {
   console.log('🔵 [RecordForm] onMounted - 开始加载药品列表')
-  console.log('🔵 [RecordForm] 当前药品列表:', medicines.value)
+  console.log('🔵 [RecordForm] 当前药品列表:', medicinesRef.value)
   
   // 加载药品列表
-  if (!medicines.value || medicines.value.length === 0) {
+  if (!medicinesRef.value || medicinesRef.value.length === 0) {
     console.log('🔵 [RecordForm] 药品列表为空，开始获取药品列表')
     await fetchMedicines()
-    console.log('🟢 [RecordForm] 药品列表获取完成:', medicines.value)
+    console.log('🟢 [RecordForm] 药品列表获取完成:', medicinesRef.value)
   } else {
     console.log('🟢 [RecordForm] 药品列表已存在，无需重新获取')
   }

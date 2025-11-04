@@ -4,10 +4,17 @@
 """
 import pymysql
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-# 加载环境变量
-load_dotenv()
+# 固定加载 backend/.env 路径，避免工作目录影响
+SCRIPT_DIR = Path(__file__).resolve().parent
+DOTENV_PATH = SCRIPT_DIR / '.env'
+if DOTENV_PATH.exists():
+    load_dotenv(dotenv_path=str(DOTENV_PATH), override=False)
+    print(f"已从固定路径加载 .env: {DOTENV_PATH}")
+else:
+    print(f"⚠️ 未找到固定路径 .env: {DOTENV_PATH}，将回退使用系统环境变量。")
 
 
 def test_mysql_connection():

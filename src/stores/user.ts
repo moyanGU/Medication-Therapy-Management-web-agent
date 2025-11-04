@@ -288,7 +288,7 @@ export const useUserStore = defineStore('user', () => {
    */
   const sendVerificationCode = async (phone: string) => {
     try {
-      const response = await api.post('/auth/send-code/', { phone }, { skipAuth: true })
+      const response = await api.post('/auth/send-code/', { phone }, { skipAuth: true, skipErrorHandler: true })
       
       if (response.success) {
         return { success: true, message: '验证码已发送' }

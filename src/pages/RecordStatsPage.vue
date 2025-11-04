@@ -247,17 +247,22 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRecordStore } from '../stores/record'
 import { useMedicineStore } from '../stores/medicine'
 
 // 状态管理
 const recordStore = useRecordStore()
 const medicineStore = useMedicineStore()
-const { loading, statistics, fetchStatistics } = recordStore
+// 使用 storeToRefs 保持响应式引用
+const { loading, statistics } = storeToRefs(recordStore)
+const { fetchStatistics } = recordStore
 const { fetchMedicines } = medicineStore
-const medicines = computed(() => medicineStore.medicines)
+// 使用 storeToRefs 获取原始 Ref，再通过 computed 暴露为 Medicine[]
+const { medicines: medicinesRef } = storeToRefs(medicineStore)
+const medicines = computed(() => medicinesRef.value)
 
-// 修复：使用正确的统计数据属性名
+// 统计数据引用
 const stats = computed(() => statistics.value)
 
 // 响应式数据

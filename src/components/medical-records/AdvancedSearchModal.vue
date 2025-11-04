@@ -27,7 +27,7 @@
                   @click="closeModal"
                   class="text-gray-400 hover:text-gray-600"
                 >
-                  <XMarkIcon class="h-6 w-6" />
+                  <X class="h-6 w-6" />
                 </button>
               </div>
 
@@ -232,8 +232,8 @@
                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">全部</option>
-                      <option value="true">有复诊安排</option>
-                      <option value="false">无复诊安排</option>
+                      <option :value="true">有复诊安排</option>
+                      <option :value="false">无复诊安排</option>
                     </select>
                   </div>
                 </div>
@@ -288,7 +288,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
-import { XMarkIcon } from '@heroicons/vue/24/outline'
+// 替换图标库为 lucide-vue-next
+import { X } from 'lucide-vue-next'
 import {
   VISIT_TYPE_OPTIONS,
   STATUS_OPTIONS,
@@ -321,9 +322,10 @@ const searchForm = reactive<MedicalRecordSearchParams>({
   department: '',
   doctor: '',
   diagnosis: '',
-  visit_type: '',
-  status: '',
-  urgency: '',
+  // 以下枚举类型字段不使用空字符串，避免 TS 类型错误
+  visit_type: undefined,
+  status: undefined,
+  urgency: undefined,
   cost_min: undefined,
   cost_max: undefined,
   satisfaction_min: undefined,
@@ -340,10 +342,11 @@ const handleSearch = () => {
   // 过滤掉空值
   const params: MedicalRecordSearchParams = {}
   
-  Object.keys(searchForm).forEach(key => {
-    const value = searchForm[key as keyof MedicalRecordSearchParams]
+  Object.keys(searchForm).forEach((key) => {
+    const typedKey = key as keyof MedicalRecordSearchParams
+    const value = searchForm[typedKey]
     if (value !== '' && value !== undefined && value !== null) {
-      params[key as keyof MedicalRecordSearchParams] = value as any
+      ;(params[typedKey] as unknown) = value as unknown
     }
   })
   
@@ -359,9 +362,9 @@ const resetForm = () => {
     department: '',
     doctor: '',
     diagnosis: '',
-    visit_type: '',
-    status: '',
-    urgency: '',
+    visit_type: undefined,
+    status: undefined,
+    urgency: undefined,
     cost_min: undefined,
     cost_max: undefined,
     satisfaction_min: undefined,

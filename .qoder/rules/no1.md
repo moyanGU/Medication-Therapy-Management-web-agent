@@ -189,8 +189,8 @@ API KEY放到.env文件中并且不要提交git
     26. redis安装路径：D:\Redis-x64-3.0.504
     27. docker安装路径：D:\Application\Docker\docker
     28. MySQL安装路径：C:\Program Files\MySQL
-    29. 连接MySQL：mysql -u root -p {Ghp880218}.
-    30. Redis密码已设置为: Med_Helper_Redis_2025!
+    29. 连接MySQL：请本地通过 .env 提供密码，例如：mysql -u root -p
+    30. Redis密码使用环境变量注入 REDIS_PASSWORD，不在仓库中存放
     31. PowerShell不支持&&语法，需要分别执行命令。
 ---
 # 默认规则

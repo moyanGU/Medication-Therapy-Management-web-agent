@@ -1,0 +1,162 @@
+name: mtm-helper
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    environment:
+      - NPM_CONFIG_PRODUCTION=false
+      - VITE_API_BASE_URL=/api
+    command: sh -c "(npm ci --include=dev || npm install --include=dev) && (npm run build || npm run build:fast) && npm run postbuild && tail -f /dev/null"
+    volumes:
+      - app_dist:/app/dist
+    networks:
+      - mtm-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    dns:
+      - 100.100.2.136
+      - 100.100.2.138
+    environment:
+      - DEBUG=False
+      - DB_ENGINE=django.db.backends.mysql
+      - DB_HOST=${DB_HOST:-db-prod.mtm-helper.com}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_CONN_MAX_AGE=${DB_CONN_MAX_AGE:-120}
+      - DB_CONNECT_TIMEOUT=${DB_CONNECT_TIMEOUT:-5}
+      - DB_READ_TIMEOUT=${DB_READ_TIMEOUT:-15}
+      - DB_WRITE_TIMEOUT=${DB_WRITE_TIMEOUT:-15}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - REDIS_POOL_MAX_CONNECTIONS=${REDIS_POOL_MAX_CONNECTIONS:-100}
+      - REDIS_SOCKET_CONNECT_TIMEOUT=${REDIS_SOCKET_CONNECT_TIMEOUT:-2}
+      - REDIS_SOCKET_TIMEOUT=${REDIS_SOCKET_TIMEOUT:-2}
+      - CACHE_DEFAULT_TTL=${CACHE_DEFAULT_TTL:-300}
+      - REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX:-mtm-helper}
+      - REDIS_ENABLE_COMPRESSION=${REDIS_ENABLE_COMPRESSION:-true}
+      - ALLOWED_HOSTS=mtm-helper.com,www.mtm-helper.com,api.mtm-helper.com
+      - CSRF_TRUSTED_ORIGINS=https://mtm-helper.com,https://www.mtm-helper.com,https://api.mtm-helper.com
+      - CORS_ALLOWED_ORIGINS=https://mtm-helper.com,https://www.mtm-helper.com
+      # SMS / Spug Push (injected from project root .env)
+      - SPUG_PUSH_ENABLED=true
+      - SPUG_PUSH_URL=https://push.spug.cc
+      - SPUG_TEMPLATE_ID=E3w5LmlKa58xYea4
+      - SPUG_APP_NAME=MTM用药助手
+      - SPUG_PUSH_TOKEN=ak_yvz5kVlx0XALgM8MPMrdnwDe9Eb4YpQW
+      - SPUG_PUSH_TIMEOUT_SECONDS=5
+      - SMS_DEV_ECHO=false
+      - SMS_CODE_TTL=300
+      - SMS_RATE_LIMIT_SECONDS=60
+    command: >-
+      gunicorn mtm_helper.wsgi:application
+      -w ${GUNICORN_WORKERS:-4}
+      -k gthread --threads ${GUNICORN_THREADS:-4}
+      -b 0.0.0.0:8000
+      --timeout ${GUNICORN_TIMEOUT:-60}
+      --graceful-timeout ${GUNICORN_GRACEFUL_TIMEOUT:-30}
+    volumes:
+      - backend_media:/app/media
+      - backend_static:/app/staticfiles
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket,sys; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1',8000)); s.close()\""]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      - redis
+    networks:
+      - mtm-network
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    depends_on:
+      - redis
+    dns:
+      - 100.100.2.136
+      - 100.100.2.138
+    environment:
+      - DB_ENGINE=django.db.backends.mysql
+      - DB_HOST=${DB_HOST:-db-prod.mtm-helper.com}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+    command: python manage.py run_reminder_worker
+    restart: always
+    networks:
+      - mtm-network
+
+  redis:
+    image: redis:7.0-alpine
+    command: redis-server
+    restart: always
+    ports: []
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - mtm-network
+
+  nginx:
+    image: nginx:alpine
+    restart: always
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - backend_static:/var/www/static:ro
+      - backend_media:/var/www/media:ro
+      - app_dist:/var/www/app:ro
+      - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - mtm-network
+
+  certbot:
+    image: certbot/certbot:latest
+    restart: always
+    entrypoint: ["/bin/sh"]
+    command: ["-c", "while true; do sleep 3600; done"]
+    volumes:
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+    depends_on:
+      - nginx
+    networks:
+      - mtm-network
+
+volumes:
+  backend_media:
+  backend_static:
+  app_dist:
+
+networks:
+  mtm-network:
+    driver: bridge
