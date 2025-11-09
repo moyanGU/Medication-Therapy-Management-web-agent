@@ -83,6 +83,37 @@
 
         <!-- 用户菜单 -->
         <div class="flex items-center space-x-4">
+          <!-- 老年人模式快速开关（所有用户可见） -->
+          <button
+            class="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center space-x-2"
+            @click="handleToggleSenior"
+            :aria-pressed="isSenior"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6M12 9v6M4 6h16M4 18h16" />
+            </svg>
+            <span class="text-sm font-medium">{{ isSenior ? '老年人模式：开' : '老年人模式：关' }}</span>
+          </button>
+          <!-- 语音播报开关（所有用户可见） -->
+          <button
+            class="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center space-x-2 disabled:opacity-50"
+            :disabled="!isSpeechSupported"
+            @click="handleToggleSpeech"
+            :aria-pressed="isSpeechEnabled"
+            :title="!isSpeechSupported ? '当前浏览器不支持语音播报' : ''"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5a1 1 0 011 1v2a6 6 0 016 6h2a1 1 0 110 2h-2a6 6 0 01-6 6v2a1 1 0 11-2 0v-2a6 6 0 01-6-6H3a1 1 0 110-2h2a6 6 0 016-6V6a1 1 0 011-1z" />
+            </svg>
+            <span class="text-sm font-medium">{{ isSpeechEnabled ? '语音播报：开' : '语音播报：关' }}</span>
+          </button>
+          <!-- 朗读当前页面标题（仅在开启时显示） -->
+          <button
+            v-if="isSpeechEnabled"
+            class="px-2 py-1 rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200 text-sm"
+            @click="handleSpeakTitle"
+            title="朗读当前页面标题"
+          >朗读</button>
           <!-- 通知图标 -->
           <button
             v-if="isAuthenticated"
@@ -257,8 +288,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
+import { useTheme } from '@/composables/useTheme'
+import useSpeech from '@/composables/useSpeech'
+import { getPageTitle, getPagePurpose } from '@/utils/pageMeta'
 // 新增：通知服务
 import { getGlobalNotification } from '@/composables/useNotification'
 // 新增：服务与类型
@@ -273,6 +308,181 @@ import type { Medicine } from '@/types/medicine'
 
 const { isAuthenticated, user, logout } = useAuth()
 const notificationService = getGlobalNotification()
+// 主题与老年人模式
+const { isSenior, toggleSenior } = useTheme()
+// 语音播报
+const { isSpeechEnabled, isSpeechSupported, toggleSpeech, speak } = useSpeech()
+
+// 语音播报：到期提醒自动播报的定时器与去重集合
+let speechReminderTimer: any = null
+const spokenTodayKeys = new Set<string>()
+let lastSpokenDateKey: string | null = null
+
+/**
+ * 映射用餐时机文字
+ */
+const mealTimingLabel = (timing?: string | null): string => {
+  const map: Record<string, string> = {
+    before_meal: '饭前',
+    after_meal: '饭后',
+    with_meal: '随餐',
+    anytime: '任意时间',
+  }
+  if (!timing) return ''
+  const k = String(timing).toLowerCase()
+  return map[k] ?? ''
+}
+
+/**
+ * 单位标签映射（与通知模块一致）
+ */
+const unitLabelSpeech = (unit?: string | null): string => {
+  const map: Record<string, string> = {
+    mg: 'mg',
+    g: 'g',
+    ml: 'ml',
+    tablet: '片',
+    capsule: '粒',
+    drop: '滴',
+    patch: '贴',
+    puff: '喷',
+  }
+  if (!unit) return ''
+  const key = String(unit).toLowerCase()
+  return map[key] ?? unit
+}
+
+/**
+ * 解析提醒时间为今天的具体时间
+ */
+const parseReminderTimeToday = (timeStr?: string): Date | null => {
+  if (!timeStr) return null
+  const now = new Date()
+  const parts = timeStr.split(':').map(p => parseInt(p, 10))
+  const h = parts[0] ?? 0
+  const m = parts[1] ?? 0
+  const s = parts[2] ?? 0
+  const d = new Date(now)
+  d.setHours(h, m, s, 0)
+  return isNaN(d.getTime()) ? null : d
+}
+
+/**
+ * 判断提醒在今天是否需要播报（时间窗口：[-1, +2] 分钟）
+ */
+const isDueNow = (rem: Reminder): boolean => {
+  if (!rem.is_active) return false
+  // 日期范围判断
+  const today = new Date()
+  const y = today.getFullYear()
+  const m = String(today.getMonth() + 1).padStart(2, '0')
+  const day = String(today.getDate()).padStart(2, '0')
+  const todayStr = `${y}-${m}-${day}`
+  const sd = rem.start_date ? new Date(rem.start_date) : null
+  const ed = rem.end_date ? new Date(rem.end_date) : null
+  const td = new Date(todayStr)
+  if (sd && sd > td) return false
+  if (ed && ed < td) return false
+
+  // 时间窗口判断
+  const scheduled = parseReminderTimeToday(rem.reminder_time)
+  if (!scheduled) return false
+  const diffMs = scheduled.getTime() - today.getTime()
+  const beforeWindowMs = -1 * 60 * 1000 // 提前1分钟
+  const afterWindowMs = 2 * 60 * 1000   // 延后2分钟
+  return diffMs >= beforeWindowMs && diffMs <= afterWindowMs
+}
+
+/**
+ * 朗读单条提醒
+ */
+const speakReminder = (rem: Reminder) => {
+  if (!isSpeechSupported.value || !isSpeechEnabled.value) return
+  const medName = rem.medicine_name
+    || (typeof rem.medicine === 'object' && rem.medicine ? (rem.medicine.name ?? '药品') : '药品')
+  const dose = rem.dosage ? `${rem.dosage}${unitLabelSpeech(rem.dosage_unit)}` : ''
+  const meal = mealTimingLabel(rem.meal_timing)
+  const title = rem.title || '用药提醒'
+  const parts = [
+    `${title}：到吃药时间了`,
+    medName ? `${medName}` : '',
+    dose ? `${dose}` : '',
+    meal ? `${meal}` : '',
+  ].filter(Boolean)
+  const text = parts.join('，')
+  console.log('[Speech] 自动播报提醒:', text)
+  speak(text, 0.8)
+}
+
+/**
+ * 自动轮询并播报到期提醒（仅在页面可见且已登录时进行）
+ */
+const pollSpeakDueReminders = async () => {
+  try {
+    if (!isAuthenticated.value) return
+    if (!isSpeechSupported.value || !isSpeechEnabled.value) return
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+
+    // 日期切换时清理去重集合
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
+    const todayKey = `${y}-${m}-${day}`
+    if (lastSpokenDateKey !== todayKey) {
+      spokenTodayKeys.clear()
+      lastSpokenDateKey = todayKey
+    }
+
+    const resp = await reminderService.getTodayReminders()
+    const list = Array.isArray(resp?.data) ? resp.data : (Array.isArray((resp as any)?.data?.data) ? (resp as any).data.data : [])
+    if (!Array.isArray(list)) return
+
+    list.forEach(rem => {
+      if (!isDueNow(rem)) return
+      const key = `${todayKey}_${rem.id}_${(rem.reminder_time || '').slice(0,5)}`
+      if (spokenTodayKeys.has(key)) return
+      spokenTodayKeys.add(key)
+      speakReminder(rem)
+    })
+  } catch (e) {
+    console.warn('[Speech] 轮询播报失败:', e)
+  }
+}
+
+/**
+ * 切换老年人模式并打印日志
+ */
+const handleToggleSenior = () => {
+  console.log('[Header] 用户点击切换老年人模式, 当前状态 =', isSenior.value)
+  toggleSenior()
+}
+
+/**
+ * 切换语音播报
+ */
+const handleToggleSpeech = () => {
+  if (!isSpeechSupported.value) {
+    console.warn('[Header] 浏览器不支持 SpeechSynthesis')
+    return
+  }
+  console.log('[Header] 用户点击切换语音播报, 当前状态 =', isSpeechEnabled.value)
+  toggleSpeech()
+}
+
+/**
+ * 朗读当前页面标题与主要作用
+ * 说明：为满足老年用户的理解需求，除了页面标题，还播报当前页面的主要用途
+ */
+const route = useRoute()
+const handleSpeakTitle = () => {
+  if (!isSpeechSupported.value || !isSpeechEnabled.value) return
+  const name = String(route.name || '')
+  const title = getPageTitle(name) || (document.title || 'MTM-用药助手')
+  const purpose = getPagePurpose(name)
+  const text = purpose ? `当前页面：${title}。主要作用：${purpose}。` : `当前页面：${title}`
+  speak(text, 0.8)
+}
 
 // 组件状态
 const showUserMenu = ref(false)
@@ -623,6 +833,25 @@ onMounted(() => {
     console.log('[PWA][iOS] Safari 检测到未安装，显示引导横幅')
     showIosInstallGuide.value = true
   }
+
+  // 初始化语音播报轮询（根据开关即时启动/停止）
+  watch([isSpeechEnabled, isSpeechSupported, isAuthenticated], ([enabled, supported, authed]) => {
+    // 停止已有定时器
+    if (speechReminderTimer) {
+      clearInterval(speechReminderTimer)
+      speechReminderTimer = null
+    }
+    if (enabled && supported && authed) {
+      console.log('[Speech] 启动到期提醒自动播报轮询（每60秒）')
+      // 立即执行一次，然后每60秒轮询
+      pollSpeakDueReminders()
+      speechReminderTimer = setInterval(() => {
+        pollSpeakDueReminders()
+      }, 60000)
+    } else {
+      console.log('[Speech] 自动播报未启用或不支持，轮询已停止')
+    }
+  }, { immediate: true })
 })
 
 onUnmounted(() => {
@@ -630,5 +859,9 @@ onUnmounted(() => {
   window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt as EventListener)
   window.removeEventListener('appinstalled', handleAppInstalled as EventListener)
   window.removeEventListener('pwa:need-refresh', handlePwaNeedRefresh as EventListener)
+  if (speechReminderTimer) {
+    clearInterval(speechReminderTimer)
+    speechReminderTimer = null
+  }
 })
 </script>

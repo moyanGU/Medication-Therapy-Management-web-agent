@@ -1,19 +1,20 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+// 新增：导入语音播报与页面用途元数据工具
+import { speak, isSpeechSupported } from '@/composables/useSpeech'
+// 使用相对路径以避免某些环境下别名解析异常
+import { getPageTitle, getPagePurpose } from '../utils/pageMeta'
 
 // 导入页面组件
 import HomePage from '@/pages/HomePage.vue'
 import WelcomePage from '../pages/WelcomePage.vue'
-import LoginPage from '../pages/LoginPage.vue'
+// 统一登录/注册页面，仅保留实际使用的组件
 import Login from '../pages/Login.vue'
-import RegisterPage from '../pages/RegisterPage.vue'
 import Register from '../pages/Register.vue'
 import DashboardPage from '../pages/DashboardPage.vue'
 import MedicinesPage from '../pages/MedicinesPage.vue'
 import RecordsPage from '../pages/RecordsPage.vue'
-import RemindersPage from '../pages/RemindersPage.vue'
 import PlansPage from '../pages/PlansPage.vue'
-import MedicalRecordsPage from '../pages/MedicalRecordsPage.vue'
 import RecordStatsPage from '../pages/RecordStatsPage.vue'
 import SettingsPage from '../pages/SettingsPage.vue'
 
@@ -260,40 +261,46 @@ router.beforeEach(async (to, from, next) => {
  * 全局后置钩子
  * 处理页面标题等
  */
+// 语音播报去重控制：避免同一路由短时间内重复播报
+let lastSpokenRouteName: string | null = null
+let lastSpokenTime = 0
+
 router.afterEach((to) => {
   // 设置页面标题
   const baseTitle = '用药提醒助手'
-  const pageTitle = getPageTitle(to.name as string)
+  const pageTitle = getPageTitle(String(to.name || ''))
   document.title = pageTitle ? `${pageTitle} - ${baseTitle}` : baseTitle
+
+  // 页面主要作用语音播报
+  try {
+    const now = Date.now()
+    const routeName = String(to.name || '')
+    const purpose = getPagePurpose(routeName)
+
+    // 条件：浏览器支持 + 已开启语音播报（由 useSpeech 内部控制）
+    if (isSpeechSupported.value && purpose) {
+      // 避免同一路由在15秒内重复播报
+      const isSameRoute = lastSpokenRouteName === routeName
+      const withinCooldown = now - lastSpokenTime < 15000
+      if (isSameRoute && withinCooldown) {
+        console.log('[Router][Speech] 路由未变化或在冷却时间内，跳过页面用途播报')
+        return
+      }
+
+      const text = `当前页面：${pageTitle || baseTitle}。主要作用：${purpose}。`
+      console.log('[Router][Speech] 页面用途播报:', { routeName, pageTitle, purpose })
+      speak(text, 0.8)
+      lastSpokenRouteName = routeName
+      lastSpokenTime = now
+    }
+  } catch (e) {
+    console.warn('[Router][Speech] 页面用途播报失败:', e)
+  }
 })
 
 /**
  * 获取页面标题
  */
-function getPageTitle(routeName: string): string {
-  const titleMap: Record<string, string> = {
-    Home: '首页',
-    Welcome: '欢迎',
-    Login: '登录',
-    Register: '注册',
-    Dashboard: '仪表板',
-    Medicines: '药品管理',
-    Records: '用药记录',
-    RecordStats: '用药统计',
-    Reminders: '用药提醒',
-    ReminderCreate: '新建提醒',
-    ReminderDetail: '提醒详情',
-    ReminderEdit: '编辑提醒',
-    Plans: '用药计划',
-    MedicalRecords: '病历管理',
-    MedicalRecordCreate: '新增病历',
-    MedicalRecordDetail: '病历详情',
-    MedicalRecordEdit: '编辑病历',
-    MedicalRecordStatistics: '病历统计',
-    Settings: '设置'
-  }
-  
-  return titleMap[routeName] || ''
-}
+// 注意：标题与用途映射已移动到 utils/pageMeta 以避免重复与保证一致性
 
 export default router

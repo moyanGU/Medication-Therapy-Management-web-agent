@@ -467,6 +467,32 @@ export const useReminderStore = defineStore('reminder', () => {
     }
   }
 
+  /**
+   * 获取提醒概览统计（总数、活跃数、今日提醒、响应率等）
+   * 说明：与 fetchStatistics 区分，fetchStatistics 使用提醒历史维度的统计；
+   * 本方法直接获取 /reminders/stats/ 的概览数据并写入 statistics 状态，以便页面展示。
+   */
+  const fetchReminderStats = async () => {
+    try {
+      loading.value = true
+      error.value = null
+      const response = await reminderService.getReminderStats()
+      if (response.success) {
+        // ApiClient 已处理双层 data，这里直接写入统计对象
+        statistics.value = response.data
+        return response.data
+      } else {
+        throw new Error(response.message || '获取提醒概览统计失败')
+      }
+    } catch (err: any) {
+      error.value = err.message || '获取提醒概览统计失败'
+      showError(error.value)
+      return {}
+    } finally {
+      loading.value = false
+    }
+  }
+
   const fetchCompliance = async (_params?: { days?: number }) => {
     try {
       loading.value = true
@@ -593,6 +619,7 @@ export const useReminderStore = defineStore('reminder', () => {
     
     // 统计数据方法
     fetchStatistics,
+    fetchReminderStats,
     fetchCompliance,
     fetchTrends,
     

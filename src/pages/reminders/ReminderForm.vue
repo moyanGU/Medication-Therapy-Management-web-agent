@@ -339,7 +339,8 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from '@/composables/useToast'
-import { api } from '@/utils/api'
+import { useMedicineStore } from '@/stores/medicine'
+import { useReminderStore } from '@/stores/reminder'
 import {
   ArrowLeft,
   Pill,
@@ -378,7 +379,9 @@ const route = useRoute()
 const { success: showSuccess, error: showError, warning: showWarning, info: showInfo } = useToast()
 
 const loading = ref(false)
-const medicines = ref<Medicine[]>([])
+const medicineStore = useMedicineStore()
+const reminderStore = useReminderStore()
+const medicines = computed<Medicine[]>(() => medicineStore.medicines as any)
 const noEndDate = ref(false)
 const customTimes = ref<string[]>(['09:00'])
 const reminderTimes = ref<string[]>(['09:00'])
@@ -407,68 +410,66 @@ const today = computed(() => new Date().toISOString().split('T')[0])
 const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 
 // 方法
+/**
+ * 获取药品列表（使用 Pinia Store）
+ * 函数级注释：调用 medicineStore.fetchMedicines，支持分页与普通列表。
+ * - 输入：无（使用默认分页或列表参数，可后续扩展）
+ * - 输出：更新 store 中的 medicines 状态，当前页面通过 computed 绑定。
+ */
 const fetchMedicines = async () => {
   try {
-    const response = await api.get('/medicines/')
-
-    if (response.success) {
-      const payload: any = (response as any).data
-      const list = payload?.data?.results ?? payload?.results ?? payload?.data ?? []
-      medicines.value = list
-      console.log('获取到药品列表:', medicines.value)
-    } else {
-      console.error('获取药品列表失败:', response)
-      showError('获取药品列表失败')
-    }
+    await medicineStore.fetchMedicines({ page: 1, page_size: 100 })
+    console.log('获取到药品列表(store):', medicines.value?.length)
   } catch (error) {
-    console.error('获取药品列表失败:', error)
+    console.error('获取药品列表失败(store):', error)
     showError('获取药品列表失败')
   }
 }
 
+/**
+ * 获取提醒详情（使用 Pinia Store）
+ * 函数级注释：根据 id 调用 reminderStore.fetchReminder，解析返回填充表单。
+ */
 const fetchReminder = async (id: string) => {
   try {
     loading.value = true
-    const response = await api.get(`/reminders/${id}/`)
-    
-    if (response.success) {
-      const respData: any = (response as any).data
-      const reminder = respData?.data ?? respData
-      Object.assign(form, {
-        // 兼容后端返回的联合类型：number | { id: number; ... }
-        // 若为对象则取其 id，若为 number 则直接使用该数值
-        medicine_id: typeof reminder.medicine === 'object' ? reminder.medicine.id : reminder.medicine,
-        title: reminder.title,
-        dosage: reminder.dosage,
-        dosage_unit: reminder.dosage_unit,
-        frequency: reminder.frequency,
-        meal_timing: reminder.meal_timing,
-        reminder_time: reminder.reminder_time,
-        start_date: reminder.start_date,
-        end_date: reminder.end_date || '',
-        special_instructions: reminder.special_instructions || '',
-        is_active: reminder.is_active
-      })
-      
-      noEndDate.value = !reminder.end_date
-      
-      // 处理提醒时间
-      if (reminder.frequency === 'custom' && reminder.custom_times) {
-        customTimes.value = reminder.custom_times
-      } else {
-        updateReminderTimes()
-      }
-      
-      // 处理周重复
-      if (reminder.frequency === 'weekly' && reminder.weekdays) {
-        selectedWeekDays.value = reminder.weekdays
-      }
-    } else {
+    const reminder: any = await reminderStore.fetchReminder(Number(id))
+    if (!reminder) {
       showError('获取提醒信息失败')
       goBack()
+      return
+    }
+    Object.assign(form, {
+      // 兼容后端返回的联合类型：number | { id: number; ... }
+      // 若为对象则取其 id，若为 number 则直接使用该数值
+      medicine_id: typeof reminder.medicine === 'object' ? reminder.medicine.id : reminder.medicine,
+      title: reminder.title,
+      dosage: reminder.dosage,
+      dosage_unit: reminder.dosage_unit,
+      frequency: reminder.frequency,
+      meal_timing: reminder.meal_timing,
+      reminder_time: reminder.reminder_time,
+      start_date: reminder.start_date,
+      end_date: reminder.end_date || '',
+      special_instructions: reminder.special_instructions || '',
+      is_active: reminder.is_active
+    })
+
+    noEndDate.value = !reminder.end_date
+
+    // 处理提醒时间
+    if (reminder.frequency === 'custom' && reminder.custom_times) {
+      customTimes.value = reminder.custom_times
+    } else {
+      updateReminderTimes()
+    }
+
+    // 处理周重复
+    if (reminder.frequency === 'weekly' && reminder.weekdays) {
+      selectedWeekDays.value = reminder.weekdays
     }
   } catch (error) {
-    console.error('获取提醒信息失败:', error)
+    console.error('获取提醒信息失败(store):', error)
     showError('获取提醒信息失败')
   } finally {
     loading.value = false
@@ -546,49 +547,46 @@ const validateForm = () => {
   return Object.keys(errors).length === 0
 }
 
+/**
+ * 提交提醒表单（使用 Pinia Store）
+ * 函数级注释：校验通过后，调用 createReminder 或 updateReminder；处理双层 data 结构由 ApiClient/Service 统一完成。
+ */
 const handleSubmit = async () => {
   if (!validateForm()) {
     showError('请检查表单信息')
     return
   }
-  
+
   try {
     loading.value = true
-    
-    // 组装提交数据：
+
+    // 组装提交数据
     const { medicine_id, ...rest } = form
     const submitData: any = {
       ...rest,
       medicine: medicine_id, // 后端期望字段名
       end_date: noEndDate.value ? null : (form.end_date || null),
-      // 后端字段为 weekdays
       weekdays: form.frequency === 'weekly' ? selectedWeekDays.value : [],
+      custom_times: form.frequency === 'custom' ? customTimes.value : [],
     }
 
-    console.log('提交数据payload:', submitData)
-    
-    const response = isEdit.value 
-      ? await api.put(`/reminders/${route.params.id}/`, submitData)
-      : await api.post('/reminders/', submitData)
-    
-    console.log('提交响应:', response)
+    console.log('提交数据payload(store):', submitData)
 
-    if (response.success) {
-      showSuccess(`提醒${isEdit.value ? '更新' : '创建'}成功`)
-      router.push('/reminders')
+    if (isEdit.value) {
+      await reminderStore.updateReminder(Number(route.params.id), submitData)
     } else {
-      const anyResp = response as any
-      if (anyResp?.errors) {
-        Object.assign(errors, anyResp.errors)
-      }
-      showError(response.message || `${isEdit.value ? '更新' : '创建'}失败`)
+      await reminderStore.createReminder(submitData)
     }
+
+    showSuccess(`提醒${isEdit.value ? '更新' : '创建'}成功`)
+    router.push('/reminders')
   } catch (error: any) {
-    console.error('提交失败:', {
+    console.error('提交失败(store):', {
       message: error?.message,
       code: error?.code,
       stack: error?.stack,
     })
+    // 如服务端返回表单字段错误且已由 store 传递，可在此扩展错误映射逻辑
     showError(error?.message || '提交失败')
   } finally {
     loading.value = false
@@ -629,7 +627,7 @@ onMounted(() => {
 })
 </script>
 
-<style scoped>
+<style scoped lang="postcss">
 .reminder-form-page {
   @apply p-6 max-w-4xl mx-auto;
 }

@@ -15,3 +15,52 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* 老年人模式（高可读性 & 高对比度 & 更大点击区域） */
+html.senior {
+  /* 提升根字体，连带提升 rem 基础，从而放大文本与间距 */
+  font-size: 20px;
+}
+
+html.senior body {
+  /* 高对比度方案：白底+纯黑文本，确保老年用户可读性 */
+  background-color: #ffffff;
+  color: #000000;
+}
+
+/* 提升常见灰度文本的对比度（在 senior 模式下） */
+/* 在高对比度下，统一提升到接近黑色 */
+html.senior .text-gray-400 { color: #111111 !important; }
+html.senior .text-gray-500 { color: #111111 !important; }
+html.senior .text-gray-600 { color: #000000 !important; }
+html.senior .text-gray-700 { color: #000000 !important; }
+
+/* 链接的默认颜色与 hover 下划线，保证可辨识性 */
+html.senior a { color: #0a58ff; text-decoration: underline; }
+html.senior a:hover { color: #0638a8; text-decoration-thickness: 2px; }
+
+/* 点击目标最小尺寸与更明显的焦点样式 */
+html.senior button,
+html.senior input,
+html.senior select,
+html.senior textarea {
+  min-height: 44px;
+  /* 提升默认字体大小（在 rem 基础上增大） */
+  font-size: 1rem;
+}
+
+html.senior :focus {
+  outline: 3px solid #000000; /* 高对比度黑色外边框 */
+  outline-offset: 3px;
+}
+
+/* 提升图标尺寸（依赖于 em 使其随根字体一起增大） */
+html.senior svg {
+  width: 1.25em;
+  height: 1.25em;
+}
+
+/* 提升按钮可点击区域与内边距（适度，不破坏布局） */
+html.senior button {
+  padding: 0.75rem 1rem; /* 约等于 py-3 px-4 */
+}
+

@@ -389,7 +389,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
-import { api } from '@/utils/api'
+import { useReminderStore } from '@/stores/reminder'
 import { debounce } from 'lodash-es'
 import {
   Bell,
@@ -448,8 +448,9 @@ interface Pagination {
 const router = useRouter()
 const { success, error, warning, info } = useToast()
 
-const loading = ref(false)
-const reminders = ref<Reminder[]>([])
+const reminderStore = useReminderStore()
+const loading = computed(() => reminderStore.loading)
+const reminders = computed<Reminder[]>(() => reminderStore.reminders as any)
 const stats = ref<Stats>({
   total_reminders: 0,
   active_reminders: 0,
@@ -491,12 +492,15 @@ const debouncedSearch = debounce(() => {
 
 // 方法
 /**
- * 获取提醒列表
+ * 获取提醒列表（使用 Pinia Store + Service）
+ * 函数级注释：
+ * - 输入：来自页面的筛选参数与分页参数
+ * - 过程：调用 reminderStore.fetchReminders，将筛选与分页组合传入；
+ *         ApiClient 已处理双层 data 结构，store 内部也已解析分页信息。
+ * - 输出：更新本地分页显示（page、total、total_pages），列表绑定到 store 状态。
  */
-
 const fetchReminders = async () => {
   try {
-    loading.value = true
     const params: Record<string, any> = {
       page: pagination.page,
       page_size: pagination.page_size,
@@ -507,51 +511,38 @@ const fetchReminders = async () => {
     if (filters.meal_timing) params.meal_timing = filters.meal_timing
     if (quickFilter.value !== 'all') params.filter = quickFilter.value
 
-    console.log('[Reminders] 请求列表参数:', params)
-    const res = await api.get<{ results: Reminder[]; count: number }>('/reminders/', { params })
-    console.log('[Reminders] 列表响应:', res)
-
-    if (res?.success) {
-      // 兼容两种返回结构：{ success, data: { results, count } } 或 { success, results, count }
-      const payload: any = (res as any).data
-      const list = payload?.data?.results ?? payload?.results ?? []
-      const total = payload?.data?.count ?? payload?.count ?? 0
-      reminders.value = list
-      pagination.total = total
-      pagination.total_pages = Math.ceil(pagination.total / pagination.page_size)
-    } else {
-      error(res?.message || '获取提醒列表失败')
-    }
-   } catch (err: any) {
-     console.error('获取提醒列表失败:', err)
-     error(err?.message || '获取提醒列表失败')
-   } finally {
-     loading.value = false
-   }
- }
+    console.log('[Reminders] 请求列表参数(store):', params)
+    await reminderStore.fetchReminders(params)
+    // 同步分页到本地展示对象
+    const pg = reminderStore.pagination
+    pagination.page = pg.page
+    pagination.total = pg.total
+    pagination.page_size = pg.pageSize
+    pagination.total_pages = pg.totalPages
+    console.log('[Reminders] 列表分页(store):', pg)
+  } catch (err: any) {
+    console.error('获取提醒列表失败(store):', err)
+    error(err?.message || '获取提醒列表失败')
+  }
+}
 
 /**
- * 获取提醒统计
+ * 获取提醒统计（使用 Pinia Store 提供的 fetchReminderStats）
+ * 函数级注释：直接从 /reminders/stats/ 获取概览统计并写入页面状态。
  */
 const fetchStats = async () => {
   try {
-    console.log('[Reminders] 请求统计数据')
-    const res = await api.get<Stats>('/reminders/stats/')
-    console.log('[Reminders] 统计响应:', res)
-    if (res?.success) {
-      const payload: any = (res as any).data
-      const data = payload?.data ?? payload
-      stats.value = data ?? {
-        total_reminders: 0,
-        active_reminders: 0,
-        today_reminders: 0,
-        response_rate: 0
-      }
-    } else {
-      error(res?.message || '获取统计数据失败')
+    console.log('[Reminders] 请求统计数据(store)')
+    const data = await reminderStore.fetchReminderStats()
+    stats.value = (data as any) ?? {
+      total_reminders: 0,
+      active_reminders: 0,
+      today_reminders: 0,
+      response_rate: 0
     }
+    console.log('[Reminders] 统计数据(store):', data)
   } catch (err: any) {
-    console.error('获取统计数据失败:', err)
+    console.error('获取统计数据失败(store):', err)
     error(err?.message || '获取统计数据失败')
   }
 }
@@ -587,43 +578,39 @@ const getPageNumbers = () => {
 /**
  * 启用/停用提醒
  */
+/**
+ * 启用/停用提醒（使用 Store）
+ * 函数级注释：调用 store.toggleReminderActive，避免直接操作 API；
+ * 成功后由 store 更新列表状态并刷新统计。
+ */
 const toggleReminderActive = async (reminder: Reminder) => {
   try {
-    console.log('[Reminders] 切换提醒状态:', reminder.id, '=>', !reminder.is_active)
-    const res = await api.patch(`/reminders/${reminder.id}/`, {
-      is_active: !reminder.is_active,
-    })
-    console.log('[Reminders] 切换状态响应:', res)
-    if (res?.success) {
-      reminder.is_active = !reminder.is_active
-      success(`提醒已${reminder.is_active ? '启用' : '停用'}`)
-      fetchStats()
-    } else {
-      error(res?.message || '操作失败')
-    }
+    console.log('[Reminders] 切换提醒状态(store):', reminder.id)
+    await reminderStore.toggleReminderActive(reminder.id)
+    success(`提醒已${reminder.is_active ? '启用' : '停用'}`)
+    fetchStats()
   } catch (err: any) {
-    console.error('切换提醒状态失败:', err)
+    console.error('切换提醒状态失败(store):', err)
     error(err?.message || '操作失败')
   }
- }
+}
 
 /**
  * 删除提醒
  */
+/**
+ * 删除提醒（使用 Store）
+ * 函数级注释：调用 store.deleteReminder 并刷新列表与统计。
+ */
 const deleteReminder = async (reminder: Reminder) => {
   if (!confirm(`确定要删除提醒"${reminder.title || reminder.medicine_name}"吗？`)) return
   try {
-    const res = await api.delete(`/reminders/${reminder.id}/`)
-    console.log('[Reminders] 删除响应:', res)
-    if (res?.success) {
-      success('提醒已删除')
-      fetchReminders()
-      fetchStats()
-    } else {
-      error(res?.message || '删除失败')
-    }
+    await reminderStore.deleteReminder(reminder.id)
+    success('提醒已删除')
+    fetchReminders()
+    fetchStats()
   } catch (err: any) {
-    console.error('删除提醒失败:', err)
+    console.error('删除提醒失败(store):', err)
     error(err?.message || '删除失败')
   }
 }
@@ -631,24 +618,23 @@ const deleteReminder = async (reminder: Reminder) => {
 /**
  * 批量启停
  */
+/**
+ * 批量启停（使用 Store）
+ * 函数级注释：调用 store.batchToggleReminders 执行后端批量接口，并刷新列表与统计。
+ */
 const batchToggleActive = async (isActive: boolean) => {
   if (selectedReminders.value.length === 0) return
   try {
-    const { success: ok, data, message } = await api.post('/reminders/batch_toggle/', {
+    await reminderStore.batchToggleReminders({
       reminder_ids: selectedReminders.value,
       is_active: isActive
     })
-    console.log('[Reminders] 批量启停响应:', { ok, data, message })
-    if (ok) {
-      success(`已${isActive ? '启用' : '停用'} ${selectedReminders.value.length} 个提醒`)
-      selectedReminders.value = []
-      fetchReminders()
-      fetchStats()
-    } else {
-      error(message || '批量操作失败')
-    }
+    success(`已${isActive ? '启用' : '停用'} ${selectedReminders.value.length} 个提醒`)
+    selectedReminders.value = []
+    fetchReminders()
+    fetchStats()
   } catch (err: any) {
-    console.error('批量操作失败:', err)
+    console.error('批量启停失败(store):', err)
     error(err?.message || '批量操作失败')
   }
 }
@@ -656,25 +642,23 @@ const batchToggleActive = async (isActive: boolean) => {
 /**
  * 批量删除 - 使用POST方法传递JSON
  */
+/**
+ * 批量删除（使用 Store）
+ * 函数级注释：调用 store.batchDeleteReminders，并刷新列表与统计。
+ */
 const batchDelete = async () => {
   if (selectedReminders.value.length === 0) return
   if (!confirm(`确定要删除选中的 ${selectedReminders.value.length} 个提醒吗？`)) return
   try {
-    const { success: ok, data, message } = await api.post('/reminders/batch_delete/', {
+    await reminderStore.batchDeleteReminders({
       reminder_ids: selectedReminders.value
     })
-    console.log('[Reminders] 批量删除响应:', { ok, data, message })
-    if (ok) {
-      const deleted = (data as any)?.data?.deleted_count ?? (data as any)?.deleted_count ?? selectedReminders.value.length
-      success(`已删除 ${deleted} 个提醒`)
-      selectedReminders.value = []
-      fetchReminders()
-      fetchStats()
-    } else {
-      error(message || '批量删除失败')
-    }
+    success(`已删除 ${selectedReminders.value.length} 个提醒`)
+    selectedReminders.value = []
+    fetchReminders()
+    fetchStats()
   } catch (err: any) {
-    console.error('批量删除失败:', err)
+    console.error('批量删除失败(store):', err)
     error(err?.message || '批量删除失败')
   }
 }
@@ -744,7 +728,7 @@ onMounted(() => {
 })
 </script>
 
-<style scoped>
+<style scoped lang="postcss">
 .reminder-list-page {
   @apply p-6 max-w-7xl mx-auto;
 }

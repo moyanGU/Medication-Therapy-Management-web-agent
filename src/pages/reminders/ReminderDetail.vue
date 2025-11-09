@@ -423,10 +423,30 @@ const responseRate = computed(() => {
   return Math.round((reminder.value.response_count / reminder.value.reminder_count) * 100)
 })
 
+/**
+ * 计算连续服药天数
+ * 从历史记录中按天汇总 is_responded=true 的记录，按日期倒序计算连续天数。
+ * 注意：受分页影响（当前仅加载前 20 条），该值为近记录范围的估算值，但不再使用模拟数据。
+ */
 const consecutiveDays = computed(() => {
-  // 这里可以根据历史记录计算连续服药天数
-  // 暂时返回模拟数据
-  return 7
+  const history = reminderHistory.value
+  const respondedDays = new Set<string>()
+  for (const h of history) {
+    if (h.is_responded) {
+      const key = new Date(h.scheduled_time).toISOString().split('T')[0]
+      respondedDays.add(key)
+    }
+  }
+  let count = 0
+  const d = new Date()
+  let key = d.toISOString().split('T')[0]
+  while (respondedDays.has(key)) {
+    count += 1
+    d.setDate(d.getDate() - 1)
+    key = d.toISOString().split('T')[0]
+    if (count > 365) break
+  }
+  return count
 })
 
 const hasAdvancedSettings = computed(() => {
@@ -472,39 +492,70 @@ watch(historyFilter, () => {
 })
 
 // 方法
+/**
+ * 加载提醒详情
+ * 来源：调用 useReminderStore.fetchReminder(id)
+ * 处理：将返回的 Reminder 对象写入本地状态 reminder
+ * 注意：保留关键日志，便于控制台调试
+ */
 const loadReminderData = async () => {
   try {
     loading.value = true
+    console.log('[ReminderDetail] loadReminderData:start', { id: reminderId.value })
     const data = await reminderStore.fetchReminder(reminderId.value)
     reminder.value = data
+    console.log('[ReminderDetail] loadReminderData:success', { reminder: reminder.value })
   } catch (error) {
+    console.error('[ReminderDetail] loadReminderData:error', error)
     toast.error('加载提醒详情失败')
   } finally {
     loading.value = false
   }
 }
 
+/**
+ * 加载提醒执行历史
+ * 来源：调用 useReminderStore.fetchReminderHistory(filters)
+ * 处理：写入 store 的 reminderHistory 与 historyPagination 状态
+ * 注意：保留关键日志，便于控制台调试
+ */
 const loadHistoryData = async () => {
   try {
     historyLoading.value = true
+    console.log('[ReminderDetail] loadHistoryData:start', { filter: historyFilter.value, id: reminderId.value })
     await reminderStore.fetchReminderHistory({
       reminder: reminderId.value,
       page: 1,
       page_size: 20
     })
+    console.log('[ReminderDetail] loadHistoryData:success', {
+      count: reminderStore.reminderHistory.length,
+      pagination: reminderStore.historyPagination
+    })
   } catch (error) {
+    console.error('[ReminderDetail] loadHistoryData:error', error)
     toast.error('加载执行历史失败')
   } finally {
     historyLoading.value = false
   }
 }
 
+/**
+ * 刷新历史记录
+ */
 const refreshHistory = () => {
+  console.log('[ReminderDetail] refreshHistory')
   loadHistoryData()
 }
 
+/**
+ * 切换历史分页
+ * @param page 目标页码
+ * 说明：使用 reminderStore.fetchReminderHistory 进行分页查询，并记录关键日志。
+ */
 const changeHistoryPage = (page: number) => {
   if (page >= 1 && page <= historyPagination.value.totalPages) {
+    console.log('[ReminderDetail] changeHistoryPage', { page })
     reminderStore.fetchReminderHistory({
       reminder: reminderId.value,
       page,
@@ -513,37 +564,55 @@ const changeHistoryPage = (page: number) => {
   }
 }
 
+/**
+ * 返回提醒列表
+ */
 const handleGoBack = () => {
+  console.log('[ReminderDetail] handleGoBack')
   router.push('/reminders')
 }
 
+/**
+ * 切换提醒启停状态
+ */
 const toggleActive = async () => {
   if (!reminder.value) return
   
   try {
+    console.log('[ReminderDetail] toggleActive', { id: reminder.value.id })
     const result = await reminderStore.toggleReminderActive(reminder.value.id)
     if (result) {
       reminder.value = result
       toast.success(`提醒已${result.is_active ? '启用' : '停用'}`)
     }
   } catch (error) {
+    console.error('[ReminderDetail] toggleActive:error', error)
     toast.error('切换提醒状态失败')
   }
 }
 
+/**
+ * 发送测试通知
+ */
 const testNotification = async () => {
   if (!reminder.value) return
   
   try {
+    console.log('[ReminderDetail] testNotification', { id: reminder.value.id })
     await reminderStore.testNotification(reminder.value.id)
     toast.success('测试通知已发送')
   } catch (error) {
+    console.error('[ReminderDetail] testNotification:error', error)
     toast.error('发送测试通知失败')
   }
 }
 
+/**
+ * 标记历史记录为已服用
+ */
 const markAsResponded = async (record: ReminderHistory) => {
   try {
+    console.log('[ReminderDetail] markAsResponded', { historyId: record.id })
     await reminderStore.respondToReminder(record.id, {
       response_type: 'taken',
       notes: '手动标记'
@@ -551,11 +620,16 @@ const markAsResponded = async (record: ReminderHistory) => {
     toast.success('已标记为已服用')
     loadHistoryData()
   } catch (error) {
+    console.error('[ReminderDetail] markAsResponded:error', error)
     toast.error('标记失败')
   }
 }
 
-// 工具方法
+/**
+ * 工具方法：格式化时间为 HH:mm
+ * @param time 形如 "HH:mm:ss" 或 "HH:mm" 的时间字符串
+ * @returns 本地化的小时:分钟展示
+ */
 const formatTime = (time: string) => {
   return new Date(`2000-01-01T${time}`).toLocaleTimeString('zh-CN', {
     hour: '2-digit',
@@ -563,15 +637,29 @@ const formatTime = (time: string) => {
   })
 }
 
+/**
+ * 工具方法：格式化日期
+ * @param date ISO日期字符串
+ * @returns 本地化的日期展示
+ */
 const formatDate = (date: string) => {
   return new Date(date).toLocaleDateString('zh-CN')
 }
 
+/**
+ * 工具方法：格式化日期时间
+ * @param datetime ISO日期时间字符串
+ * @returns 本地化的日期时间展示
+ */
 const formatDateTime = (datetime: string) => {
   return new Date(datetime).toLocaleString('zh-CN')
 }
 
-// 获取药品类型文本
+/**
+ * 获取药品类型中文文本
+ * @param type 药品类型英文枚举
+ * @returns 中文标签
+ */
 const getMedicineTypeText = (type: string) => {
   const typeMap: Record<string, string> = {
     tablet: '片剂',
@@ -585,6 +673,11 @@ const getMedicineTypeText = (type: string) => {
   return typeMap[type] || type
 }
 
+/**
+ * 获取剂量单位中文文本
+ * @param unit 剂量单位英文枚举
+ * @returns 中文标签
+ */
 const getDosageUnitLabel = (unit: string) => {
   const labels: Record<string, string> = {
     tablet: '片',
@@ -600,6 +693,11 @@ const getDosageUnitLabel = (unit: string) => {
   return labels[unit] || unit
 }
 
+/**
+ * 获取频次中文文本
+ * @param frequency 频次英文枚举
+ * @returns 中文标签
+ */
 const getFrequencyLabel = (frequency: string) => {
   const labels: Record<string, string> = {
     daily: '每日',
@@ -613,6 +711,11 @@ const getFrequencyLabel = (frequency: string) => {
   return labels[frequency] || frequency
 }
 
+/**
+ * 获取与进餐关系中文文本
+ * @param timing 英文枚举
+ * @returns 中文标签
+ */
 const getMealTimingLabel = (timing: string) => {
   const labels: Record<string, string> = {
     before_meal: '餐前',
@@ -626,11 +729,21 @@ const getMealTimingLabel = (timing: string) => {
   return labels[timing] || timing
 }
 
+/**
+ * 将星期数字数组转为中文展示
+ * @param weekdays 数组（1-7，对应周一-周日）
+ * @returns 形如 "周一、周三、周五"
+ */
 const getWeekdaysDisplay = (weekdays: number[]) => {
   const dayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
   return weekdays.map(day => dayNames[day - 1]).join('、')
 }
 
+/**
+ * 通知类型数组转中文展示
+ * @param types 通知类型英文数组
+ * @returns 中文标签拼接
+ */
 const getNotificationTypesDisplay = (types: string[]) => {
   const typeLabels: Record<string, string> = {
     push: '推送',
@@ -641,10 +754,20 @@ const getNotificationTypesDisplay = (types: string[]) => {
   return types.map(type => typeLabels[type] || type).join('、')
 }
 
+/**
+ * 判断计划时间是否已过期
+ * @param scheduledTime ISO时间
+ * @returns 是否已过当前时间
+ */
 const isPastDue = (scheduledTime: string) => {
   return new Date(scheduledTime) < new Date()
 }
 
+/**
+ * 根据历史记录状态返回图标组件
+ * @param record 历史记录
+ * @returns lucide 图标组件
+ */
 const getHistoryIcon = (record: ReminderHistory) => {
   if (record.is_responded) {
     return CheckCircle
@@ -655,6 +778,11 @@ const getHistoryIcon = (record: ReminderHistory) => {
   }
 }
 
+/**
+ * 根据历史记录状态返回图标颜色类
+ * @param record 历史记录
+ * @returns tailwind 文本颜色类
+ */
 const getHistoryIconClass = (record: ReminderHistory) => {
   if (record.is_responded) {
     return 'text-green-500'
@@ -666,7 +794,7 @@ const getHistoryIconClass = (record: ReminderHistory) => {
 }
 </script>
 
-<style scoped>
+<style scoped lang="postcss">
 .reminder-detail-page {
   @apply max-w-6xl mx-auto p-6 space-y-6;
 }

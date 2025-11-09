@@ -8,6 +8,66 @@
       </div>
 
       <div class="space-y-6">
+        <!-- 辅助功能：老年人模式 -->
+        <div class="bg-white rounded-lg shadow">
+          <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-lg font-medium text-gray-900">辅助功能</h2>
+          </div>
+          <div class="p-6">
+            <div class="space-y-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <h3 class="text-sm font-medium text-gray-900">老年人模式</h3>
+                  <p class="text-sm text-gray-600">增大字体、提高对比度、扩大点击区域，提升可读性与可操作性</p>
+                </div>
+                <button
+                  @click="handleToggleSenior"
+                  :class="[
+                    isSenior ? 'bg-blue-600' : 'bg-gray-200',
+                    'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2'
+                  ]"
+                  :aria-pressed="isSenior"
+                >
+                  <span
+                    :class="[
+                      isSenior ? 'translate-x-5' : 'translate-x-0',
+                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out'
+                    ]"
+                  ></span>
+                </button>
+              </div>
+
+              <div class="flex items-center justify-between">
+                <div>
+                  <h3 class="text-sm font-medium text-gray-900">语音播报</h3>
+                  <p class="text-sm text-gray-600">朗读页面标题或提示信息，帮助低视力用户</p>
+                </div>
+                <button
+                  @click="handleToggleSpeech"
+                  :disabled="!isSpeechSupported"
+                  :class="[
+                    isSpeechEnabled ? 'bg-blue-600' : 'bg-gray-200',
+                    'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50'
+                  ]"
+                  :aria-pressed="isSpeechEnabled"
+                  :title="!isSpeechSupported ? '当前浏览器不支持语音播报' : ''"
+                >
+                  <span
+                    :class="[
+                      isSpeechEnabled ? 'translate-x-5' : 'translate-x-0',
+                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out'
+                    ]"
+                  ></span>
+                </button>
+              </div>
+
+              <div class="mt-2" v-if="isSpeechEnabled">
+                <button class="px-3 py-2 rounded bg-gray-100 border" @click="handleSpeakTest">测试播报当前页面标题</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 个人信息 -->
         <div class="bg-white rounded-lg shadow">
           <div class="px-6 py-4 border-b border-gray-200">
@@ -349,6 +409,8 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useUserStore } from '@/stores/user'
 import type { UserInfo } from '@/stores/user'
+import { useTheme } from '@/composables/useTheme'
+import useSpeech from '@/composables/useSpeech'
 
 // 接入用户store
 const userStore = useUserStore()
@@ -390,6 +452,41 @@ const maskedPhone = computed(() => {
 })
 
 const saving = ref(false)
+
+// 老年人模式状态与切换
+const { isSenior, toggleSenior } = useTheme()
+
+// 语音播报状态与操作
+const { isSpeechEnabled, isSpeechSupported, toggleSpeech, speak } = useSpeech()
+
+/**
+ * 处理设置页中的老年人模式开关
+ */
+const handleToggleSenior = () => {
+  console.log('[SettingsPage] 切换老年人模式, 当前状态 =', isSenior.value)
+  toggleSenior()
+}
+
+/**
+ * 处理设置页中的语音播报开关
+ */
+const handleToggleSpeech = () => {
+  if (!isSpeechSupported.value) {
+    console.warn('[SettingsPage] 浏览器不支持 SpeechSynthesis')
+    return
+  }
+  console.log('[SettingsPage] 切换语音播报, 当前状态 =', isSpeechEnabled.value)
+  toggleSpeech()
+}
+
+/**
+ * 测试播报当前页面标题
+ */
+const handleSpeakTest = () => {
+  if (!isSpeechSupported.value) return
+  const title = document.title || '设置页面'
+  speak(`当前页面：${title}`)
+}
 
 onMounted(async () => {
   console.debug('[SettingsPage] onMounted: fetch user profile')
