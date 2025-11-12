@@ -41,34 +41,13 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: null,
-      includeAssets: ['favicon.svg', 'icons/app-icon.svg', 'icons/maskable-icon.svg', 'icons/app-icon-192.png', 'icons/app-icon-512.png'],
-      workbox: {
-        // 生命周期与清理
-        cleanupOutdatedCaches: true,
-        clientsClaim: true,
-        skipWaiting: false, // 允许通过 UI 控制更新激活
-        navigateFallbackDenylist: [/^\/api\//],
-        runtimeCaching: [
-          // 构建产物静态资源：长期缓存，命中即取
-          {
-            urlPattern: ({ url }) => url.origin === self.location.origin && url.pathname.startsWith('/assets/'),
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'assets-cache',
-              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
-            },
-          },
-          // 图片资源：使用 SWR，避免过时图片长期停留
-          {
-            urlPattern: ({ request }) => request.destination === 'image',
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'image-cache',
-              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 7 },
-            },
-          },
-        ],
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      devOptions: {
+        enabled: true,
       },
+      includeAssets: ['favicon.svg', 'icons/app-icon.svg', 'icons/maskable-icon.svg', 'icons/app-icon-192.png', 'icons/app-icon-512.png'],
       manifest: {
         name: 'MTM-用药助手',
         short_name: 'MTM',

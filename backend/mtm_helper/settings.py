@@ -448,6 +448,20 @@ REGISTRATION_REQUIRE_APPROVAL = os.getenv(
 ).lower() == 'true'
 # -----------------------------------------------------------
 
+# ---------------- Web Push / VAPID Settings ----------------
+# VAPID 公钥与私钥用于服务端签发 Web Push 令牌。
+# 请在 .env 中配置：
+#   VAPID_PUBLIC_KEY  = Base64-URL 编码的公钥（与前端 VITE_VAPID_PUBLIC_KEY 保持一致）
+#   VAPID_PRIVATE_KEY = PEM 或 JWK 格式的私钥字符串（pywebpush 支持 PEM）
+#   VAPID_SUBJECT     = 联系方式（推荐 mailto:xxx@example.com）
+VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY', '')
+VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '')
+VAPID_SUBJECT = os.getenv('VAPID_SUBJECT', 'mailto:noreply@mtm-helper.com')
+
+if not VAPID_PRIVATE_KEY:
+    print('⚠️ 缺少 VAPID_PRIVATE_KEY，Web Push 将不可用。请在 .env 中配置。')
+# ------------------------------------------------------------
+
 # ---------------- Spug Push Settings ----------------
 # 是否启用Spug推送平台发送短信
 SPUG_PUSH_ENABLED = os.getenv('SPUG_PUSH_ENABLED', 'false').lower() == 'true'

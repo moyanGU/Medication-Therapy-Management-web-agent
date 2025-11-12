@@ -4,6 +4,14 @@ from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.utils import timezone
 import json
+from typing import Optional
+
+try:
+    # 运行环境未安装时避免导入错误，具体发送时再做校验
+    from pywebpush import webpush, WebPushException
+except Exception:  # pragma: no cover
+    webpush = None
+    WebPushException = Exception
 
 logger = logging.getLogger(__name__)
 
@@ -59,18 +67,66 @@ class NotificationService:
     
     def _send_push_notification(self, user, title, message, reminder):
         """
-        发送推送通知（浏览器通知）
-        这里返回True，实际的推送由前端JavaScript处理
+        发送推送通知（Web Push）
+        - 查找用户的有效订阅
+        - 使用 VAPID 私钥发送浏览器推送
+        - 针对 404/410 将订阅标记为失效
         """
-        logger.info(f"准备推送通知给用户 {user.username}: {title}")
-        
-        # 在实际应用中，这里可以:
-        # 1. 存储到数据库，供前端轮询
-        # 2. 通过WebSocket实时推送
-        # 3. 使用第三方推送服务
-        
-        # 这里我们简化处理，返回成功
-        return True
+        from apps.users.models import PushSubscription
+
+        # 校验依赖
+        if webpush is None:
+            logger.error("pywebpush 未安装，无法发送 Web Push。请在 requirements.txt 中添加 pywebpush 并安装。")
+            return False
+
+        vapid_private: Optional[str] = getattr(settings, 'VAPID_PRIVATE_KEY', None)
+        vapid_subject: Optional[str] = getattr(settings, 'VAPID_SUBJECT', None) or 'mailto:noreply@example.com'
+        if not vapid_private:
+            logger.error("缺少 VAPID_PRIVATE_KEY 配置，无法发送 Web Push。请在 .env 设置 VAPID_PRIVATE_KEY。")
+            return False
+
+        subs = PushSubscription.objects.filter(user=user, is_active=True)
+        if not subs.exists():
+            logger.info(f"用户 {user.id} 暂无有效 Push 订阅，跳过推送")
+            return False
+
+        payload = json.dumps({
+            'title': title,
+            'body': message,
+            'data': {
+                'url': '/',
+                'reminderId': getattr(reminder, 'id', None),
+            }
+        }, ensure_ascii=False)
+
+        success_any = False
+        for sub in subs:
+            try:
+                webpush(
+                    subscription_info={
+                        'endpoint': sub.endpoint,
+                        'keys': {
+                            'p256dh': sub.keys.get('p256dh'),
+                            'auth': sub.keys.get('auth'),
+                        }
+                    },
+                    data=payload,
+                    vapid_private_key=vapid_private,
+                    vapid_claims={'sub': vapid_subject}
+                )
+                sub.touch_sent()
+                success_any = True
+                logger.info(f"Web Push 已发送: user={user.id} endpoint={sub.endpoint[:32]}...")
+            except WebPushException as e:
+                # 404/410 表示订阅失效
+                status_code = getattr(getattr(e, 'response', None), 'status_code', None)
+                logger.warning(f"WebPushException user={user.id} endpoint={sub.endpoint[:32]}... status={status_code} error={e}")
+                if status_code in (404, 410):
+                    sub.mark_inactive()
+            except Exception as e:
+                logger.error(f"Web Push 发送失败 user={user.id} endpoint={sub.endpoint[:32]}... error={e}")
+
+        return success_any
     
     def _send_email_notification(self, user, title, message, reminder):
         """

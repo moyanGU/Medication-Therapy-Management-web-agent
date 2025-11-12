@@ -21,6 +21,29 @@
             {{ requesting ? '申请中...' : '申请权限' }}
           </button>
           
+          <!-- 启用推送订阅 -->
+          <button
+            v-if="permission === 'granted' && pushSupported && !isSubscribed"
+            @click="enablePushSubscription"
+            :disabled="subscribing"
+            class="btn btn-primary btn-sm"
+            title="启用浏览器推送订阅"
+          >
+            <Loader2 v-if="subscribing" class="w-4 h-4 mr-2 animate-spin" />
+            {{ subscribing ? '订阅中...' : '启用推送订阅' }}
+          </button>
+
+          <!-- 取消推送订阅 -->
+          <button
+            v-if="permission === 'granted' && pushSupported && isSubscribed"
+            @click="disablePushSubscription"
+            :disabled="subscribing"
+            class="btn btn-outline btn-sm"
+            title="取消浏览器推送订阅"
+          >
+            {{ subscribing ? '处理中...' : '取消订阅' }}
+          </button>
+          
           <button
             v-if="permission === 'granted'"
             @click="testNotification"
@@ -51,6 +74,13 @@
         </div>
         
         <div class="detail-item">
+          <span class="detail-label">推送支持:</span>
+          <span class="detail-value" :class="pushSupported ? 'text-green-600' : 'text-red-600'">
+            {{ pushSupported ? '支持' : '不支持' }}
+          </span>
+        </div>
+        
+        <div class="detail-item">
           <span class="detail-label">权限状态:</span>
           <span class="detail-value">
             <span class="status-badge" :class="permissionBadgeClass">
@@ -59,6 +89,13 @@
           </span>
         </div>
         
+        <div class="detail-item">
+          <span class="detail-label">订阅状态:</span>
+          <span class="detail-value" :class="isSubscribed ? 'text-green-600' : 'text-gray-900'">
+            {{ isSubscribed ? '已订阅' : '未订阅' }}
+          </span>
+        </div>
+
         <div class="detail-item">
           <span class="detail-label">活跃通知:</span>
           <span class="detail-value">{{ activeNotificationCount }} 个</span>
@@ -139,6 +176,13 @@ import {
 import { notificationService } from '@/services/notificationService'
 import { useToast } from '@/composables/useToast'
 import type { NotificationPermissionResult } from '@/services/notificationService'
+import { 
+  isPushSupported as checkPushSupported,
+  subscribeAndSave,
+  unsubscribeAndCleanup,
+  getCurrentSubscription,
+  showLocalTestNotification,
+} from '@/services/pushService'
 
 interface Props {
   autoRefresh?: boolean
@@ -169,6 +213,10 @@ const testing = ref(false)
 const showDetails = ref(false)
 const activeNotificationCount = ref(0)
 const isQuietTime = ref(false)
+// 推送相关
+const pushSupported = ref(false)
+const isSubscribed = ref(false)
+const subscribing = ref(false)
 
 // 计算属性
 const canRequestPermission = computed(() => {
@@ -287,6 +335,8 @@ const testNotification = async () => {
   try {
     testing.value = true
     const result = await notificationService.showTestNotification()
+    // 额外：本地 SW 测试通知（无需后端）
+    await showLocalTestNotification()
     
     if (result.success) {
       showSuccess('测试通知发送成功')
@@ -303,6 +353,56 @@ const testNotification = async () => {
     emit('notificationTest', false)
   } finally {
     testing.value = false
+  }
+}
+
+// 启用推送订阅
+const enablePushSubscription = async () => {
+  if (permission.value !== 'granted') {
+    showWarning('请先授权通知权限')
+    return
+  }
+  if (!pushSupported.value) {
+    showError('当前浏览器不支持推送订阅')
+    return
+  }
+  try {
+    subscribing.value = true
+    const sub = await subscribeAndSave()
+    isSubscribed.value = !!sub
+    showSuccess('推送订阅已启用')
+  } catch (error) {
+    console.error('[Push] 启用订阅失败:', error)
+    showError('启用订阅失败，请检查浏览器设置或网络')
+  } finally {
+    subscribing.value = false
+    await refreshSubscriptionState()
+  }
+}
+
+// 取消推送订阅
+const disablePushSubscription = async () => {
+  try {
+    subscribing.value = true
+    const ok = await unsubscribeAndCleanup()
+    isSubscribed.value = !ok ? isSubscribed.value : false
+    showSuccess('订阅已取消')
+  } catch (error) {
+    console.error('[Push] 取消订阅失败:', error)
+    showError('取消订阅失败')
+  } finally {
+    subscribing.value = false
+    await refreshSubscriptionState()
+  }
+}
+
+// 刷新订阅状态
+const refreshSubscriptionState = async () => {
+  try {
+    const sub = await getCurrentSubscription()
+    isSubscribed.value = !!sub
+  } catch (e) {
+    console.warn('[Push] 刷新订阅状态失败', e)
   }
 }
 
@@ -332,6 +432,9 @@ const stopAutoRefresh = () => {
 // 生命周期
 onMounted(() => {
   updateStatus()
+  // 推送支持检测与订阅状态刷新
+  pushSupported.value = checkPushSupported()
+  refreshSubscriptionState()
   
   // 注册权限变化监听
   notificationService.onPermissionChange(handlePermissionChange)

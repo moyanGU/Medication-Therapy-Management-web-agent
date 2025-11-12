@@ -127,3 +127,93 @@ class User(AbstractUser):
                 (today.month, today.day) < (self.birth_date.month, self.birth_date.day)
             )
         return None
+
+
+class PushSubscription(models.Model):
+    """
+    浏览器 Push 订阅模型
+    保存用户的 Web Push 订阅信息（endpoint 与密钥）。
+
+    设计说明：
+    - endpoint 唯一标识一个订阅，设为唯一索引，防止重复保存
+    - keys 使用 JSONField 保存 { p256dh, auth } 两个字段
+    - 记录 UA、时区、应用标识，便于诊断与多端管理
+    - is_active 标记订阅是否有效（收到 404/410 可置为失效而不立即删除）
+    """
+    user = models.ForeignKey(
+        'users.User',
+        on_delete=models.CASCADE,
+        related_name='push_subscriptions',
+        verbose_name='用户'
+    )
+    endpoint = models.URLField(
+        unique=True,
+        verbose_name='订阅端点'
+    )
+    keys = models.JSONField(
+        default=dict,
+        verbose_name='密钥信息',
+        help_text='包含 p256dh 与 auth 字段'
+    )
+    expiration_time = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='过期时间'
+    )
+    user_agent = models.CharField(
+        max_length=256,
+        blank=True,
+        null=True,
+        verbose_name='UA'
+    )
+    time_zone = models.CharField(
+        max_length=64,
+        blank=True,
+        null=True,
+        verbose_name='时区'
+    )
+    app = models.CharField(
+        max_length=64,
+        default='mtm-helper',
+        verbose_name='应用标识'
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name='是否有效'
+    )
+    last_sent_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='最后发送时间'
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='创建时间'
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name='更新时间'
+    )
+
+    class Meta:
+        db_table = 'push_subscriptions'
+        verbose_name = 'Push订阅'
+        verbose_name_plural = 'Push订阅'
+        indexes = [
+            models.Index(fields=['user'], name='idx_push_sub_user'),
+            models.Index(fields=['is_active'], name='idx_push_sub_active'),
+            models.Index(fields=['updated_at'], name='idx_push_sub_updated'),
+        ]
+
+    def __str__(self):
+        return f"{self.user_id} - {self.endpoint[:32]}..."
+
+    def mark_inactive(self):
+        """将订阅标记为失效"""
+        self.is_active = False
+        self.save(update_fields=['is_active'])
+
+    def touch_sent(self):
+        """更新最后发送时间戳"""
+        self.last_sent_at = timezone.now()
+        self.save(update_fields=['last_sent_at'])

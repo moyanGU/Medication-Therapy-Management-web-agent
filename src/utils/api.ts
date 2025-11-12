@@ -350,11 +350,18 @@ class ApiClient {
     })
   }
 
-  /** DELETE请求 */
-  async delete<T = any>(endpoint: string, config: RequestConfig = {}): Promise<ApiResponse<T>> {
+  /** DELETE请求（支持可选 body） */
+  async delete<T = any>(
+    endpoint: string,
+    data?: any,
+    config: RequestConfig = {}
+  ): Promise<ApiResponse<T>> {
+    const isForm = typeof FormData !== 'undefined' && data instanceof FormData
     return this.request<T>(endpoint, {
       ...config,
       method: 'DELETE',
+      isFormData: isForm || config.isFormData,
+      body: isForm ? data : (data ? JSON.stringify(data) : undefined),
     })
   }
 

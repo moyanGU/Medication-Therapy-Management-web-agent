@@ -36,13 +36,16 @@ services:
       - DB_WRITE_TIMEOUT=${DB_WRITE_TIMEOUT:-15}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_POOL_MAX_CONNECTIONS=${REDIS_POOL_MAX_CONNECTIONS:-100}
       - REDIS_SOCKET_CONNECT_TIMEOUT=${REDIS_SOCKET_CONNECT_TIMEOUT:-2}
       - REDIS_SOCKET_TIMEOUT=${REDIS_SOCKET_TIMEOUT:-2}
       - CACHE_DEFAULT_TTL=${CACHE_DEFAULT_TTL:-300}
       - REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX:-mtm-helper}
       - REDIS_ENABLE_COMPRESSION=${REDIS_ENABLE_COMPRESSION:-true}
+      # Web Push（如未配置则后端自动降级为不发送 Web Push）
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:noreply@mtm-helper.com}
       - ALLOWED_HOSTS=mtm-helper.com,www.mtm-helper.com,api.mtm-helper.com
       - CSRF_TRUSTED_ORIGINS=https://mtm-helper.com,https://www.mtm-helper.com,https://api.mtm-helper.com
       - CORS_ALLOWED_ORIGINS=https://mtm-helper.com,https://www.mtm-helper.com
@@ -95,7 +98,10 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      # Web Push（提醒工作进程也需要）
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:noreply@mtm-helper.com}
     command: python manage.py run_reminder_worker
     restart: always
     networks:
@@ -103,11 +109,28 @@ services:
 
   redis:
     image: redis:7.0-alpine
-    command: redis-server
+    command:
+      - /bin/sh
+      - -c
+      - |
+        if [ -n "${REDIS_PASSWORD}" ]; then
+          echo "[redis] Starting with requirepass (from REDIS_PASSWORD)"
+          redis-server --appendonly yes --requirepass "${REDIS_PASSWORD}"
+        else
+          echo "[redis] Starting WITHOUT password (no REDIS_PASSWORD provided)"
+          redis-server --appendonly yes
+        fi
     restart: always
     ports: []
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+        - CMD-SHELL
+        - |
+          if [ -n "${REDIS_PASSWORD}" ]; then
+            redis-cli -a "${REDIS_PASSWORD}" ping
+          else
+            redis-cli ping
+          fi
       interval: 10s
       timeout: 3s
       retries: 5

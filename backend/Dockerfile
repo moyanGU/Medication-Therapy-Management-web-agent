@@ -1,5 +1,8 @@
 # 后端Dockerfile
-FROM python:3.11-slim
+# 基础镜像改为官方完整版，保证系统依赖更完整，提升兼容性与拉取成功率
+# 说明：此前使用 python:3.11-slim 为减少体积，但在当前网络环境下拉取速度与稳定性存在问题；
+#       切换为 python:3.12.6（Debian 完整版），与项目依赖（Django 4.2 LTS 等）兼容，同时提高拉取成功率。
+FROM python:3.12.6
 
 # 设置环境变量
 ENV PYTHONDONTWRITEBYTECODE=1
