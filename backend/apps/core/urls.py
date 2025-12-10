@@ -10,6 +10,7 @@ urlpatterns = [
     path('health/', views.health_check, name='health_check'),
     path('ping/', views.ping, name='ping'),
     path('system-info/', views.system_info, name='system_info'),
+    path('diagnostics/', views.diagnostics, name='diagnostics'),
     
     # API文档
     path('docs/', views.api_docs, name='api_docs'),

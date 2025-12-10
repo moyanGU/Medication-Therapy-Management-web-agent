@@ -5,6 +5,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 import json
 from typing import Optional
+from datetime import timedelta
 
 try:
     # 运行环境未安装时避免导入错误，具体发送时再做校验
@@ -12,6 +13,11 @@ try:
 except Exception:  # pragma: no cover
     webpush = None
     WebPushException = Exception
+
+try:
+    import requests
+except Exception:  # pragma: no cover
+    requests = None
 
 logger = logging.getLogger(__name__)
 
@@ -23,41 +29,74 @@ class NotificationService:
     """
     
     def __init__(self):
-        self.enabled_types = ['push', 'email']  # 可用的通知类型
+        self.enabled_types = ['push', 'email', 'sms']  # 可用的通知类型
     
-    def send_notification(self, user, title, message, reminder=None):
-        """
-        发送通知
-        """
+    def send_notification(self, user, title, message, reminder=None, history=None):
         try:
-            notification_types = reminder.notification_types if reminder else ['push']
-            success_count = 0
-            
-            for notification_type in notification_types:
+            user_settings = self.get_notification_settings(user)
+            # 优先尊重历史记录指定的通道顺序，其次使用提醒的偏好，否则按用户设置推断
+            from_history = False
+            if history and getattr(history, 'notification_methods', None):
+                preferred = list(history.notification_methods or [])
+                from_history = True
+            else:
+                preferred = reminder.notification_types if reminder else ['push']
+            if not preferred:
+                preferred = []
+                if user_settings.get('push_enabled'):
+                    preferred.append('push')
+                if user_settings.get('sms_enabled'):
+                    preferred.append('sms')
+                if user_settings.get('email_enabled'):
+                    preferred.append('email')
+            elif not from_history:
+                if user_settings.get('sms_enabled') and 'sms' not in preferred:
+                    preferred.append('sms')
+                if user_settings.get('email_enabled') and 'email' not in preferred:
+                    preferred.append('email')
+
+            sent = False
+            for notification_type in preferred:
                 if notification_type in self.enabled_types:
-                    if self._send_by_type(notification_type, user, title, message, reminder):
-                        success_count += 1
-            
-            # 记录通知历史
-            self._log_notification(user, title, message, notification_types, reminder)
-            
-            return success_count > 0
-            
+                    if self._send_by_type(notification_type, user, title, message, reminder, history):
+                        sent = True
+                        self._log_notification(user, title, message, [notification_type], reminder)
+                        break
+
+            if not sent and reminder is not None and not from_history:
+                try:
+                    from .history_models import ReminderHistory
+                    fallback_time = timezone.now() + timedelta(minutes=5)
+                    ReminderHistory.objects.create(
+                        user=user,
+                        reminder=reminder,
+                        title=title,
+                        message=message,
+                        notification_methods=['sms'] if user_settings.get('sms_enabled') else ['email'] if user_settings.get('email_enabled') else [],
+                        scheduled_time=fallback_time,
+                        reminder_type='repeat',
+                        status='pending',
+                    )
+                    logger.warning(f"所有通知方式发送失败，已创建5分钟后重试的待发送记录: reminder={getattr(reminder, 'id', None)}")
+                except Exception as ie:
+                    logger.error(f"创建待发送记录失败: {ie}")
+
+            return sent
         except Exception as e:
             logger.error(f"发送通知失败: {str(e)}")
             return False
     
-    def _send_by_type(self, notification_type, user, title, message, reminder):
+    def _send_by_type(self, notification_type, user, title, message, reminder, history):
         """
         根据类型发送通知
         """
         try:
             if notification_type == 'push':
-                return self._send_push_notification(user, title, message, reminder)
+                return self._send_push_notification(user, title, message, reminder, history)
             elif notification_type == 'email':
-                return self._send_email_notification(user, title, message, reminder)
+                return self._send_email_notification(user, title, message, reminder, history)
             elif notification_type == 'sms':
-                return self._send_sms_notification(user, title, message, reminder)
+                return self._send_sms_notification(user, title, message, reminder, history)
             else:
                 logger.warning(f"不支持的通知类型: {notification_type}")
                 return False
@@ -65,7 +104,7 @@ class NotificationService:
             logger.error(f"发送 {notification_type} 通知失败: {str(e)}")
             return False
     
-    def _send_push_notification(self, user, title, message, reminder):
+    def _send_push_notification(self, user, title, message, reminder, history=None):
         """
         发送推送通知（Web Push）
         - 查找用户的有效订阅
@@ -90,12 +129,30 @@ class NotificationService:
             logger.info(f"用户 {user.id} 暂无有效 Push 订阅，跳过推送")
             return False
 
+        if history is None and reminder is not None:
+            try:
+                from .history_models import ReminderHistory
+                history = ReminderHistory.objects.create(
+                    user=user,
+                    reminder=reminder,
+                    title=title,
+                    message=message,
+                    notification_methods=['push'],
+                    scheduled_time=timezone.now(),
+                    reminder_type='scheduled',
+                    status='sent',
+                )
+            except Exception:
+                history = None
+
         payload = json.dumps({
             'title': title,
             'body': message,
+            'tag': f"mtm-reminder-{getattr(reminder, 'id', 'general')}",
             'data': {
                 'url': '/',
                 'reminderId': getattr(reminder, 'id', None),
+                'historyId': getattr(history, 'id', None),
             }
         }, ensure_ascii=False)
 
@@ -117,6 +174,13 @@ class NotificationService:
                 sub.touch_sent()
                 success_any = True
                 logger.info(f"Web Push 已发送: user={user.id} endpoint={sub.endpoint[:32]}...")
+                if history is not None:
+                    try:
+                        history.sent_at = timezone.now()
+                        history.status = 'sent'
+                        history.save(update_fields=['sent_at', 'status'])
+                    except Exception:
+                        pass
             except WebPushException as e:
                 # 404/410 表示订阅失效
                 status_code = getattr(getattr(e, 'response', None), 'status_code', None)
@@ -128,7 +192,7 @@ class NotificationService:
 
         return success_any
     
-    def _send_email_notification(self, user, title, message, reminder):
+    def _send_email_notification(self, user, title, message, reminder, history=None):
         """
         发送邮件通知
         """
@@ -159,6 +223,27 @@ class NotificationService:
                 fail_silently=False
             )
             
+            try:
+                if history is not None:
+                    history.sent_at = timezone.now()
+                    history.status = 'sent'
+                    history.notification_methods = ['email']
+                    history.save(update_fields=['sent_at', 'status', 'notification_methods'])
+                elif reminder is not None:
+                    from .history_models import ReminderHistory
+                    ReminderHistory.objects.create(
+                        user=user,
+                        reminder=reminder,
+                        title=title,
+                        message=message,
+                        notification_methods=['email'],
+                        scheduled_time=timezone.now(),
+                        reminder_type='scheduled',
+                        status='sent',
+                    )
+            except Exception:
+                pass
+
             logger.info(f"邮件通知发送成功给 {user.email}")
             return True
             
@@ -166,7 +251,7 @@ class NotificationService:
             logger.error(f"发送邮件通知失败: {str(e)}")
             return False
     
-    def _send_sms_notification(self, user, title, message, reminder):
+    def _send_sms_notification(self, user, title, message, reminder, history=None):
         """
         发送短信通知
         """
@@ -175,20 +260,145 @@ class NotificationService:
                 logger.warning(f"用户 {user.username} 没有手机号")
                 return False
             
-            # 这里应该集成短信服务提供商的API
-            # 例如：阿里云短信、腾讯云短信等
-            
-            # 模拟发送短信
-            logger.info(f"模拟发送短信给 {user.phone}: {message}")
-            
-            # 在实际应用中，这里会调用短信API
-            # sms_result = sms_client.send_sms(
-            #     phone_number=user.phone,
-            #     message=message
-            # )
-            # return sms_result.success
-            
-            return True
+            sms_text = getattr(settings, 'SMS_TEMPLATES', {}).get('reminder', '{title}: {message}').format(title=title, message=message)
+            spug_msg_var = (title or '').strip() or (message or '').strip() or '用药'
+            if spug_msg_var.endswith('提醒'):
+                spug_msg_var = spug_msg_var[:-2]
+            spug_enabled = getattr(settings, 'SPUG_PUSH_ENABLED', False)
+
+            if spug_enabled:
+                base_url = getattr(settings, 'SPUG_PUSH_URL', 'https://push.spug.cc')
+                template_id = (getattr(settings, 'SPUG_TEMPLATE_ID_REMINDER', '') or getattr(settings, 'SPUG_TEMPLATE_ID', '')).strip()
+                app_name = getattr(settings, 'SPUG_APP_NAME', 'MTM用药助手')
+                token = getattr(settings, 'SPUG_PUSH_TOKEN', '')
+                timeout = int(getattr(settings, 'SPUG_PUSH_TIMEOUT_SECONDS', 3))
+
+                if requests is None:
+                    logger.error('requests 未安装，无法调用Spug推送')
+                    return False
+                if not template_id:
+                    logger.error('SPUG_TEMPLATE_ID 未配置')
+                    return False
+
+                use_sms = bool(getattr(settings, 'SPUG_REMINDER_USE_SMS_ENDPOINT', False))
+                if use_sms:
+                    url = f"{base_url.rstrip('/')}/sms/{template_id}"
+                    params = {
+                        getattr(settings, 'SPUG_SMS_PARAM_TO', 'to'): user.phone,
+                        getattr(settings, 'SPUG_SMS_PARAM_MESSAGE', 'message'): spug_msg_var,
+                    }
+                else:
+                    url = f"{base_url.rstrip('/')}/send/{template_id}"
+                    payload = {
+                        'name': app_name,
+                        'title': title,
+                        'message': spug_msg_var,
+                        'targets': user.phone,
+                    }
+                try:
+                    extra_json = getattr(settings, 'SPUG_EXTRA_PARAMS_JSON', '')
+                    if extra_json:
+                        import json as _json
+                        extra = _json.loads(extra_json)
+                        if isinstance(extra, dict):
+                            payload.update(extra)
+                    # 验证码模板：若要求数字验证码且尚未提供，则自动生成
+                    require_code = bool(getattr(settings, 'SPUG_REQUIRE_NUMERIC_CODE', False))
+                    if require_code and 'code' not in payload:
+                        try:
+                            import random
+                            length = int(getattr(settings, 'SPUG_CODE_LENGTH', 6))
+                            length = max(4, min(10, length))
+                            payload['code'] = ''.join(str(random.randint(0, 9)) for _ in range(length))
+                            # 可选传递TTL（分钟）
+                            ttl_seconds = int(getattr(settings, 'SMS_CODE_TTL', 300))
+                            ttl_minutes = max(1, ttl_seconds // 60)
+                            payload.setdefault('ttl', ttl_minutes)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                headers = { 'Content-Type': 'application/x-www-form-urlencoded' }
+                if token:
+                    headers['Authorization'] = f"Bearer {token}"
+
+                masked_phone = (user.phone[:3] + '****' + user.phone[-4:]) if isinstance(user.phone, str) and len(user.phone) == 11 else '[masked]'
+                if use_sms:
+                    masked_params = { **params, getattr(settings, 'SPUG_SMS_PARAM_MESSAGE', 'message'): '[masked]', getattr(settings, 'SPUG_SMS_PARAM_TO', 'to'): masked_phone }
+                    logger.info(f"调用Spug发送提醒短信: url={url}, params={masked_params}, timeout={timeout}, auth={'yes' if token else 'no'}")
+                    r = requests.get(url, params=params, headers=headers, timeout=timeout)
+                else:
+                    masked_payload = { **payload, 'message': '[masked]', 'targets': masked_phone }
+                    logger.info(f"调用Spug发送提醒短信: url={url}, payload={masked_payload}, timeout={timeout}, auth={'yes' if token else 'no'}")
+                    r = requests.post(url, data=payload, headers=headers, timeout=timeout)
+                resp_text = str(getattr(r, 'text', ''))
+                logger.info(f"Spug响应: status={getattr(r, 'status_code', None)}, text={resp_text[:200]}")
+                try:
+                    r.raise_for_status()
+                except Exception as e:
+                    logger.error(f"Spug短信发送失败: {e}")
+                    return False
+                try:
+                    parsed = r.json()
+                    if isinstance(parsed, dict):
+                        code_val = parsed.get('code')
+                        msg_val = str(parsed.get('msg', ''))
+                        if code_val not in (200, '200'):
+                            logger.error(f"Spug返回错误: code={code_val}, msg={msg_val}")
+                            return False
+                        if '不能为空' in msg_val or '失败' in msg_val:
+                            logger.error(f"Spug返回提示失败: msg={msg_val}")
+                            return False
+                except Exception:
+                    pass
+
+                try:
+                    if history is not None:
+                        history.sent_at = timezone.now()
+                        history.status = 'sent'
+                        history.notification_methods = ['sms']
+                        history.save(update_fields=['sent_at', 'status', 'notification_methods'])
+                    elif reminder is not None:
+                        from .history_models import ReminderHistory
+                        ReminderHistory.objects.create(
+                            user=user,
+                            reminder=reminder,
+                            title=title,
+                            message=sms_text,
+                            notification_methods=['sms'],
+                            scheduled_time=timezone.now(),
+                            reminder_type='scheduled',
+                            status='sent',
+                        )
+                except Exception:
+                    pass
+
+                return True
+            else:
+                logger.info(f"模拟发送短信给 {user.phone}: {sms_text}")
+
+                try:
+                    if history is not None:
+                        history.sent_at = timezone.now()
+                        history.status = 'sent'
+                        history.notification_methods = ['sms']
+                        history.save(update_fields=['sent_at', 'status', 'notification_methods'])
+                    elif reminder is not None:
+                        from .history_models import ReminderHistory
+                        ReminderHistory.objects.create(
+                            user=user,
+                            reminder=reminder,
+                            title=title,
+                            message=sms_text,
+                            notification_methods=['sms'],
+                            scheduled_time=timezone.now(),
+                            reminder_type='scheduled',
+                            status='sent',
+                        )
+                except Exception:
+                    pass
+
+                return True
             
         except Exception as e:
             logger.error(f"发送短信通知失败: {str(e)}")

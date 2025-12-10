@@ -58,14 +58,22 @@ swSelf.addEventListener('push', (event: any) => {
   })()
 
   const title = payload.title || '用药提醒'
-  const options: NotificationOptions = {
+  const options: (NotificationOptions & { vibrate?: number[] }) = {
     body: payload.body || '请按计划服药或查看提醒详情',
     icon: '/icons/app-icon-192.png',
     badge: '/icons/app-icon-192.png',
     data: payload.data || {},
-    // 声明为高优先级（部分浏览器支持情况不同）
     tag: payload.tag || 'mtm-reminder',
-    requireInteraction: false,
+    requireInteraction: true,
+    silent: false,
+    renotify: true,
+    vibrate: [200, 100, 200],
+    actions: [
+      { action: 'taken', title: '已服用' },
+      { action: 'snooze_10', title: '稍后提醒(10分钟)' },
+      { action: 'snooze_30', title: '稍后提醒(30分钟)' },
+      { action: 'skip', title: '跳过' },
+    ],
   }
 
   event.waitUntil(swSelf.registration.showNotification(title, options))
@@ -76,10 +84,34 @@ swSelf.addEventListener('push', (event: any) => {
 swSelf.addEventListener('notificationclick', (event: any) => {
   console.log('[SW] notification click', event)
   event.notification.close()
-  const targetUrl: string | undefined = (event.notification as any).data?.url || '/' // 默认首页
+  const targetUrl: string | undefined = (event.notification as any).data?.url || '/'
+  const action: string | undefined = event.action
 
   event.waitUntil(
     (async () => {
+      if (action) {
+        try {
+          const sub = await swSelf.registration.pushManager.getSubscription()
+          const endpoint: string | undefined = sub?.endpoint
+          const data = (event.notification as any).data || {}
+          const body: any = {
+            endpoint,
+            response_type: action === 'taken' ? 'taken' : action === 'skip' ? 'skipped' : 'delayed',
+          }
+          if (action === 'snooze_10') body.delay_minutes = 10
+          if (action === 'snooze_30') body.delay_minutes = 30
+          if (data.historyId) body.history_id = data.historyId
+          else if (data.reminderId) body.reminder_id = data.reminderId
+          await fetch('/api/reminders/respond_by_subscription/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          })
+          return
+        } catch (e) {
+          console.warn('[SW] respond_by_subscription failed', e)
+        }
+      }
       const allClients = await swSelf.clients.matchAll({ type: 'window', includeUncontrolled: true })
       for (const client of allClients) {
         const url = new URL(client.url)

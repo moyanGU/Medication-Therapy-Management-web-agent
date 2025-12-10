@@ -10,7 +10,8 @@
     "preview": "vite preview --config vite.config.ts",
     "postbuild": "node ./scripts/ci/copy-icons.mjs",
     "guard:dist:linux": "bash ./scripts/ci/check-dist-no-localhost.sh dist",
-    "guard:dist:win": "powershell -ExecutionPolicy Bypass -File ./scripts/windows/check-dist-no-localhost.ps1 dist"
+    "guard:dist:win": "powershell -ExecutionPolicy Bypass -File ./scripts/windows/check-dist-no-localhost.ps1 dist",
+    "lint": "eslint \"src/**/*.{ts,vue}\" --max-warnings=0"
   },
   "dependencies": {
     "@heroicons/vue": "^2.1.5",

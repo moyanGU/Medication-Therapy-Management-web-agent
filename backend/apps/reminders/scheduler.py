@@ -5,6 +5,7 @@ from django.utils import timezone
 from django.db.models import Q
 from .models import Reminder
 from .notifications import NotificationService
+from .history_models import ReminderHistory
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,70 @@ class ReminderScheduler:
             except Exception as e:
                 logger.error(f"发送提醒失败 {reminder.id}: {str(e)}")
         
+        # 处理待发送历史（如用户延迟5分钟后的补发）
+        try:
+            pending_qs = ReminderHistory.objects.filter(status='pending', scheduled_time__lte=now).select_related('user', 'reminder')
+            logger.info(f"待发送历史记录数量: {pending_qs.count()} (<= {now})")
+            for h in pending_qs:
+                try:
+                    ok = self.notification_service.send_notification(
+                        user=h.user,
+                        title=h.title,
+                        message=h.message,
+                        reminder=h.reminder,
+                        history=h,
+                    )
+                    if ok:
+                        h.sent_at = timezone.now()
+                        h.status = 'sent'
+                        h.save(update_fields=['sent_at', 'status'])
+                        if h.reminder:
+                            h.reminder.increment_reminder_count()
+                        sent_count += 1
+                    else:
+                        h.status = 'failed'
+                        h.save(update_fields=['status'])
+                        # 升级备用通道：根据历史记录的通道与用户设置，创建5分钟后重试的待发送记录
+                        try:
+                            prev = list(h.notification_methods or [])
+                            settings = self.notification_service.get_notification_settings(h.user)
+                            # 简单升级策略：push->sms->email->push
+                            next_methods = []
+                            if 'push' in prev:
+                                if settings.get('sms_enabled'):
+                                    next_methods = ['sms']
+                                elif settings.get('email_enabled'):
+                                    next_methods = ['email']
+                            elif 'sms' in prev:
+                                if settings.get('email_enabled'):
+                                    next_methods = ['email']
+                                elif settings.get('push_enabled'):
+                                    next_methods = ['push']
+                            elif 'email' in prev:
+                                if settings.get('push_enabled'):
+                                    next_methods = ['push']
+                                elif settings.get('sms_enabled'):
+                                    next_methods = ['sms']
+
+                            if next_methods:
+                                ReminderHistory.objects.create(
+                                    user=h.user,
+                                    reminder=h.reminder,
+                                    title='补发提醒',
+                                    message=h.message,
+                                    notification_methods=next_methods,
+                                    scheduled_time=now + timedelta(minutes=5),
+                                    reminder_type='repeat',
+                                    status='pending',
+                                )
+                                logger.info(f"通道升级创建待发送记录 history={h.id} -> {next_methods}")
+                        except Exception as ie:
+                            logger.error(f"通道升级创建待发送记录失败 history={h.id}: {ie}")
+                except Exception as e:
+                    logger.error(f"发送待历史提醒失败 history={h.id}: {e}")
+        except Exception as e:
+            logger.error(f"查询待发送历史失败: {e}")
+
         logger.info(f"提醒检查完成，发送了 {sent_count} 个提醒")
         return sent_count
     

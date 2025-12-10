@@ -280,21 +280,21 @@ class ReminderService {
     }
     
     const res = await api.get<PaginatedResponse<ReminderHistory>>(
-      `/reminder-history/?${params.toString()}`
+      `/reminders/reminder-history/?${params.toString()}`
     )
     return res
   }
 
   async getReminderHistoryItem(id: number): Promise<ApiResponse<ReminderHistory>> {
     const res = await api.get<ReminderHistory>(
-      `/reminder-history/${id}/`
+      `/reminders/reminder-history/${id}/`
     )
     return res
   }
 
   async respondToReminder(id: number, payload: ReminderHistoryResponse): Promise<ApiResponse<ReminderHistory>> {
     const res = await api.post<ReminderHistory>(
-      `/reminder-history/${id}/respond/`,
+      `/reminders/reminder-history/${id}/respond/`,
       payload
     )
     return res
@@ -302,28 +302,35 @@ class ReminderService {
 
   async getTodayHistory(): Promise<ApiResponse<ReminderHistory[]>> {
     const res = await api.get<ReminderHistory[]>(
-      `/reminder-history/today/`
+      `/reminders/reminder-history/today/`
     )
     return res
   }
 
   async getRecentHistory(): Promise<ApiResponse<ReminderHistory[]>> {
     const res = await api.get<ReminderHistory[]>(
-      `/reminder-history/recent/`
+      `/reminders/reminder-history/recent/`
     )
     return res
   }
 
   async getUnrespondedHistory(): Promise<ApiResponse<ReminderHistory[]>> {
     const res = await api.get<ReminderHistory[]>(
-      `/reminder-history/unresponded/`
+      `/reminders/reminder-history/unresponded/`
     )
     return res
   }
 
   async getHistoryStatistics(days: number = 30): Promise<ApiResponse<any>> {
     const res = await api.get<any>(
-      `/reminder-history/statistics/?days=${days}`
+      `/reminders/reminder-history/statistics/?days=${days}`
+    )
+    return res
+  }
+
+  async getHistoryMetrics(days: number = 7): Promise<ApiResponse<any>> {
+    const res = await api.get<any>(
+      `/reminders/reminder-history/metrics/?days=${days}`
     )
     return res
   }
@@ -335,7 +342,7 @@ class ReminderService {
     notes?: string
   ): Promise<ApiResponse<{ updated_count: number }>> {
     const res = await api.post<{ updated_count: number }>(
-      `/reminder-history/batch_respond/`,
+      `/reminders/reminder-history/batch_respond/`,
       {
         history_ids: historyIds,
         response_type: responseType,

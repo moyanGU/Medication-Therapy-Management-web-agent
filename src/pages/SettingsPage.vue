@@ -8,6 +8,44 @@
       </div>
 
       <div class="space-y-6">
+        <div class="bg-white rounded-lg shadow">
+          <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-lg font-medium text-gray-900">系统诊断</h2>
+          </div>
+          <div class="p-6 space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm text-gray-600">查看当前环境与通知通道配置状态</p>
+              </div>
+              <button @click="refreshDiagnostics" :disabled="loadingDiagnostics" class="inline-flex items-center px-3 py-1.5 border text-sm font-medium rounded bg-white border-gray-300 hover:bg-gray-50 disabled:opacity-50">
+                {{ loadingDiagnostics ? '刷新中...' : '刷新诊断' }}
+              </button>
+            </div>
+            <div v-if="diagnostics">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="border rounded p-3">
+                  <div class="text-sm font-medium text-gray-900 mb-2">Web Push</div>
+                  <div class="text-sm text-gray-700">私钥配置：<span :class="diagnostics.notifications.webpush.vapid_private_key_configured ? 'text-green-600' : 'text-red-600'">{{ diagnostics.notifications.webpush.vapid_private_key_configured ? '已配置' : '未配置' }}</span></div>
+                </div>
+                <div class="border rounded p-3">
+                  <div class="text-sm font-medium text-gray-900 mb-2">短信通道（Spug）</div>
+                  <div class="text-sm text-gray-700">已启用：<span :class="diagnostics.notifications.sms_spug.enabled ? 'text-green-600' : 'text-gray-600'">{{ diagnostics.notifications.sms_spug.enabled ? '是' : '否' }}</span></div>
+                  <div class="text-sm text-gray-700">模板配置：<span :class="diagnostics.notifications.sms_spug.template_configured ? 'text-green-600' : 'text-red-600'">{{ diagnostics.notifications.sms_spug.template_configured ? '已配置' : '缺失' }}</span></div>
+                  <div class="text-sm text-gray-700">服务地址：<span class="text-gray-800">{{ diagnostics.notifications.sms_spug.url }}</span></div>
+                  <div class="text-sm text-gray-700">授权令牌：<span :class="diagnostics.notifications.sms_spug.token_configured ? 'text-green-600' : 'text-gray-600'">{{ diagnostics.notifications.sms_spug.token_configured ? '已配置' : '未配置' }}</span></div>
+                  <div class="text-sm text-gray-700">超时（秒）：<span class="text-gray-800">{{ diagnostics.notifications.sms_spug.timeout_seconds }}</span></div>
+                </div>
+              </div>
+              <div class="mt-4">
+                <div class="text-sm font-medium text-gray-900">问题列表</div>
+                <ul class="mt-2 list-disc list-inside text-sm text-gray-700">
+                  <li v-if="problems.length === 0" class="text-gray-500">无异常</li>
+                  <li v-for="(p,idx) in problems" :key="idx">{{ p }}</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
         <!-- 辅助功能：老年人模式 -->
         <div class="bg-white rounded-lg shadow">
           <div class="px-6 py-4 border-b border-gray-200">
@@ -411,6 +449,7 @@ import { useUserStore } from '@/stores/user'
 import type { UserInfo } from '@/stores/user'
 import { useTheme } from '@/composables/useTheme'
 import useSpeech from '@/composables/useSpeech'
+import { api } from '@/utils/api'
 
 // 接入用户store
 const userStore = useUserStore()
@@ -452,6 +491,9 @@ const maskedPhone = computed(() => {
 })
 
 const saving = ref(false)
+const loadingDiagnostics = ref(false)
+const diagnostics = ref<any | null>(null)
+const problems = ref<string[]>([])
 
 // 老年人模式状态与切换
 const { isSenior, toggleSenior } = useTheme()
@@ -500,6 +542,7 @@ onMounted(async () => {
     form.emergencyPhone = u.emergencyPhone || ''
     form.avatar = u.avatar || ''
   }
+  await refreshDiagnostics()
 })
 
 /**
@@ -539,6 +582,21 @@ const saveUserInfo = async () => {
 const toggleSetting = (key: keyof typeof settings) => {
   if (typeof settings[key] === 'boolean') {
     ;(settings[key] as boolean) = !(settings[key] as boolean)
+  }
+}
+
+async function refreshDiagnostics() {
+  loadingDiagnostics.value = true
+  try {
+    const resp = await api.get<any>('/diagnostics/')
+    diagnostics.value = resp.data?.diagnostics || null
+    problems.value = (resp.data?.problems || []) as string[]
+    console.log('[SettingsPage] diagnostics', diagnostics.value)
+    console.log('[SettingsPage] problems', problems.value)
+  } catch (e) {
+    console.warn('[SettingsPage] diagnostics fetch failed', e)
+  } finally {
+    loadingDiagnostics.value = false
   }
 }
 </script>

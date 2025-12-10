@@ -99,7 +99,7 @@ export async function subscribeAndSave(): Promise<PushSubscription> {
 
       // 保存到后端（API 四要素：URL/Method/Body/Response）
       // Method: POST
-      // URL: /api/user/push-subscriptions/
+      // URL: /api/users/push-subscriptions/
       // Body: { endpoint, keys: {p256dh, auth}, ua, timeZone, app }
       // Response: { success: true, data: { id } }
       try {
@@ -111,7 +111,7 @@ export async function subscribeAndSave(): Promise<PushSubscription> {
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           app: import.meta.env.VITE_APP_NAME || 'mtm-helper',
         }
-        const resp = await api.post('/user/push-subscriptions/', payload)
+        const resp = await api.post('/users/push-subscriptions/', payload)
         console.log('[pushService] save subscription resp', resp)
       } catch (saveError) {
         console.error('[pushService] 保存订阅到后端失败', saveError)
@@ -140,12 +140,12 @@ export async function unsubscribeAndCleanup(): Promise<boolean> {
     console.log('[pushService] unsubscribed', ok)
     // 可选：通知后端删除订阅（API 四要素）
     // Method: DELETE
-    // URL: /api/user/push-subscriptions/
+    // URL: /api/users/push-subscriptions/
     // Body: { endpoint }
     // Response: { success: true, data: {} }
     try {
       const json = sub.toJSON() as any
-      const resp = await api.delete('/user/push-subscriptions/', { endpoint: json.endpoint })
+      const resp = await api.delete('/users/push-subscriptions/', { endpoint: json.endpoint })
       console.log('[pushService] delete subscription resp', resp)
     } catch (delErr) {
       console.warn('[pushService] 后端删除订阅接口不可用或失败', delErr)

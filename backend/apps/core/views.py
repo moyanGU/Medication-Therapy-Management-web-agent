@@ -90,6 +90,108 @@ def health_check(request):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+def diagnostics(request):
+    """
+    系统诊断接口
+    汇总环境、依赖、数据库、缓存与通知配置的诊断信息，并输出问题列表
+    """
+    problems = []
+    details = {
+        'env': {},
+        'dependencies': {},
+        'database': {},
+        'cache': {},
+        'notifications': {},
+    }
+
+    try:
+        import sys as _sys
+        from django.conf import settings as _settings
+        details['env'] = {
+            'python_version': _sys.version,
+            'debug': bool(getattr(_settings, 'DEBUG', False)),
+            'django_settings_module': getattr(_sys.modules.get('os'), 'environ', {}).get('DJANGO_SETTINGS_MODULE', 'mtm_helper.settings'),
+        }
+
+        # 依赖检查
+        try:
+            import django as _dj
+            details['dependencies']['django'] = _dj.get_version()
+        except Exception:
+            problems.append('Django 未安装或版本不可用')
+
+        try:
+            import rest_framework as _drf
+            details['dependencies']['drf'] = 'available'
+        except Exception:
+            problems.append('Django REST Framework 未安装')
+
+        try:
+            import corsheaders as _ch
+            details['dependencies']['corsheaders'] = 'available'
+        except Exception:
+            problems.append('django-cors-headers 未安装')
+
+        try:
+            import pywebpush as _pwp
+            details['dependencies']['pywebpush'] = 'available'
+        except Exception:
+            details['dependencies']['pywebpush'] = 'missing'
+
+        # 数据库连接
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute('SELECT 1')
+                details['database'] = {'status': 'healthy'}
+        except Exception as e:
+            details['database'] = {'status': 'unhealthy', 'error': str(e)}
+            problems.append('数据库连接失败')
+
+        # 缓存连接
+        try:
+            cache.set('diagnostics', 'ok', 10)
+            ok = cache.get('diagnostics') == 'ok'
+            details['cache'] = {'status': 'healthy' if ok else 'degraded'}
+            if not ok:
+                problems.append('缓存读写失败')
+        except Exception as e:
+            details['cache'] = {'status': 'unhealthy', 'error': str(e)}
+            problems.append('缓存连接失败')
+
+        # 通知配置检查
+        vapid_private = getattr(_settings, 'VAPID_PRIVATE_KEY', None)
+        vapid_subject = getattr(_settings, 'VAPID_SUBJECT', None)
+        spug_enabled = bool(getattr(_settings, 'SPUG_PUSH_ENABLED', False))
+        spug_template = str(getattr(_settings, 'SPUG_TEMPLATE_ID', '')).strip()
+        spug_url = str(getattr(_settings, 'SPUG_PUSH_URL', 'https://push.spug.cc'))
+        spug_token = str(getattr(_settings, 'SPUG_PUSH_TOKEN', '')).strip()
+        spug_timeout = int(getattr(_settings, 'SPUG_PUSH_TIMEOUT_SECONDS', 3))
+        details['notifications'] = {
+            'webpush': {
+                'vapid_private_key_configured': bool(vapid_private),
+                'vapid_subject': bool(vapid_subject),
+            },
+            'sms_spug': {
+                'enabled': spug_enabled,
+                'template_configured': bool(spug_template),
+                'url': spug_url,
+                'token_configured': bool(spug_token),
+                'timeout_seconds': spug_timeout,
+            }
+        }
+        if not vapid_private:
+            problems.append('缺少 VAPID_PRIVATE_KEY 配置，Web Push 将不可用')
+        if spug_enabled and not spug_template:
+            problems.append('SPUG_PUSH_ENABLED 已开启但缺少 SPUG_TEMPLATE_ID')
+
+        status_code = 200 if not problems else 206
+        return Response({'success': True, 'data': {'problems': problems, 'diagnostics': details}}, status=status_code)
+    except Exception as e:
+        logger.error(f"系统诊断异常: {e}")
+        return Response({'success': False, 'message': str(e), 'data': {'problems': ['诊断执行失败']}}, status=500)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def system_info(request):
     """
     系统信息接口

@@ -10,7 +10,7 @@
 
       <!-- 快捷统计卡片 -->
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div class="bg-white rounded-lg shadow p-6">
+        <div class="bg-white rounded-lg shadow p-6" :class="hasPending ? 'glow-danger' : ''">
           <div class="flex items-center">
             <div class="p-2 bg-blue-100 rounded-lg">
               <svg class="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -105,6 +105,7 @@
         <router-link
           to="/reminders"
           class="bg-white rounded-lg shadow hover:shadow-md transition-shadow duration-200 p-6 group"
+          :class="hasPending ? 'glow-danger' : ''"
         >
           <div class="flex items-center mb-4">
             <div class="p-3 bg-yellow-100 rounded-lg group-hover:bg-yellow-200 transition-colors duration-200">
@@ -204,6 +205,10 @@ const currentDate = computed(() => {
 const medicineStats = computed(() => medicineStore.statistics)
 const todayReminders = computed(() => reminderStore.todayReminders)
 const activeReminders = computed(() => reminderStore.activeReminders)
+const hasPending = computed(() => {
+  const list = reminderStore.unrespondedHistory as any
+  return Array.isArray(list) && list.length > 0
+})
 
 // 获取仪表盘数据
 const fetchDashboardData = async () => {
@@ -214,7 +219,8 @@ const fetchDashboardData = async () => {
     await Promise.all([
       medicineStore.fetchStatistics(),
       reminderStore.fetchReminders(),
-      reminderStore.fetchTodayReminders()
+      reminderStore.fetchTodayReminders(),
+      reminderStore.fetchReminderHistory({ is_responded: false, page_size: 20 })
     ])
   } catch (error) {
     console.error('获取仪表盘数据失败:', error)
@@ -229,3 +235,15 @@ onMounted(() => {
   fetchDashboardData()
 })
 </script>
+
+<style scoped>
+@keyframes glowPulse {
+  0% { box-shadow: 0 0 0px 0 rgba(239,68,68,0.6); }
+  50% { box-shadow: 0 0 12px 4px rgba(239,68,68,0.6); }
+  100% { box-shadow: 0 0 0px 0 rgba(239,68,68,0.6); }
+}
+.glow-danger {
+  animation: glowPulse 1.6s ease-in-out infinite;
+  border-color: #ef4444;
+}
+</style>

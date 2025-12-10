@@ -359,18 +359,20 @@ def send_verification_code(request):
                 'data': None
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # 频率限制：同一手机号60秒内只允许发送一次
+        # 频率限制：同一手机号60秒内只允许发送一次（使用原子 add 防止并发穿透）
         rate_key = f"sms:rate:{phone}"
+        rate_limit_seconds = getattr(settings, 'SMS_RATE_LIMIT_SECONDS', 60)
         try:
-            if cache.get(rate_key):
+            # add: 仅当键不存在时设置，原子操作，避免并发重复发送
+            added = cache.add(rate_key, 1, rate_limit_seconds)
+            if not added:
                 return Response({
                     'success': False,
                     'message': '发送过于频繁，请稍后再试',
                     'data': None
                 }, status=status.HTTP_429_TOO_MANY_REQUESTS)
         except Exception as ce:
-            logger.warning(f"读取频率限制缓存失败，尝试使用Session回退: {str(ce)}")
-            # Session 回退读取：在 Redis 异常时仍保障限流有效
+            logger.warning(f"频率限制缓存写入失败，使用Session回退: {str(ce)}")
             try:
                 if request.session.get(rate_key):
                     logger.info(f"Session 限流命中: rate_key={rate_key}")
@@ -379,28 +381,26 @@ def send_verification_code(request):
                         'message': '发送过于频繁，请稍后再试',
                         'data': None
                     }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+                request.session[rate_key] = 1
+                request.session.set_expiry(min(rate_limit_seconds, 300))
             except Exception as se:
-                logger.warning(f"读取Session限流失败，忽略: {str(se)}")
+                logger.warning(f"Session 限流写入失败，忽略: {str(se)}")
         
         # 生成验证码
         verification_code = generate_verification_code(6)
         cache_key = f"sms:code:{phone}"
         ttl = getattr(settings, 'SMS_CODE_TTL', 300)
-        rate_limit_seconds = getattr(settings, 'SMS_RATE_LIMIT_SECONDS', 60)
         
         # 持久化验证码
         try:
             cache.set(cache_key, verification_code, ttl)
-            # 设置频率限制标记
-            cache.set(rate_key, 1, rate_limit_seconds)
         except Exception as ce:
             logger.error(f"写入验证码/限流缓存失败，将回退到Session: {str(ce)}")
             # Session 回退：验证码与限流标记同时写入
             request.session[cache_key] = verification_code
-            request.session[rate_key] = 1
             # 使用 Session 有效期，避免长时间保留（取验证码TTL、限流TTL与上限的最小值）
             try:
-                fallback_expiry = min(ttl, rate_limit_seconds, 300)
+                fallback_expiry = min(ttl, 300)
                 request.session.set_expiry(fallback_expiry)
             except Exception:
                 pass
@@ -419,7 +419,7 @@ def send_verification_code(request):
             try:
                 import requests
                 base_url = getattr(settings, 'SPUG_PUSH_URL', os.getenv('SPUG_PUSH_URL', 'https://push.spug.cc'))
-                template_id = getattr(settings, 'SPUG_TEMPLATE_ID', os.getenv('SPUG_TEMPLATE_ID', '')).strip()
+                template_id = (getattr(settings, 'SPUG_TEMPLATE_ID_VERIFICATION', '') or getattr(settings, 'SPUG_TEMPLATE_ID', os.getenv('SPUG_TEMPLATE_ID', ''))).strip()
                 app_name = getattr(settings, 'SPUG_APP_NAME', os.getenv('SPUG_APP_NAME', 'MTM用药助手'))
                 if not template_id:
                     logger.error('SPUG_TEMPLATE_ID 未配置')

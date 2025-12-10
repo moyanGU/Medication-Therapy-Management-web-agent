@@ -8,6 +8,8 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
+from django.http import HttpResponse
+from django.conf import settings
 from .models import Reminder
 from .serializers import (
     ReminderSerializer,
@@ -321,7 +323,84 @@ class ReminderViewSet(viewsets.ModelViewSet):
                 'message': f'获取已过期的提醒失败: {str(e)}',
                 'data': []
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+
+    @action(detail=False, methods=['get'])
+    def calendar_ics(self, request):
+        try:
+            logger.info(f"用户 {request.user.username} 获取 ICS 日历订阅")
+
+            tzid = getattr(settings, 'TIME_ZONE', 'UTC')
+            now = timezone.localtime()
+
+            reminders = self.get_queryset().filter(is_active=True)
+
+            lines: list[str] = []
+            lines.append('BEGIN:VCALENDAR')
+            lines.append('VERSION:2.0')
+            lines.append('PRODID:-//MTM Helper//EN')
+            lines.append('CALSCALE:GREGORIAN')
+
+            def weekday_to_ics(d: int) -> str:
+                mapping = {1: 'MO', 2: 'TU', 3: 'WE', 4: 'TH', 5: 'FR', 6: 'SA', 7: 'SU'}
+                return mapping.get(d, 'MO')
+
+            for r in reminders:
+                title = r.title or f"用药提醒 - {r.medicine.name}"
+                description = r.message or f"请按计划服用 {r.medicine.name}，剂量：{r.dosage}{r.dosage_unit}"
+
+                start_date = r.start_date or now.date()
+                dtstart = timezone.make_aware(timezone.datetime.combine(start_date, r.reminder_time))
+                dtstamp = now
+
+                # DTSTART with TZID
+                dtstart_str = dtstart.strftime('%Y%m%dT%H%M%S')
+                dtstamp_str = dtstamp.strftime('%Y%m%dT%H%M%S')
+
+                lines.append('BEGIN:VEVENT')
+                lines.append(f'UID:mtm-helper-reminder-{r.id}@mtm-helper.com')
+                lines.append(f'DTSTAMP;TZID={tzid}:{dtstamp_str}')
+                lines.append(f'DTSTART;TZID={tzid}:{dtstart_str}')
+                lines.append(f'SUMMARY:{title}')
+                lines.append(f'DESCRIPTION:{description}')
+
+                # RRULE by frequency
+                rrule_parts: list[str] = []
+                if r.frequency == 'daily':
+                    rrule_parts = ['FREQ=DAILY', 'INTERVAL=1']
+                elif r.frequency == 'every_other_day':
+                    rrule_parts = ['FREQ=DAILY', 'INTERVAL=2']
+                elif r.frequency == 'weekly':
+                    rrule_parts = ['FREQ=WEEKLY', 'INTERVAL=1']
+                elif r.frequency == 'custom' and r.weekdays:
+                    byday = ','.join(weekday_to_ics(d) for d in r.weekdays)
+                    rrule_parts = ['FREQ=WEEKLY', f'BYDAY={byday}']
+                elif r.frequency in ['twice_daily', 'three_times_daily', 'four_times_daily']:
+                    # 简化为每日一次（当前模型仅支持单个时间点）
+                    rrule_parts = ['FREQ=DAILY', 'INTERVAL=1']
+
+                if r.end_date:
+                    until = r.end_date.strftime('%Y%m%d')
+                    rrule_parts.append(f'UNTIL={until}')
+
+                if rrule_parts:
+                    lines.append('RRULE:' + ';'.join(rrule_parts))
+
+                lines.append('END:VEVENT')
+
+            lines.append('END:VCALENDAR')
+
+            content = '\r\n'.join(lines) + '\r\n'
+            resp = HttpResponse(content, content_type='text/calendar; charset=utf-8')
+            resp['Content-Disposition'] = 'attachment; filename="mtm-reminders.ics"'
+            return resp
+        except Exception as e:
+            logger.error(f"生成 ICS 失败: {str(e)}")
+            return Response({
+                'success': False,
+                'message': f'生成 ICS 失败: {str(e)}',
+                'data': None
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=False, methods=['get'])
     def stats(self, request):
         """
@@ -529,5 +608,115 @@ class ReminderViewSet(viewsets.ModelViewSet):
             return Response({
                 'success': False,
                 'message': f'测试提醒通知失败: {str(e)}',
+                'data': None
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'])
+    def respond_by_subscription(self, request):
+        try:
+            endpoint = request.data.get('endpoint')
+            response_type = request.data.get('response_type')
+            history_id = request.data.get('history_id')
+            reminder_id = request.data.get('reminder_id')
+            delay_minutes = int(request.data.get('delay_minutes', 5))
+
+            if not endpoint or not response_type:
+                return Response({
+                    'success': False,
+                    'message': '缺少必需参数',
+                    'data': None
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            from apps.users.models import PushSubscription
+            sub = PushSubscription.objects.filter(endpoint=endpoint, is_active=True).select_related('user').first()
+            if not sub:
+                return Response({
+                    'success': False,
+                    'message': '订阅不存在或已失效',
+                    'data': None
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            user = sub.user
+
+            if history_id:
+                from .history_models import ReminderHistory
+                history = ReminderHistory.objects.filter(id=history_id, user=user).select_related('reminder').first()
+                if not history:
+                    return Response({
+                        'success': False,
+                        'message': '历史记录不存在',
+                        'data': None
+                    }, status=status.HTTP_404_NOT_FOUND)
+                history.mark_responded(response_type)
+                reminder = history.reminder
+                if response_type == 'taken':
+                    reminder.increment_response_count()
+                elif response_type == 'delayed':
+                    try:
+                        # 创建5分钟后补发的待发送历史
+                        from django.utils import timezone as dj_tz
+                        from .history_models import ReminderHistory
+                        ReminderHistory.objects.create(
+                            user=user,
+                            reminder=reminder,
+                            title=history.title,
+                            message=history.message,
+                            notification_methods=['push'],
+                            scheduled_time=dj_tz.now() + dj_tz.timedelta(minutes=delay_minutes),
+                            reminder_type='repeat',
+                            status='pending',
+                        )
+                    except Exception as e:
+                        logger.error(f"创建延迟补发历史失败: {e}")
+                return Response({
+                    'success': True,
+                    'message': '响应已记录',
+                    'data': {'history_id': history.id}
+                })
+
+            if not reminder_id:
+                return Response({
+                    'success': False,
+                    'message': '缺少提醒ID',
+                    'data': None
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            reminder = Reminder.objects.filter(id=reminder_id, user=user).first()
+            if not reminder:
+                return Response({
+                    'success': False,
+                    'message': '提醒不存在',
+                    'data': None
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            if response_type == 'taken':
+                reminder.increment_response_count()
+            elif response_type == 'delayed':
+                try:
+                    from django.utils import timezone as dj_tz
+                    from .history_models import ReminderHistory
+                    ReminderHistory.objects.create(
+                        user=user,
+                        reminder=reminder,
+                        title=reminder.title or f"用药提醒 - {reminder.medicine.name}",
+                        message=reminder.get_default_message(),
+                        notification_methods=['push'],
+                        scheduled_time=dj_tz.now() + dj_tz.timedelta(minutes=delay_minutes),
+                        reminder_type='repeat',
+                        status='pending',
+                    )
+                except Exception as e:
+                    logger.error(f"创建延迟补发历史失败: {e}")
+
+            return Response({
+                'success': True,
+                'message': '响应已记录',
+                'data': {'reminder_id': reminder.id}
+            })
+        except Exception as e:
+            logger.error(f"订阅响应处理失败: {str(e)}")
+            return Response({
+                'success': False,
+                'message': f'订阅响应处理失败: {str(e)}',
                 'data': None
             }, status=status.HTTP_400_BAD_REQUEST)

@@ -122,17 +122,31 @@
 
       <!-- 备案信息 (如果需要) -->
       <div class="mt-4 text-center">
-        <p class="text-gray-400 text-xs">
-          <a
-            href="https://beian.miit.gov.cn/"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="工业和信息化部ICP备案查询"
-            class="hover:text-gray-600"
-          >
-            豫ICP备2025149475号
-          </a>
-        </p>
+        <div class="flex flex-col items-center space-y-2">
+          <p class="text-gray-400 text-xs">
+            <a
+              href="https://beian.miit.gov.cn/"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="工业和信息化部ICP备案查询"
+              class="hover:text-gray-600"
+            >
+              豫ICP备2025149475号
+            </a>
+          </p>
+          <p class="text-gray-400 text-xs">
+            <a
+              href="https://beian.mps.gov.cn/#/query/webSearch?code=41020202001040"
+              target="_blank"
+              rel="noreferrer noopener"
+              aria-label="公安机关互联网安全备案查询"
+              class="inline-flex items-center hover:text-gray-600"
+            >
+              <img src="/icons/备案图标.png" alt="公安备案图标" class="inline-block align-[-0.125em] mr-1" width="20" height="20" />
+              豫公网安备41020202001040号
+            </a>
+          </p>
+        </div>
       </div>
     </div>
   </footer>

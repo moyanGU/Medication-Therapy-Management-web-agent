@@ -46,15 +46,15 @@ services:
       # Web Push（如未配置则后端自动降级为不发送 Web Push）
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:noreply@mtm-helper.com}
-      - ALLOWED_HOSTS=mtm-helper.com,www.mtm-helper.com,api.mtm-helper.com
+      - ALLOWED_HOSTS=mtm-helper.com,www.mtm-helper.com,api.mtm-helper.com,localhost,127.0.0.1
       - CSRF_TRUSTED_ORIGINS=https://mtm-helper.com,https://www.mtm-helper.com,https://api.mtm-helper.com
       - CORS_ALLOWED_ORIGINS=https://mtm-helper.com,https://www.mtm-helper.com
       # SMS / Spug Push (injected from project root .env)
       - SPUG_PUSH_ENABLED=true
       - SPUG_PUSH_URL=https://push.spug.cc
-      - SPUG_TEMPLATE_ID=E3w5LmlKa58xYea4
-      - SPUG_APP_NAME=MTM用药助手
-      - SPUG_PUSH_TOKEN=ak_yvz5kVlx0XALgM8MPMrdnwDe9Eb4YpQW
+      - SPUG_TEMPLATE_ID=${SPUG_TEMPLATE_ID}
+      - SPUG_APP_NAME=${SPUG_APP_NAME:-MTM用药助手}
+      - SPUG_PUSH_TOKEN=${SPUG_PUSH_TOKEN}
       - SPUG_PUSH_TIMEOUT_SECONDS=5
       - SMS_DEV_ECHO=false
       - SMS_CODE_TTL=300

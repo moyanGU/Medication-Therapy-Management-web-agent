@@ -25,6 +25,12 @@
           </router-link>
         </div>
       </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
+        <button class="cta-btn primary" @click="subscribePush" :disabled="subscribing">{{ subscribing ? '订阅中...' : '订阅通知' }}</button>
+        <button class="cta-btn warn" @click="unsubscribePush">取消订阅</button>
+        <button class="cta-btn outline" @click="testLocal">测试通知</button>
+      </div>
     </div>
 
     <!-- 统计卡片 -->
@@ -391,6 +397,10 @@ import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import { useReminderStore } from '@/stores/reminder'
 import { debounce } from 'lodash-es'
+import { notificationService } from '@/services/notificationService'
+import { subscribeAndSave, unsubscribeAndCleanup, showLocalTestNotification } from '@/services/pushService'
+import { useTheme } from '@/composables/useTheme'
+import { useSpeech } from '@/composables/useSpeech'
 import {
   Bell,
   CheckCircle,
@@ -474,6 +484,8 @@ const pagination = reactive<Pagination>({
   total: 0,
   total_pages: 0
 })
+
+const subscribing = ref(false)
 
 // 计算属性
 const hasFilters = computed(() => {
@@ -663,6 +675,48 @@ const batchDelete = async () => {
   }
 }
 
+/**
+ * 订阅通知入口
+ */
+const subscribePush = async () => {
+  try {
+    const perm = await notificationService.requestPermission()
+    if (perm.permission !== 'granted') return
+    subscribing.value = true
+    await subscribeAndSave()
+    success('订阅已启用')
+  } catch (e: any) {
+    error(e?.message || '订阅失败')
+  } finally {
+    subscribing.value = false
+  }
+}
+
+/**
+ * 取消订阅
+ */
+const unsubscribePush = async () => {
+  try {
+    await unsubscribeAndCleanup()
+    success('订阅已取消')
+  } catch (e: any) {
+    error(e?.message || '取消订阅失败')
+  }
+}
+
+/**
+ * 测试本地通知
+ */
+const testLocal = async () => {
+  try {
+    await showLocalTestNotification()
+    success('已触发本地测试通知')
+  } catch (e: any) {
+    error(e?.message || '测试通知失败')
+  }
+}
+
+
 // 格式化函数
 const formatTime = (time: string) => {
   return new Date(`2000-01-01T${time}`).toLocaleTimeString('zh-CN', {
@@ -813,4 +867,19 @@ onMounted(() => {
 .input-field {
   @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500;
 }
+
+.cta-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  padding: 14px 18px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.cta-btn.primary { background:#2563eb; color:#fff; }
+.cta-btn.warn { background:#ef4444; color:#fff; }
+.cta-btn.outline { background:#fff; border:1px solid #cbd5e1; color:#374151; }
+.cta-btn.toggle { background:#f8fafc; border:1px solid #e2e8f0; color:#111827; }
+.cta-btn:disabled { opacity:.6; cursor:not-allowed; }
 </style>

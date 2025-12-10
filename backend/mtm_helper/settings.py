@@ -1,6 +1,7 @@
 """Django settings for mtm_helper project."""
 
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 import socket
@@ -132,13 +133,8 @@ def build_redis_location(host: str, port: str, pwd: str | None) -> str:
     return f"redis://{host_fmt}:{port}/0"
 
 def get_db_host():
-    """
-    返回数据库主机地址。
-    优先使用环境变量 DB_HOST；若未设置，默认使用 RDS 内网域名 'db-prod.mtm-helper.com'。
-    在非生产环境（DEBUG=True）且无法解析时，回退到 'localhost' 以防开发阻塞。
-    同时打印解析结果，便于确认是否为内网地址（RFC1918）。
-    """
     host = os.getenv('DB_HOST', 'db-prod.mtm-helper.com')
+    private_override = os.getenv('DB_HOST_PRIVATE')
     try:
         ip = socket.gethostbyname(host)
         is_private = (
@@ -147,42 +143,59 @@ def get_db_host():
             ip.startswith('192.168.')
         )
         print(f"[DB_HOST] 解析 {host} -> {ip} (private={is_private})")
-        # 如果是生产且解析到公网IP，给出告警
-        if not DEBUG and not is_private:
-            print("⚠️ 警告：DB_HOST解析到公网IP，请确认使用RDS内网域名并启用内网白名单。")
+        if not DEBUG and not is_private and private_override:
+            host = private_override
+            try:
+                ip2 = socket.gethostbyname(host)
+                is_private2 = (
+                    ip2.startswith('10.') or
+                    ip2.startswith('172.') or
+                    ip2.startswith('192.168.')
+                )
+                print(f"[DB_HOST] 使用内网优先 {host} -> {ip2} (private={is_private2})")
+            except Exception as e2:
+                print(f"⚠️ DB_HOST_PRIVATE解析失败: {host}, {e2}")
     except Exception as e:
         print(f"⚠️ DB_HOST解析失败: {host}, {e}")
         if DEBUG:
             host = 'localhost'
     return host
 
+IS_TESTING = any(arg for arg in sys.argv if arg in ('test', 'pytest'))
+
 DB_USER_ENV = os.getenv('DB_USER')
 DB_PASSWORD_ENV = os.getenv('DB_PASSWORD')
-if not DB_USER_ENV or not DB_PASSWORD_ENV:
-    # 关键位置打印日志，便于定位启动失败原因
+if not IS_TESTING and (not DB_USER_ENV or not DB_PASSWORD_ENV):
     print("❌ 缺少必需的数据库环境变量：DB_USER/DB_PASSWORD。为安全起见不再提供默认 root 用户，请在 .env 中配置强口令用户。")
     raise ImproperlyConfigured("Missing DB_USER or DB_PASSWORD environment variables.")
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.getenv('DB_NAME', 'mtm_helper'),
-        'USER': DB_USER_ENV,
-        'PASSWORD': DB_PASSWORD_ENV,
-        'HOST': get_db_host(),
-        'PORT': os.getenv('DB_PORT', '3306'),
-        'CONN_MAX_AGE': DB_CONN_MAX_AGE,
-        'CONN_HEALTH_CHECKS': True,
-        'OPTIONS': {
-            'charset': 'utf8mb4',
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-            # Timeouts effective for PyMySQL/MySQLdb (PyMySQL installed_as_MySQLdb)
-            'connect_timeout': DB_CONNECT_TIMEOUT,
-            'read_timeout': DB_READ_TIMEOUT,
-            'write_timeout': DB_WRITE_TIMEOUT,
+if IS_TESTING:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
         }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': os.getenv('DB_NAME', 'mtm_helper'),
+            'USER': DB_USER_ENV,
+            'PASSWORD': DB_PASSWORD_ENV,
+            'HOST': get_db_host(),
+            'PORT': os.getenv('DB_PORT', '3306'),
+            'CONN_MAX_AGE': DB_CONN_MAX_AGE,
+            'CONN_HEALTH_CHECKS': True,
+            'OPTIONS': {
+                'charset': 'utf8mb4',
+                'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+                'connect_timeout': DB_CONNECT_TIMEOUT,
+                'read_timeout': DB_READ_TIMEOUT,
+                'write_timeout': DB_WRITE_TIMEOUT,
+            }
+        }
+    }
 
 # Optional MySQL SSL
 if os.getenv('DB_USE_SSL', 'false').lower() == 'true':
@@ -438,7 +451,7 @@ SMS_DEV_ECHO = os.getenv('SMS_DEV_ECHO', 'true' if DEBUG else 'false').lower() =
 # 短信模板占位（服务商未落地前用于统一格式化文案）
 SMS_TEMPLATES = {
     'verification': os.getenv('SMS_TEMPLATE_VERIFICATION', '【MTM用药助手】您的验证码是 {code}，{ttl} 分钟内有效。如非本人操作，请忽略本短信。'),
-    'reminder': os.getenv('SMS_TEMPLATE_REMINDER', '【MTM用药助手】{title}：{message}')
+    'reminder': os.getenv('SMS_TEMPLATE_REMINDER', '{message}')
 }
 # 注册策略：是否需要管理员审批验证码后才能注册
 # 默认保守：生产环境默认启用，开发环境默认关闭；可通过环境变量 REGISTRATION_REQUIRE_APPROVAL 覆盖
@@ -475,4 +488,15 @@ SPUG_APP_NAME = os.getenv('SPUG_APP_NAME', 'MTM用药助手')
 SPUG_PUSH_TOKEN = os.getenv('SPUG_PUSH_TOKEN', '')
 # 新增：Spug推送HTTP超时（秒），避免阻塞请求线程，建议 2-5 秒
 SPUG_PUSH_TIMEOUT_SECONDS = int(os.getenv('SPUG_PUSH_TIMEOUT_SECONDS', '3'))
+# 额外参数（JSON字符串），用于满足模板占位符需求，例如 {"code":"123456"}
+SPUG_EXTRA_PARAMS_JSON = os.getenv('SPUG_EXTRA_PARAMS_JSON', '')
+# 是否要求数字验证码及长度（部分验证码模板需要）
+SPUG_REQUIRE_NUMERIC_CODE = os.getenv('SPUG_REQUIRE_NUMERIC_CODE', 'true').lower() == 'true'
+SPUG_CODE_LENGTH = int(os.getenv('SPUG_CODE_LENGTH', '6'))
+# 模板区分：注册验证码与用药提醒可使用不同模板ID；未配置时回退到通用 SPUG_TEMPLATE_ID
+SPUG_TEMPLATE_ID_VERIFICATION = os.getenv('SPUG_TEMPLATE_ID_VERIFICATION', os.getenv('SPUG_TEMPLATE_ID', ''))
+SPUG_TEMPLATE_ID_REMINDER = os.getenv('SPUG_TEMPLATE_ID_REMINDER', os.getenv('SPUG_TEMPLATE_ID', ''))
+SPUG_REMINDER_USE_SMS_ENDPOINT = os.getenv('SPUG_REMINDER_USE_SMS_ENDPOINT', 'true').lower() == 'true'
+SPUG_SMS_PARAM_TO = os.getenv('SPUG_SMS_PARAM_TO', 'to')
+SPUG_SMS_PARAM_MESSAGE = os.getenv('SPUG_SMS_PARAM_MESSAGE', 'message')
 # ---------------------------------------------------
