@@ -5,10 +5,11 @@ class PlansConfig(AppConfig):
     """
     用药计划应用配置类
     """
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'apps.plans'
-    verbose_name = '用药计划'
-    
+
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "apps.plans"
+    verbose_name = "用药计划"
+
     def ready(self):
         """
         应用准备就绪时的初始化操作

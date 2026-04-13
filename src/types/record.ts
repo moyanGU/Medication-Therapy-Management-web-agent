@@ -10,7 +10,7 @@ export enum AdministrationMethod {
   INHALATION = 'inhalation',
   SUBLINGUAL = 'sublingual',
   RECTAL = 'rectal',
-  OTHER = 'other'
+  OTHER = 'other',
 }
 
 // 服药状态枚举
@@ -18,7 +18,7 @@ export enum MedicationStatus {
   TAKEN = 'taken',
   MISSED = 'missed',
   DELAYED = 'delayed',
-  PARTIAL = 'partial'
+  PARTIAL = 'partial',
 }
 
 // 记录来源枚举
@@ -26,7 +26,7 @@ export enum RecordSource {
   MANUAL = 'manual',
   REMINDER = 'reminder',
   IMPORT = 'import',
-  AUTO = 'auto'
+  AUTO = 'auto',
 }
 
 // 用药记录接口
@@ -106,6 +106,15 @@ export interface MedicationTrend {
 
 // 用药记录查询参数
 export interface MedicationRecordQuery {
+  [key: string]:
+    | string
+    | number
+    | boolean
+    | null
+    | undefined
+    | string[]
+    | number[]
+    | boolean[]
   page?: number
   page_size?: number
   start_date?: string
@@ -138,7 +147,7 @@ export const ADMINISTRATION_METHOD_OPTIONS = [
   { value: AdministrationMethod.INHALATION, label: '吸入' },
   { value: AdministrationMethod.SUBLINGUAL, label: '舌下含服' },
   { value: AdministrationMethod.RECTAL, label: '直肠给药' },
-  { value: AdministrationMethod.OTHER, label: '其他' }
+  { value: AdministrationMethod.OTHER, label: '其他' },
 ]
 
 // 服药状态选项
@@ -146,7 +155,7 @@ export const MEDICATION_STATUS_OPTIONS = [
   { value: MedicationStatus.TAKEN, label: '已服用' },
   { value: MedicationStatus.MISSED, label: '漏服' },
   { value: MedicationStatus.DELAYED, label: '延迟服用' },
-  { value: MedicationStatus.PARTIAL, label: '部分服用' }
+  { value: MedicationStatus.PARTIAL, label: '部分服用' },
 ]
 
 // 记录来源选项
@@ -154,5 +163,5 @@ export const RECORD_SOURCE_OPTIONS = [
   { value: RecordSource.MANUAL, label: '手动记录' },
   { value: RecordSource.REMINDER, label: '提醒记录' },
   { value: RecordSource.IMPORT, label: '导入记录' },
-  { value: RecordSource.AUTO, label: '自动记录' }
+  { value: RecordSource.AUTO, label: '自动记录' },
 ]

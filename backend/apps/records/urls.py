@@ -1,14 +1,17 @@
-from django.urls import path, include
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
+
 from .views import MedicationRecordViewSet
 
 # 创建路由器
 router = DefaultRouter()
-router.register(r'medication-records', MedicationRecordViewSet, basename='medication-record')
+router.register(
+    r"medication-records", MedicationRecordViewSet, basename="medication-record"
+)
 
 # URL配置
 urlpatterns = [
-    path('', include(router.urls)),
+    path("", include(router.urls)),
 ]
 
 # 可用的API端点：

@@ -1,6 +1,10 @@
 <template>
-  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+  <div
+    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+  >
+    <div
+      class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
+    >
       <!-- 详情标题 -->
       <div class="flex justify-between items-center mb-6">
         <h2 class="text-xl font-bold text-gray-900">用药记录详情</h2>
@@ -28,20 +32,34 @@
           <h3 class="text-lg font-semibold text-gray-900 mb-4">基本信息</h3>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label class="block text-sm font-medium text-gray-600">药品名称</label>
-              <p class="text-gray-900 font-medium">{{ medicineInfo?.name || '未知药品' }}</p>
+              <label class="block text-sm font-medium text-gray-600"
+                >药品名称</label
+              >
+              <p class="text-gray-900 font-medium">
+                {{ medicineInfo?.name || '未知药品' }}
+              </p>
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-600">规格</label>
-              <p class="text-gray-900">{{ medicineInfo?.specification || '-' }}</p>
+              <label class="block text-sm font-medium text-gray-600"
+                >规格</label
+              >
+              <p class="text-gray-900">
+                {{ medicineInfo?.specification || '-' }}
+              </p>
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-600">服药时间</label>
+              <label class="block text-sm font-medium text-gray-600"
+                >服药时间</label
+              >
               <p class="text-gray-900">{{ formatDateTime(record.taken_at) }}</p>
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-600">记录时间</label>
-              <p class="text-gray-900">{{ formatDateTime(record.created_at) }}</p>
+              <label class="block text-sm font-medium text-gray-600"
+                >记录时间</label
+              >
+              <p class="text-gray-900">
+                {{ formatDateTime(record.created_at) }}
+              </p>
             </div>
           </div>
         </div>
@@ -51,15 +69,23 @@
           <h3 class="text-lg font-semibold text-gray-900 mb-4">服药详情</h3>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label class="block text-sm font-medium text-gray-600">服药数量</label>
+              <label class="block text-sm font-medium text-gray-600"
+                >服药数量</label
+              >
               <p class="text-gray-900">{{ record.quantity_taken }} 片</p>
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-600">服药方式</label>
-              <p class="text-gray-900">{{ getAdministrationMethodLabel(record.administration_method) }}</p>
+              <label class="block text-sm font-medium text-gray-600"
+                >服药方式</label
+              >
+              <p class="text-gray-900">
+                {{ getAdministrationMethodLabel(record.administration_method) }}
+              </p>
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-600">服药状态</label>
+              <label class="block text-sm font-medium text-gray-600"
+                >服药状态</label
+              >
               <div class="flex items-center space-x-2">
                 <span
                   class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
@@ -76,58 +102,88 @@
               </div>
             </div>
             <div v-if="record.delay_minutes">
-              <label class="block text-sm font-medium text-gray-600">延迟时间</label>
+              <label class="block text-sm font-medium text-gray-600"
+                >延迟时间</label
+              >
               <p class="text-gray-900">{{ record.delay_minutes }} 分钟</p>
             </div>
           </div>
         </div>
 
         <!-- 评分信息 -->
-        <div v-if="record.symptom_score || record.effectiveness_score" class="bg-gray-50 rounded-lg p-4">
+        <div
+          v-if="record.symptom_score || record.effectiveness_score"
+          class="bg-gray-50 rounded-lg p-4"
+        >
           <h3 class="text-lg font-semibold text-gray-900 mb-4">评分信息</h3>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div v-if="record.symptom_score">
-              <label class="block text-sm font-medium text-gray-600">症状评分</label>
+              <label class="block text-sm font-medium text-gray-600"
+                >症状评分</label
+              >
               <div class="flex items-center space-x-2">
                 <div class="flex space-x-1">
                   <span
                     v-for="i in 10"
                     :key="i"
                     class="w-3 h-3 rounded-full"
-                    :class="i <= record.symptom_score ? 'bg-red-500' : 'bg-gray-200'"
+                    :class="
+                      i <= record.symptom_score ? 'bg-red-500' : 'bg-gray-200'
+                    "
                   ></span>
                 </div>
-                <span class="text-gray-900 font-medium">{{ record.symptom_score }}/10</span>
+                <span class="text-gray-900 font-medium"
+                  >{{ record.symptom_score }}/10</span
+                >
               </div>
             </div>
             <div v-if="record.effectiveness_score">
-              <label class="block text-sm font-medium text-gray-600">效果评分</label>
+              <label class="block text-sm font-medium text-gray-600"
+                >效果评分</label
+              >
               <div class="flex items-center space-x-2">
                 <div class="flex space-x-1">
                   <span
                     v-for="i in 10"
                     :key="i"
                     class="w-3 h-3 rounded-full"
-                    :class="i <= record.effectiveness_score ? 'bg-green-500' : 'bg-gray-200'"
+                    :class="
+                      i <= record.effectiveness_score
+                        ? 'bg-green-500'
+                        : 'bg-gray-200'
+                    "
                   ></span>
                 </div>
-                <span class="text-gray-900 font-medium">{{ record.effectiveness_score }}/10</span>
+                <span class="text-gray-900 font-medium"
+                  >{{ record.effectiveness_score }}/10</span
+                >
               </div>
             </div>
           </div>
         </div>
 
         <!-- 备注信息 -->
-        <div v-if="record.notes || record.side_effects" class="bg-gray-50 rounded-lg p-4">
+        <div
+          v-if="record.notes || record.side_effects"
+          class="bg-gray-50 rounded-lg p-4"
+        >
           <h3 class="text-lg font-semibold text-gray-900 mb-4">备注信息</h3>
           <div class="space-y-4">
             <div v-if="record.notes">
-              <label class="block text-sm font-medium text-gray-600 mb-2">备注</label>
-              <p class="text-gray-900 whitespace-pre-wrap">{{ record.notes }}</p>
+              <label class="block text-sm font-medium text-gray-600 mb-2"
+                >备注</label
+              >
+              <p class="text-gray-900 whitespace-pre-wrap">
+                {{ record.notes }}
+              </p>
             </div>
             <div v-if="record.side_effects">
-              <label class="block text-sm font-medium text-gray-600 mb-2">副作用</label>
-              <p class="text-gray-900 whitespace-pre-wrap text-red-600">{{ record.side_effects }}</p>
+              <label class="block text-sm font-medium text-gray-600 mb-2"
+                >副作用</label
+              >
+              <p class="text-gray-900 whitespace-pre-wrap text-red-600">
+                {{ record.side_effects }}
+              </p>
             </div>
           </div>
         </div>
@@ -137,15 +193,23 @@
           <h3 class="text-lg font-semibold text-gray-900 mb-4">统计信息</h3>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label class="block text-sm font-medium text-gray-600">依从性评分</label>
-              <p class="text-gray-900 font-medium">{{ record.adherence_score }}%</p>
+              <label class="block text-sm font-medium text-gray-600"
+                >依从性评分</label
+              >
+              <p class="text-gray-900 font-medium">
+                {{ record.adherence_score }}%
+              </p>
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-600">记录来源</label>
+              <label class="block text-sm font-medium text-gray-600"
+                >记录来源</label
+              >
               <p class="text-gray-900">{{ getSourceLabel(record.source) }}</p>
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-600">时间差</label>
+              <label class="block text-sm font-medium text-gray-600"
+                >时间差</label
+              >
               <p class="text-gray-900">{{ getTimeDifference(record) }}</p>
             </div>
           </div>
@@ -184,7 +248,7 @@ import { useMedicineStore } from '../stores/medicine'
 import {
   ADMINISTRATION_METHOD_OPTIONS,
   MEDICATION_STATUS_OPTIONS,
-  RECORD_SOURCE_OPTIONS
+  RECORD_SOURCE_OPTIONS,
 } from '../types/record'
 import type { MedicationRecord } from '../types/record'
 
@@ -196,7 +260,7 @@ interface Props {
 const props = defineProps<Props>()
 
 // Emits
-const emit = defineEmits<{
+defineEmits<{
   close: []
   edit: [record: MedicationRecord]
 }>()
@@ -223,7 +287,7 @@ const formatDateTime = (dateTime: string) => {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit'
+    second: '2-digit',
   })
 }
 
@@ -264,12 +328,15 @@ const getStatusLabel = (status: string) => {
 // 获取状态样式类
 const getStatusClass = (status: string) => {
   const statusClasses = {
-    'taken': 'bg-green-100 text-green-800',
-    'missed': 'bg-red-100 text-red-800',
-    'delayed': 'bg-yellow-100 text-yellow-800',
-    'partial': 'bg-orange-100 text-orange-800'
+    taken: 'bg-green-100 text-green-800',
+    missed: 'bg-red-100 text-red-800',
+    delayed: 'bg-yellow-100 text-yellow-800',
+    partial: 'bg-orange-100 text-orange-800',
   }
-  return statusClasses[status as keyof typeof statusClasses] || 'bg-gray-100 text-gray-800'
+  return (
+    statusClasses[status as keyof typeof statusClasses] ||
+    'bg-gray-100 text-gray-800'
+  )
 }
 
 // 获取记录来源标签

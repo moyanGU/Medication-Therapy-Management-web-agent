@@ -1,20 +1,24 @@
 <template>
   <div v-if="visible" class="fixed inset-0 z-50 overflow-y-auto">
-    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+    <div
+      class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0"
+    >
       <!-- 背景遮罩 -->
-      <div 
-        class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" 
+      <div
+        class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75"
         @click="$emit('close')"
       ></div>
 
       <!-- 对话框 -->
-      <div class="inline-block w-full max-w-2xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg">
+      <div
+        class="inline-block w-full max-w-2xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg"
+      >
         <!-- 标题 -->
         <div class="flex items-center justify-between mb-6">
           <h3 class="text-lg font-medium text-gray-900">
             {{ plan ? '编辑计划' : '创建计划' }}
           </h3>
-          <button 
+          <button
             @click="$emit('close')"
             class="text-gray-400 hover:text-gray-600"
           >
@@ -39,7 +43,9 @@
                 :class="{ 'border-red-500': errors.name }"
                 placeholder="请输入计划名称，如：降血压用药方案"
               />
-              <p v-if="errors.name" class="mt-1 text-sm text-red-600">{{ errors.name }}</p>
+              <p v-if="errors.name" class="mt-1 text-sm text-red-600">
+                {{ errors.name }}
+              </p>
             </div>
 
             <!-- 计划类型 -->
@@ -61,7 +67,9 @@
                 <option value="preventive">预防性</option>
                 <option value="rehabilitation">康复</option>
               </select>
-              <p v-if="errors.plan_type" class="mt-1 text-sm text-red-600">{{ errors.plan_type }}</p>
+              <p v-if="errors.plan_type" class="mt-1 text-sm text-red-600">
+                {{ errors.plan_type }}
+              </p>
             </div>
 
             <!-- 优先级 -->
@@ -92,7 +100,9 @@
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 :class="{ 'border-red-500': errors.start_date }"
               />
-              <p v-if="errors.start_date" class="mt-1 text-sm text-red-600">{{ errors.start_date }}</p>
+              <p v-if="errors.start_date" class="mt-1 text-sm text-red-600">
+                {{ errors.start_date }}
+              </p>
             </div>
 
             <!-- 结束日期 -->
@@ -111,8 +121,10 @@
 
           <!-- 医疗信息 -->
           <div class="space-y-4">
-            <h4 class="text-base font-medium text-gray-900">医疗信息（可选）</h4>
-            
+            <h4 class="text-base font-medium text-gray-900">
+              医疗信息（可选）
+            </h4>
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <!-- 来源 -->
               <div>
@@ -269,8 +281,11 @@
               :disabled="loading"
               class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
             >
-              <span v-if="loading" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span>
-              {{ loading ? '保存中...' : (plan ? '更新计划' : '创建计划') }}
+              <span
+                v-if="loading"
+                class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"
+              ></span>
+              {{ loading ? '保存中...' : plan ? '更新计划' : '创建计划' }}
             </button>
           </div>
         </form>
@@ -283,7 +298,11 @@
 import { ref, reactive, watch, onMounted } from 'vue'
 import { X } from 'lucide-vue-next'
 import plansApi from '@/api/plans'
-import type { MedicationPlan, PlanCreateData, PlanUpdateData } from '@/types/plan'
+import type {
+  MedicationPlan,
+  PlanCreateData,
+  PlanUpdateData,
+} from '@/types/plan'
 import { toast } from 'vue-sonner'
 
 // Props
@@ -293,7 +312,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  plan: null
+  plan: null,
 })
 
 // Emits
@@ -324,7 +343,7 @@ const formData = reactive<PlanCreateData>({
   precautions: '',
   side_effects_monitoring: '',
   review_date: '',
-  status: 'active'
+  status: 'active',
 })
 
 // 重置表单
@@ -346,7 +365,7 @@ const resetForm = () => {
     precautions: '',
     side_effects_monitoring: '',
     review_date: '',
-    status: 'active'
+    status: 'active',
   })
   errors.value = {}
 }
@@ -354,7 +373,7 @@ const resetForm = () => {
 // 监听plan变化，用于编辑模式
 watch(
   () => props.plan,
-  (newPlan) => {
+  newPlan => {
     if (newPlan) {
       // 编辑模式，填充表单数据
       Object.assign(formData, {
@@ -374,7 +393,7 @@ watch(
         precautions: newPlan.precautions || '',
         side_effects_monitoring: newPlan.side_effects_monitoring || '',
         review_date: newPlan.review_date || '',
-        status: newPlan.status || 'active'
+        status: newPlan.status || 'active',
       })
     } else {
       // 添加模式，重置表单
@@ -387,7 +406,7 @@ watch(
 // 监听 visible 变化，在创建模式下每次打开时重置表单
 watch(
   () => props.visible,
-  (v) => {
+  v => {
     console.log('[PlanForm] visible changed:', v)
     if (v && !props.plan) {
       resetForm()
@@ -416,7 +435,11 @@ const validateForm = (): boolean => {
   }
 
   // 结束日期不能早于开始日期
-  if (formData.end_date && formData.start_date && formData.end_date < formData.start_date) {
+  if (
+    formData.end_date &&
+    formData.start_date &&
+    formData.end_date < formData.start_date
+  ) {
     errors.value.end_date = '结束日期不能早于开始日期'
   }
 
@@ -429,9 +452,9 @@ const handleSubmit = async () => {
   console.log('🔵 [PlanForm] Form submit started:', {
     isEditMode: !!props.plan,
     formData: formData,
-    tokenExists: !!localStorage.getItem('access_token')
+    tokenExists: !!localStorage.getItem('access_token'),
   })
-  
+
   const validationResult = validateForm()
   if (!validationResult) {
     console.log('🔴 [PlanForm] Form validation failed:', errors.value)
@@ -439,13 +462,13 @@ const handleSubmit = async () => {
   }
 
   loading.value = true
-  
+
   try {
     // 清理表单数据，处理空字符串字段
     const cleanFormData = { ...formData }
-    
+
     console.log('🔵 [PlanForm] Original form data:', cleanFormData)
-    
+
     // 清理空字符串字段，保留必填项
     Object.keys(cleanFormData).forEach(key => {
       const value = cleanFormData[key as keyof typeof cleanFormData]
@@ -455,41 +478,40 @@ const handleSubmit = async () => {
         console.log(`🔵 [PlanForm] Deleted empty field: ${key}`)
       }
     })
-    
+
     // 处理 end_date 空字符串转为 null
     if (cleanFormData.end_date === '') {
       cleanFormData.end_date = null
     }
-    
+
     console.log('🔵 [PlanForm] Cleaned form data:', cleanFormData)
     console.log('🔵 [PlanForm] Fields included:', Object.keys(cleanFormData))
-    
+
     if (props.plan) {
       // 编辑模式
       console.log('🔵 [PlanForm] Updating plan:', props.plan.id)
       const updateData: PlanUpdateData = cleanFormData
-      
-      const result = await plansApi.updatePlan(props.plan.id, updateData)
+
+      await plansApi.updatePlan(props.plan.id, updateData)
       console.log('🟢 [PlanForm] Plan updated successfully')
       toast.success('计划更新成功')
     } else {
       // 添加模式
       console.log('🔵 [PlanForm] Creating new plan')
-      
-      const result = await plansApi.createPlan(cleanFormData)
+
+      await plansApi.createPlan(cleanFormData)
       console.log('🟢 [PlanForm] Plan created successfully')
       toast.success('计划创建成功')
     }
-    
+
     emit('success')
-    
   } catch (error: any) {
     console.error('🔴 [PlanForm] Save failed:', {
       message: error?.message,
       code: error?.code,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     })
-    
+
     // 统一错误提示
     const errorMessage = error?.message || '保存失败，请重试'
     toast.error(errorMessage)
@@ -503,11 +525,11 @@ onMounted(() => {
   console.log('=== PlanForm Component Mounted ===')
   console.log('Props plan:', props.plan)
   console.log('Initial form data:', formData)
-  
+
   if (!props.plan && !formData.start_date) {
     formData.start_date = new Date().toISOString().split('T')[0]
   }
-  
+
   console.log('=== Component Mount Complete ===')
 })
 </script>

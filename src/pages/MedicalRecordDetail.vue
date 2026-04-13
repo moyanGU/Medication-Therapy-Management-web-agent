@@ -4,10 +4,7 @@
     <div class="page-header">
       <div class="flex items-center justify-between">
         <div class="flex items-center space-x-4">
-          <button
-            @click="goBack"
-            class="btn-secondary"
-          >
+          <button @click="goBack" class="btn-secondary">
             <ArrowLeft class="w-4 h-4 mr-2" />
             返回
           </button>
@@ -24,10 +21,7 @@
             <Edit class="w-4 h-4 mr-2" />
             编辑
           </router-link>
-          <button
-            @click="exportToPDF"
-            class="btn-primary"
-          >
+          <button @click="exportToPDF" class="btn-primary">
             <Download class="w-4 h-4 mr-2" />
             导出PDF
           </button>
@@ -38,7 +32,9 @@
     <!-- 加载状态 -->
     <div v-if="loading" class="loading-state">
       <div class="flex items-center justify-center py-12">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div
+          class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"
+        ></div>
         <span class="ml-3 text-gray-600">加载中...</span>
       </div>
     </div>
@@ -50,9 +46,7 @@
         <h3 class="mt-2 text-sm font-medium text-gray-900">加载失败</h3>
         <p class="mt-1 text-sm text-gray-500">{{ error }}</p>
         <div class="mt-6">
-          <button @click="fetchRecord" class="btn-primary">
-            重试
-          </button>
+          <button @click="fetchRecord" class="btn-primary">重试</button>
         </div>
       </div>
     </div>
@@ -92,7 +86,9 @@
             <div class="info-item">
               <label class="info-label">病历类型</label>
               <p class="info-value">
-                <span :class="getTypeClass(record.record_type)">{{ getTypeLabel(record.record_type) }}</span>
+                <span :class="getTypeClass(record.record_type)">{{
+                  getTypeLabel(record.record_type)
+                }}</span>
               </p>
             </div>
           </div>
@@ -111,15 +107,21 @@
           <div class="space-y-4">
             <div class="info-item">
               <label class="info-label">主要症状</label>
-              <p class="info-value whitespace-pre-wrap">{{ record.symptoms || '无' }}</p>
+              <p class="info-value whitespace-pre-wrap">
+                {{ record.symptoms || '无' }}
+              </p>
             </div>
             <div class="info-item">
               <label class="info-label">诊断结果</label>
-              <p class="info-value whitespace-pre-wrap">{{ record.diagnosis || '无' }}</p>
+              <p class="info-value whitespace-pre-wrap">
+                {{ record.diagnosis || '无' }}
+              </p>
             </div>
             <div class="info-item">
               <label class="info-label">治疗方案</label>
-              <p class="info-value whitespace-pre-wrap">{{ record.treatment || '无' }}</p>
+              <p class="info-value whitespace-pre-wrap">
+                {{ record.treatment || '无' }}
+              </p>
             </div>
           </div>
         </div>
@@ -135,7 +137,9 @@
         </div>
         <div class="card-body">
           <div class="info-item">
-            <p class="info-value whitespace-pre-wrap">{{ record.prescription }}</p>
+            <p class="info-value whitespace-pre-wrap">
+              {{ record.prescription }}
+            </p>
           </div>
         </div>
       </div>
@@ -152,7 +156,9 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="info-item">
               <label class="info-label">总费用</label>
-              <p class="info-value text-lg font-semibold text-green-600">¥{{ record.cost }}</p>
+              <p class="info-value text-lg font-semibold text-green-600">
+                ¥{{ record.cost }}
+              </p>
             </div>
             <div v-if="record.insurance_coverage" class="info-item">
               <label class="info-label">医保报销</label>
@@ -163,7 +169,10 @@
       </div>
 
       <!-- 附件信息 -->
-      <div v-if="record.attachments && record.attachments.length > 0" class="info-card">
+      <div
+        v-if="record.attachments && record.attachments.length > 0"
+        class="info-card"
+      >
         <div class="card-header">
           <h2 class="card-title">
             <Paperclip class="w-5 h-5 mr-2" />
@@ -182,8 +191,12 @@
                   <FileText class="w-6 h-6" />
                 </div>
                 <div class="flex-1">
-                  <p class="text-sm font-medium text-gray-900">{{ attachment.name }}</p>
-                  <p class="text-xs text-gray-500">{{ formatFileSize(attachment.size) }}</p>
+                  <p class="text-sm font-medium text-gray-900">
+                    {{ attachment.name }}
+                  </p>
+                  <p class="text-xs text-gray-500">
+                    {{ formatFileSize(attachment.size) }}
+                  </p>
                 </div>
                 <button
                   @click="downloadAttachment(attachment)"
@@ -230,7 +243,7 @@
                   'w-5 h-5',
                   i <= record.satisfaction_rating
                     ? 'text-yellow-400 fill-current'
-                    : 'text-gray-300'
+                    : 'text-gray-300',
                 ]"
               />
             </div>
@@ -240,7 +253,9 @@
           </div>
           <div v-if="record.satisfaction_comment" class="mt-3">
             <label class="info-label">评价内容</label>
-            <p class="info-value whitespace-pre-wrap">{{ record.satisfaction_comment }}</p>
+            <p class="info-value whitespace-pre-wrap">
+              {{ record.satisfaction_comment }}
+            </p>
           </div>
         </div>
       </div>
@@ -286,9 +301,9 @@ import {
   Paperclip,
   FileText,
   Star,
-  Clock
+  Clock,
 } from 'lucide-vue-next'
-import { api } from '@/utils/api'
+import { api, isRequestCancelledError } from '@/utils/api'
 import { MedicalRecordPDFExporter } from '@/utils/pdfExport'
 
 // 接口类型定义
@@ -340,10 +355,19 @@ const fetchRecord = async () => {
     loading.value = true
     error.value = ''
     console.log('🔵 [MedicalRecordDetail] 加载病历详情', { id: recordId.value })
-    const { data } = await api.get<MedicalRecord>(`/medical-records/records/${recordId.value}/`)
+    const { data } = await api.get<MedicalRecord>(
+      `/medical-records/records/${recordId.value}/`
+    )
     record.value = data
-    console.log('🟢 [MedicalRecordDetail] 病历详情加载成功', { id: recordId.value })
+    console.log('🟢 [MedicalRecordDetail] 病历详情加载成功', {
+      id: recordId.value,
+    })
   } catch (err: any) {
+    if (isRequestCancelledError(err)) {
+      console.log('🟡 [MedicalRecordDetail] 获取病历详情请求已取消')
+      return
+    }
+
     console.error('🔴 [MedicalRecordDetail] 获取病历详情失败:', err)
     error.value = err?.message || '网络错误，请稍后重试'
   } finally {
@@ -357,7 +381,9 @@ const goBack = () => {
 
 const exportToPDF = async () => {
   try {
-    console.log('🔵 [MedicalRecordDetail] 导出PDF(客户端生成)', { id: recordId.value })
+    console.log('🔵 [MedicalRecordDetail] 导出PDF(客户端生成)', {
+      id: recordId.value,
+    })
     if (!record.value) {
       showError('暂无可导出的数据')
       return
@@ -373,19 +399,24 @@ const exportToPDF = async () => {
 
 const downloadAttachment = async (attachment: Attachment) => {
   try {
-    let urlToFetch = (attachment as any).download_url || (attachment as any).file_url
+    let urlToFetch =
+      (attachment as any).download_url || (attachment as any).file_url
 
     // 若附件无直链，调用后端获取下载链接
     if (!urlToFetch) {
       console.log('🟡 [MedicalRecordDetail] 附件无直链，调用后端获取下载链接', {
         id: recordId.value,
         attachmentId: (attachment as any).id,
-        name: attachment.name
+        name: attachment.name,
       })
-      const resp = await api.get<{ download_url: string; filename?: string; file_size?: number; file_type?: string }>(
-        `/medical-records/records/${recordId.value}/download_attachment/`,
-        { params: { attachment_id: (attachment as any).id } }
-      )
+      const resp = await api.get<{
+        download_url: string
+        filename?: string
+        file_size?: number
+        file_type?: string
+      }>(`/medical-records/records/${recordId.value}/download_attachment/`, {
+        params: { attachment_id: (attachment as any).id },
+      })
       urlToFetch = (resp.data as any)?.download_url
     }
 
@@ -395,18 +426,28 @@ const downloadAttachment = async (attachment: Attachment) => {
       return
     }
 
-    console.log('🔵 [MedicalRecordDetail] 下载附件(优先api.download)', { urlToFetch, name: attachment.name })
+    console.log('🔵 [MedicalRecordDetail] 下载附件(优先api.download)', {
+      urlToFetch,
+      name: attachment.name,
+    })
     // 优先使用带鉴权头的 ApiClient.download
     await api.download(urlToFetch, attachment.name, { method: 'GET' })
     showSuccess('附件开始下载')
   } catch (err) {
-    console.warn('🟠 [MedicalRecordDetail] api.download 失败，尝试回退到 fetch 直链下载', err)
+    console.warn(
+      '🟠 [MedicalRecordDetail] api.download 失败，尝试回退到 fetch 直链下载',
+      err
+    )
     try {
-      let urlToFetch = (attachment as any).download_url || (attachment as any).file_url
+      let urlToFetch =
+        (attachment as any).download_url || (attachment as any).file_url
       if (!urlToFetch) {
         const resp2 = await api.get<{ download_url: string }>(
           `/medical-records/records/${recordId.value}/download_attachment/`,
-          { params: { attachment_id: (attachment as any).id }, skipErrorHandler: true }
+          {
+            params: { attachment_id: (attachment as any).id },
+            skipErrorHandler: true,
+          }
         )
         urlToFetch = (resp2.data as any)?.download_url
       }
@@ -453,7 +494,7 @@ const getTypeLabel = (type: string) => {
     inpatient: '住院',
     emergency: '急诊',
     physical_exam: '体检',
-    follow_up: '复诊'
+    follow_up: '复诊',
   }
   return labels[type] || type
 }
@@ -464,7 +505,7 @@ const getTypeClass = (type: string) => {
     inpatient: 'bg-red-100 text-red-800',
     emergency: 'bg-orange-100 text-orange-800',
     physical_exam: 'bg-green-100 text-green-800',
-    follow_up: 'bg-purple-100 text-purple-800'
+    follow_up: 'bg-purple-100 text-purple-800',
   }
   return `px-2 py-1 text-xs font-medium rounded-full ${classes[type] || 'bg-gray-100 text-gray-800'}`
 }

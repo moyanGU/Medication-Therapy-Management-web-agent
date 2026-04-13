@@ -18,27 +18,29 @@ import { clientsClaim } from 'workbox-core'
 // 使用 webworker 类型定义，避免手动声明 self 导致类型不一致问题
 const swSelf = self as any
 
-
 // 预缓存构建产物
-// @ts-ignore: __WB_MANIFEST 由 Workbox 在构建时注入
+// @ts-expect-error: Workbox injectManifest
 precacheAndRoute(self.__WB_MANIFEST)
 cleanupOutdatedCaches()
 clientsClaim()
 
 // 运行时缓存：构建产物静态资源
 registerRoute(
-  ({ url }) => url.origin === swSelf.location.origin && url.pathname.startsWith('/assets/'),
+  ({ url }) =>
+    url.origin === swSelf.location.origin &&
+    url.pathname.startsWith('/assets/'),
   new CacheFirst({
     cacheName: 'assets-cache',
-  }),
+  })
 )
 
 // 运行时缓存：图片资源
 registerRoute(
-  ({ request }) => request.destination === 'image',
+  ({ request, url }) =>
+    request.destination === 'image' && url.origin === swSelf.location.origin,
   new StaleWhileRevalidate({
     cacheName: 'image-cache',
-  }),
+  })
 )
 
 // Push 事件：展示通知
@@ -58,7 +60,11 @@ swSelf.addEventListener('push', (event: any) => {
   })()
 
   const title = payload.title || '用药提醒'
-  const options: (NotificationOptions & { vibrate?: number[] }) = {
+  const options: NotificationOptions & {
+    vibrate?: number[]
+    renotify?: boolean
+    actions?: Array<{ action: string; title: string; icon?: string }>
+  } = {
     body: payload.body || '请按计划服药或查看提醒详情',
     icon: '/icons/app-icon-192.png',
     badge: '/icons/app-icon-192.png',
@@ -84,7 +90,8 @@ swSelf.addEventListener('push', (event: any) => {
 swSelf.addEventListener('notificationclick', (event: any) => {
   console.log('[SW] notification click', event)
   event.notification.close()
-  const targetUrl: string | undefined = (event.notification as any).data?.url || '/'
+  const targetUrl: string | undefined =
+    (event.notification as any).data?.url || '/'
   const action: string | undefined = event.action
 
   event.waitUntil(
@@ -96,7 +103,12 @@ swSelf.addEventListener('notificationclick', (event: any) => {
           const data = (event.notification as any).data || {}
           const body: any = {
             endpoint,
-            response_type: action === 'taken' ? 'taken' : action === 'skip' ? 'skipped' : 'delayed',
+            response_type:
+              action === 'taken'
+                ? 'taken'
+                : action === 'skip'
+                  ? 'skipped'
+                  : 'delayed',
           }
           if (action === 'snooze_10') body.delay_minutes = 10
           if (action === 'snooze_30') body.delay_minutes = 30
@@ -112,16 +124,22 @@ swSelf.addEventListener('notificationclick', (event: any) => {
           console.warn('[SW] respond_by_subscription failed', e)
         }
       }
-      const allClients = await swSelf.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      const allClients = await swSelf.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      })
       for (const client of allClients) {
         const url = new URL(client.url)
-        if (url.pathname === '/' || url.pathname === new URL(targetUrl, swSelf.location.origin).pathname) {
+        if (
+          url.pathname === '/' ||
+          url.pathname === new URL(targetUrl, swSelf.location.origin).pathname
+        ) {
           await client.focus()
           return
         }
       }
       await swSelf.clients.openWindow(targetUrl)
-    })(),
+    })()
   )
 })
 
@@ -139,12 +157,12 @@ swSelf.addEventListener('message', (event: any) => {
 
 // 安装阶段日志
 // 安装阶段日志
-swSelf.addEventListener('install', (event: any) => {
+swSelf.addEventListener('install', (_event: any) => {
   console.log('[SW] installed at', new Date().toISOString())
 })
 
 // 激活阶段：声明控制权
-swSelf.addEventListener('activate', (event: any) => {
+swSelf.addEventListener('activate', (_event: any) => {
   console.log('[SW] activated at', new Date().toISOString())
 })
 /// <reference lib="webworker" />

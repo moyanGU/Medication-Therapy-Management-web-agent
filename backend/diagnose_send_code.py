@@ -14,8 +14,8 @@ It performs three checks:
 This script assumes the project root in the container is /app.
 """
 
-import os
 import inspect
+import os
 from pathlib import Path
 
 
@@ -25,6 +25,7 @@ def setup_django_env() -> None:
         os.environ["DJANGO_SETTINGS_MODULE"] = "mtm_helper.settings"
     print(f"DJANGO_SETTINGS_MODULE={os.environ['DJANGO_SETTINGS_MODULE']}")
     import django
+
     django.setup()
 
 
@@ -46,7 +47,10 @@ def closure_search() -> None:
                 cells = getattr(method, "__closure__", None) or ()
                 for cell in cells:
                     val = getattr(cell, "cell_contents", None)
-                    if callable(val) and getattr(val, "__name__", "") == "send_verification_code":
+                    if (
+                        callable(val)
+                        and getattr(val, "__name__", "") == "send_verification_code"
+                    ):
                         orig = val
                         break
                 if orig:

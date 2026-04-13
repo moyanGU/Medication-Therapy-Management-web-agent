@@ -5,7 +5,7 @@ export enum MedicineType {
   PRESCRIPTION = 'prescription',
   OTC = 'otc',
   SUPPLEMENT = 'supplement',
-  HERBAL = 'herbal'
+  HERBAL = 'herbal',
 }
 
 /**
@@ -21,7 +21,7 @@ export enum DosageForm {
   DROPS = 'drops',
   SPRAY = 'spray',
   POWDER = 'powder',
-  PATCH = 'patch'
+  PATCH = 'patch',
 }
 
 /**
@@ -91,6 +91,15 @@ export interface MedicineUpdateData {
  * 药品列表查询参数接口
  */
 export interface MedicineListParams {
+  [key: string]:
+    | string
+    | number
+    | boolean
+    | null
+    | undefined
+    | string[]
+    | number[]
+    | boolean[]
   page?: number
   page_size?: number
   search?: string
@@ -146,5 +155,3 @@ export interface PaginatedResponse<T> {
   current_page: number
   total_pages: number
 }
-
-

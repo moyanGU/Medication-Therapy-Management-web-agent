@@ -1,16 +1,17 @@
-from django.urls import path, include
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from .views import MedicineViewSet
+
 from .upload_views import ImageUploadView
+from .views import MedicineViewSet
 
 # 创建路由器
 router = DefaultRouter()
-router.register(r'', MedicineViewSet, basename='medicine')
+router.register(r"", MedicineViewSet, basename="medicine")
 
 # URL配置
 urlpatterns = [
-    path('upload-image/', ImageUploadView.as_view(), name='upload-image'),
-    path('', include(router.urls)),
+    path("upload-image/", ImageUploadView.as_view(), name="upload-image"),
+    path("", include(router.urls)),
 ]
 
 # 药品管理API路由说明：

@@ -1,29 +1,29 @@
 // 病历记录相关类型定义
 
 // 就诊类型
-export type VisitType = 
-  | 'outpatient'     // 门诊
-  | 'emergency'      // 急诊
-  | 'inpatient'      // 住院
-  | 'follow_up'      // 复诊
-  | 'consultation'   // 会诊
-  | 'physical_exam'  // 体检
-  | 'vaccination'    // 疫苗接种
+export type VisitType =
+  | 'outpatient' // 门诊
+  | 'emergency' // 急诊
+  | 'inpatient' // 住院
+  | 'follow_up' // 复诊
+  | 'consultation' // 会诊
+  | 'physical_exam' // 体检
+  | 'vaccination' // 疫苗接种
 
 // 就医状态
-export type MedicalStatus = 
-  | 'scheduled'      // 已预约
-  | 'completed'      // 已完成
-  | 'cancelled'      // 已取消
-  | 'no_show'        // 未到诊
-  | 'rescheduled'    // 已改期
+export type MedicalStatus =
+  | 'scheduled' // 已预约
+  | 'completed' // 已完成
+  | 'cancelled' // 已取消
+  | 'no_show' // 未到诊
+  | 'rescheduled' // 已改期
 
 // 紧急程度
-export type UrgencyLevel = 
-  | 'routine'        // 常规
-  | 'urgent'         // 紧急
-  | 'emergency'      // 急诊
-  | 'critical'       // 危重
+export type UrgencyLevel =
+  | 'routine' // 常规
+  | 'urgent' // 紧急
+  | 'emergency' // 急诊
+  | 'critical' // 危重
 
 // 附件信息
 export interface MedicalAttachment {
@@ -106,7 +106,7 @@ export interface MedicalRecord extends MedicalRecordBase {
   user: number
   created_at: string
   updated_at: string
-  
+
   // 计算属性
   visit_datetime?: string
   days_since_visit?: number
@@ -285,7 +285,7 @@ export const VISIT_TYPE_OPTIONS = [
   { value: 'follow_up', label: '复诊' },
   { value: 'consultation', label: '会诊' },
   { value: 'physical_exam', label: '体检' },
-  { value: 'vaccination', label: '疫苗接种' }
+  { value: 'vaccination', label: '疫苗接种' },
 ]
 
 // 就医状态选项
@@ -294,7 +294,7 @@ export const STATUS_OPTIONS = [
   { value: 'completed', label: '已完成' },
   { value: 'cancelled', label: '已取消' },
   { value: 'no_show', label: '未到诊' },
-  { value: 'rescheduled', label: '已改期' }
+  { value: 'rescheduled', label: '已改期' },
 ]
 
 // 紧急程度选项
@@ -302,7 +302,7 @@ export const URGENCY_OPTIONS = [
   { value: 'routine', label: '常规' },
   { value: 'urgent', label: '紧急' },
   { value: 'emergency', label: '急诊' },
-  { value: 'critical', label: '危重' }
+  { value: 'critical', label: '危重' },
 ]
 
 // 排序选项（与后端 ordering 字段对齐）
@@ -312,5 +312,5 @@ export const SORT_OPTIONS = [
   { value: '-total_cost', label: '总费用（高→低）' },
   { value: 'total_cost', label: '总费用（低→高）' },
   { value: '-satisfaction_score', label: '满意度（高→低）' },
-  { value: 'satisfaction_score', label: '满意度（低→高）' }
+  { value: 'satisfaction_score', label: '满意度（低→高）' },
 ]

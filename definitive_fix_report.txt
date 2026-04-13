@@ -1,8 +1,0 @@
-﻿[SERVICE] Name=MySQL80 State=Running PathName="C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe" --defaults-file="C:\ProgramData\MySQL\MySQL Server 8.0\my.ini" MySQL80
-[STEP] 停止服务 MySQL80
-[STEP] 启动临时 mysqld 执行 init-file 修复
-[STEP] 启动服务 MySQL80
-===== TLS_pwdot =====
-===== TLS_pwbang =====
-===== NONSSL_RSA_pwdot =====
-===== NONSSL_RSA_pwbang =====

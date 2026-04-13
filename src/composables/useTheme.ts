@@ -1,4 +1,4 @@
-import { ref, watchEffect, onMounted, computed } from 'vue'
+import { ref, watchEffect, computed } from 'vue'
 
 type Theme = 'light' | 'dark'
 
@@ -9,20 +9,21 @@ type Theme = 'light' | 'dark'
  * - 将状态持久化到 localStorage，并在挂载时应用到 documentElement
  */
 export function useTheme() {
-  // 主题状态
-  const theme = ref<Theme>('light')
-  // 老年人模式状态
-  const isSenior = ref<boolean>(false)
-
-  /**
-   * 获取首选主题
-   * 优先读取 localStorage('theme')，否则根据系统偏好返回 light/dark
-   */
   const getPreferredTheme = (): Theme => {
     const saved = localStorage.getItem('theme') as Theme | null
     if (saved === 'light' || saved === 'dark') return saved
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light'
   }
+
+  const getPreferredSeniorMode = (): boolean => {
+    const saved = localStorage.getItem('seniorMode')
+    return saved === 'true'
+  }
+
+  const theme = ref<Theme>(getPreferredTheme())
+  const isSenior = ref<boolean>(getPreferredSeniorMode())
 
   /**
    * 应用主题到根元素（html）并持久化
@@ -39,14 +40,6 @@ export function useTheme() {
    */
   const toggleTheme = () => {
     theme.value = theme.value === 'light' ? 'dark' : 'light'
-  }
-
-  /**
-   * 从本地存储读取老年人模式状态
-   */
-  const getPreferredSeniorMode = (): boolean => {
-    const saved = localStorage.getItem('seniorMode')
-    return saved === 'true'
   }
 
   /**
@@ -78,14 +71,6 @@ export function useTheme() {
   const toggleSenior = () => {
     isSenior.value = !isSenior.value
   }
-
-  // 初始化：挂载时读取并应用主题与老年人模式
-  onMounted(() => {
-    theme.value = getPreferredTheme()
-    isSenior.value = getPreferredSeniorMode()
-    applyTheme(theme.value)
-    applySeniorMode(isSenior.value)
-  })
 
   // 响应式监听：主题与老年人模式变化即时应用
   watchEffect(() => {

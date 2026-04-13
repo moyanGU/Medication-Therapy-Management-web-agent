@@ -33,10 +33,14 @@ export interface NotificationResult {
   error?: string
 }
 
+const isDebug = import.meta.env.MODE !== 'production'
+
 class NotificationService {
   private static instance: NotificationService
   private activeNotifications: Map<string, Notification> = new Map()
-  private permissionCallbacks: Array<(permission: NotificationPermission) => void> = []
+  private permissionCallbacks: Array<
+    (permission: NotificationPermission) => void
+  > = []
 
   private constructor() {
     this.init()
@@ -57,10 +61,13 @@ class NotificationService {
     if (this.isSupported()) {
       // 某些浏览器支持权限变化监听
       if ('permissions' in navigator) {
-        navigator.permissions.query({ name: 'notifications' as PermissionName })
+        navigator.permissions
+          .query({ name: 'notifications' as PermissionName })
           .then(permissionStatus => {
             permissionStatus.addEventListener('change', () => {
-              this.notifyPermissionChange(permissionStatus.state as NotificationPermission)
+              this.notifyPermissionChange(
+                permissionStatus.state as NotificationPermission
+              )
             })
           })
           .catch(() => {
@@ -95,7 +102,7 @@ class NotificationService {
       return {
         permission: 'denied',
         supported: false,
-        message: '您的浏览器不支持通知功能'
+        message: '您的浏览器不支持通知功能',
       }
     }
 
@@ -117,7 +124,7 @@ class NotificationService {
     return {
       permission,
       supported: true,
-      message
+      message,
     }
   }
 
@@ -129,14 +136,14 @@ class NotificationService {
       return {
         permission: 'denied',
         supported: false,
-        message: '您的浏览器不支持通知功能'
+        message: '您的浏览器不支持通知功能',
       }
     }
 
     try {
       const permission = await Notification.requestPermission()
       this.notifyPermissionChange(permission)
-      
+
       let message = ''
       switch (permission) {
         case 'granted':
@@ -153,14 +160,18 @@ class NotificationService {
       return {
         permission,
         supported: true,
-        message
+        message,
       }
     } catch (error) {
-      console.error('申请通知权限失败:', error)
+      if (isDebug) {
+        console.error('申请通知权限失败:', error)
+      } else {
+        console.error('申请通知权限失败')
+      }
       return {
         permission: 'denied',
         supported: true,
-        message: '申请通知权限失败'
+        message: '申请通知权限失败',
       }
     }
   }
@@ -168,13 +179,15 @@ class NotificationService {
   /**
    * 显示通知
    */
-  public async showNotification(options: NotificationOptions): Promise<NotificationResult> {
+  public async showNotification(
+    options: NotificationOptions
+  ): Promise<NotificationResult> {
     // 检查权限
     const permissionResult = this.checkPermission()
     if (!permissionResult.supported) {
       return {
         success: false,
-        error: permissionResult.message
+        error: permissionResult.message,
       }
     }
 
@@ -184,14 +197,18 @@ class NotificationService {
       if (requestResult.permission !== 'granted') {
         return {
           success: false,
-          error: requestResult.message
+          error: requestResult.message,
         }
       }
     }
 
     try {
-      // 创建通知
-      const notification = new Notification(options.title, {
+      type ExtendedDomNotificationOptions = globalThis.NotificationOptions & {
+        vibrate?: number[]
+        actions?: NotificationAction[]
+      }
+
+      const domOptions: ExtendedDomNotificationOptions = {
         body: options.body,
         icon: options.icon || this.getDefaultIcon(),
         badge: options.badge,
@@ -200,8 +217,11 @@ class NotificationService {
         silent: options.silent ?? false,
         vibrate: options.vibrate,
         actions: options.actions,
-        data: options.data
-      })
+        data: options.data,
+      }
+
+      // 创建通知
+      const notification = new Notification(options.title, domOptions)
 
       // 设置事件监听器
       this.setupNotificationEvents(notification, options)
@@ -215,13 +235,17 @@ class NotificationService {
 
       return {
         success: true,
-        notification
+        notification,
       }
     } catch (error) {
-      console.error('显示通知失败:', error)
+      if (isDebug) {
+        console.error('显示通知失败:', error)
+      } else {
+        console.error('显示通知失败')
+      }
       return {
         success: false,
-        error: '显示通知失败'
+        error: '显示通知失败',
       }
     }
   }
@@ -246,24 +270,24 @@ class NotificationService {
         {
           action: 'taken',
           title: '已服用',
-          icon: '/icons/check.png'
+          icon: '/icons/check.png',
         },
         {
           action: 'snooze',
           title: '稍后提醒',
-          icon: '/icons/clock.png'
+          icon: '/icons/clock.png',
         },
         {
           action: 'skip',
           title: '跳过',
-          icon: '/icons/x.png'
-        }
+          icon: '/icons/x.png',
+        },
       ],
       data: {
         type: 'medication-reminder',
         reminderId: data.reminderId,
-        medicationName: data.medicationName
-      }
+        medicationName: data.medicationName,
+      },
     }
 
     return this.showNotification(options)
@@ -280,8 +304,8 @@ class NotificationService {
       tag: 'test-notification',
       requireInteraction: false,
       data: {
-        type: 'test'
-      }
+        type: 'test',
+      },
     }
 
     return this.showNotification(options)
@@ -318,14 +342,18 @@ class NotificationService {
   /**
    * 注册权限变化回调
    */
-  public onPermissionChange(callback: (permission: NotificationPermission) => void): void {
+  public onPermissionChange(
+    callback: (permission: NotificationPermission) => void
+  ): void {
     this.permissionCallbacks.push(callback)
   }
 
   /**
    * 移除权限变化回调
    */
-  public offPermissionChange(callback: (permission: NotificationPermission) => void): void {
+  public offPermissionChange(
+    callback: (permission: NotificationPermission) => void
+  ): void {
     const index = this.permissionCallbacks.indexOf(callback)
     if (index > -1) {
       this.permissionCallbacks.splice(index, 1)
@@ -335,32 +363,45 @@ class NotificationService {
   /**
    * 设置通知事件监听器
    */
-  private setupNotificationEvents(notification: Notification, options: NotificationOptions): void {
+  private setupNotificationEvents(
+    notification: Notification,
+    options: NotificationOptions
+  ): void {
     notification.addEventListener('show', () => {
-      console.log('通知已显示:', options.title)
+      if (isDebug) {
+        console.log('通知已显示:', options.title)
+      }
     })
 
-    notification.addEventListener('click', (event) => {
-      console.log('通知被点击:', options.title)
-      
+    notification.addEventListener('click', () => {
+      if (isDebug) {
+        console.log('通知被点击:', options.title)
+      }
+
       // 处理通知点击事件
       this.handleNotificationClick(notification, options)
-      
+
       // 关闭通知
       notification.close()
     })
 
     notification.addEventListener('close', () => {
-      console.log('通知已关闭:', options.title)
-      
+      if (isDebug) {
+        console.log('通知已关闭:', options.title)
+      }
+
       // 从活跃通知中移除
       if (options.tag) {
         this.activeNotifications.delete(options.tag)
       }
     })
 
-    notification.addEventListener('error', (error) => {
-      console.error('通知错误:', error)
+    notification.addEventListener('error', error => {
+      if (isDebug) {
+        console.error('通知错误:', error)
+      } else {
+        console.error('通知错误')
+      }
     })
 
     // 自动关闭通知（如果不需要交互）
@@ -376,7 +417,10 @@ class NotificationService {
   /**
    * 处理通知点击事件
    */
-  private handleNotificationClick(notification: Notification, options: NotificationOptions): void {
+  private handleNotificationClick(
+    notification: Notification,
+    options: NotificationOptions
+  ): void {
     // 聚焦到窗口
     if (window.focus) {
       window.focus()
@@ -400,7 +444,11 @@ class NotificationService {
       try {
         callback(permission)
       } catch (error) {
-        console.error('权限变化回调执行失败:', error)
+        if (isDebug) {
+          console.error('权限变化回调执行失败:', error)
+        } else {
+          console.error('权限变化回调执行失败')
+        }
       }
     })
   }
@@ -425,7 +473,7 @@ class NotificationService {
   public isQuietTime(): boolean {
     const now = new Date()
     const hour = now.getHours()
-    
+
     // 默认安静时间：22:00 - 08:00
     return hour >= 22 || hour < 8
   }
@@ -456,7 +504,7 @@ class NotificationService {
 
     return {
       permission,
-      recommendations
+      recommendations,
     }
   }
 }

@@ -20,7 +20,7 @@
             <Loader2 v-if="requesting" class="w-4 h-4 mr-2 animate-spin" />
             {{ requesting ? '申请中...' : '申请权限' }}
           </button>
-          
+
           <!-- 启用推送订阅 -->
           <button
             v-if="permission === 'granted' && pushSupported && !isSubscribed"
@@ -43,7 +43,7 @@
           >
             {{ subscribing ? '处理中...' : '取消订阅' }}
           </button>
-          
+
           <button
             v-if="permission === 'granted'"
             @click="testNotification"
@@ -53,7 +53,7 @@
             <Loader2 v-if="testing" class="w-4 h-4 mr-2 animate-spin" />
             {{ testing ? '测试中...' : '测试通知' }}
           </button>
-          
+
           <button
             @click="refreshStatus"
             class="btn btn-ghost btn-sm"
@@ -63,23 +63,29 @@
           </button>
         </div>
       </div>
-      
+
       <!-- 详细信息 -->
       <div v-if="showDetails" class="permission-details">
         <div class="detail-item">
           <span class="detail-label">浏览器支持:</span>
-          <span class="detail-value" :class="supported ? 'text-green-600' : 'text-red-600'">
+          <span
+            class="detail-value"
+            :class="supported ? 'text-green-600' : 'text-red-600'"
+          >
             {{ supported ? '支持' : '不支持' }}
           </span>
         </div>
-        
+
         <div class="detail-item">
           <span class="detail-label">推送支持:</span>
-          <span class="detail-value" :class="pushSupported ? 'text-green-600' : 'text-red-600'">
+          <span
+            class="detail-value"
+            :class="pushSupported ? 'text-green-600' : 'text-red-600'"
+          >
             {{ pushSupported ? '支持' : '不支持' }}
           </span>
         </div>
-        
+
         <div class="detail-item">
           <span class="detail-label">权限状态:</span>
           <span class="detail-value">
@@ -88,10 +94,13 @@
             </span>
           </span>
         </div>
-        
+
         <div class="detail-item">
           <span class="detail-label">订阅状态:</span>
-          <span class="detail-value" :class="isSubscribed ? 'text-green-600' : 'text-gray-900'">
+          <span
+            class="detail-value"
+            :class="isSubscribed ? 'text-green-600' : 'text-gray-900'"
+          >
             {{ isSubscribed ? '已订阅' : '未订阅' }}
           </span>
         </div>
@@ -100,13 +109,13 @@
           <span class="detail-label">活跃通知:</span>
           <span class="detail-value">{{ activeNotificationCount }} 个</span>
         </div>
-        
+
         <div v-if="isQuietTime" class="detail-item">
           <span class="detail-label">安静时间:</span>
           <span class="detail-value text-yellow-600">当前处于安静时间</span>
         </div>
       </div>
-      
+
       <!-- 建议和帮助 -->
       <div v-if="recommendations.length > 0" class="permission-recommendations">
         <h4 class="recommendations-title">
@@ -119,7 +128,7 @@
           </li>
         </ul>
       </div>
-      
+
       <!-- 手动设置指南 -->
       <div v-if="permission === 'denied'" class="permission-guide">
         <h4 class="guide-title">
@@ -146,13 +155,13 @@
         </div>
       </div>
     </div>
-    
+
     <!-- 展开/收起按钮 -->
-    <button
-      @click="toggleDetails"
-      class="toggle-details-btn"
-    >
-      <component :is="showDetails ? ChevronUp : ChevronDown" class="w-4 h-4 mr-1" />
+    <button @click="toggleDetails" class="toggle-details-btn">
+      <component
+        :is="showDetails ? ChevronUp : ChevronDown"
+        class="w-4 h-4 mr-1"
+      />
       {{ showDetails ? '收起详情' : '查看详情' }}
     </button>
   </div>
@@ -160,23 +169,20 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { 
-  Bell, 
-  BellOff, 
-  AlertTriangle, 
-  CheckCircle, 
+import {
+  AlertTriangle,
+  CheckCircle,
   XCircle,
-  Loader2, 
-  RefreshCw, 
-  Info, 
+  Loader2,
+  RefreshCw,
+  Info,
   HelpCircle,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
 } from 'lucide-vue-next'
 import { notificationService } from '@/services/notificationService'
 import { useToast } from '@/composables/useToast'
-import type { NotificationPermissionResult } from '@/services/notificationService'
-import { 
+import {
   isPushSupported as checkPushSupported,
   subscribeAndSave,
   unsubscribeAndCleanup,
@@ -193,7 +199,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   autoRefresh: true,
   showTestButton: true,
-  compact: false
+  compact: false,
 })
 
 const emit = defineEmits<{
@@ -201,7 +207,12 @@ const emit = defineEmits<{
   notificationTest: [success: boolean]
 }>()
 
-const { success: showSuccess, error: showError, warning: showWarning, info: showInfo } = useToast()
+const {
+  success: showSuccess,
+  error: showError,
+  warning: showWarning,
+  info: showInfo,
+} = useToast()
 
 // 响应式数据
 const permission = ref<NotificationPermission>('default')
@@ -277,13 +288,14 @@ const handlePermissionChange = (newPermission: NotificationPermission) => {
 // 更新状态
 const updateStatus = () => {
   const result = notificationService.getNotificationSettings()
-  
+
   permission.value = result.permission.permission
   supported.value = result.permission.supported
   message.value = result.permission.message
   recommendations.value = result.recommendations
-  
-  activeNotificationCount.value = notificationService.getActiveNotificationCount()
+
+  activeNotificationCount.value =
+    notificationService.getActiveNotificationCount()
   isQuietTime.value = notificationService.isQuietTime()
 }
 
@@ -299,14 +311,14 @@ const requestPermission = async () => {
     showError('您的浏览器不支持通知功能')
     return
   }
-  
+
   try {
     requesting.value = true
     const result = await notificationService.requestPermission()
-    
+
     permission.value = result.permission
     message.value = result.message
-    
+
     if (result.permission === 'granted') {
       showSuccess('通知权限申请成功')
     } else if (result.permission === 'denied') {
@@ -314,7 +326,7 @@ const requestPermission = async () => {
     } else {
       showWarning('通知权限申请被忽略')
     }
-    
+
     emit('permissionChange', result.permission)
     updateStatus()
   } catch (error) {
@@ -331,13 +343,13 @@ const testNotification = async () => {
     showWarning('请先授权通知权限')
     return
   }
-  
+
   try {
     testing.value = true
     const result = await notificationService.showTestNotification()
     // 额外：本地 SW 测试通知（无需后端）
     await showLocalTestNotification()
-    
+
     if (result.success) {
       showSuccess('测试通知发送成功')
       emit('notificationTest', true)
@@ -345,7 +357,7 @@ const testNotification = async () => {
       showError(result.error || '测试通知发送失败')
       emit('notificationTest', false)
     }
-    
+
     updateStatus()
   } catch (error) {
     console.error('测试通知失败:', error)
@@ -435,10 +447,10 @@ onMounted(() => {
   // 推送支持检测与订阅状态刷新
   pushSupported.value = checkPushSupported()
   refreshSubscriptionState()
-  
+
   // 注册权限变化监听
   notificationService.onPermissionChange(handlePermissionChange)
-  
+
   // 启动自动刷新
   startAutoRefresh()
 })
@@ -446,7 +458,7 @@ onMounted(() => {
 onUnmounted(() => {
   // 移除权限变化监听
   notificationService.offPermissionChange(handlePermissionChange)
-  
+
   // 停止自动刷新
   stopAutoRefresh()
 })

@@ -5,10 +5,11 @@ class RemindersConfig(AppConfig):
     """
     用药提醒应用配置类
     """
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'apps.reminders'
-    verbose_name = '用药提醒'
-    
+
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "apps.reminders"
+    verbose_name = "用药提醒"
+
     def ready(self):
         """
         应用准备就绪时的初始化操作

@@ -2,12 +2,12 @@
   <div class="min-h-screen flex flex-col bg-gray-50">
     <!-- 头部导航 -->
     <AppHeader />
-    
+
     <!-- 主要内容区域 -->
     <main class="flex-1">
       <slot />
     </main>
-    
+
     <!-- 底部 -->
     <AppFooter v-if="showFooter" />
   </div>
@@ -37,6 +37,6 @@ const showFooter = computed(() => {
 
 <script lang="ts">
 export default {
-  name: 'AppLayout'
+  name: 'AppLayout',
 }
 </script>

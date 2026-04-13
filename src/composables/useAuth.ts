@@ -24,7 +24,7 @@ export function useAuth() {
       const currentPath = redirectPath || router.currentRoute.value.fullPath
       router.push({
         path: '/login',
-        query: { redirect: currentPath }
+        query: { redirect: currentPath },
       })
       return false
     }
@@ -52,7 +52,7 @@ export function useAuth() {
     remember?: boolean
   }) => {
     const result = await authStore.login(credentials)
-    
+
     if (result.success) {
       // 登录成功，检查是否有重定向路径
       const redirect = router.currentRoute.value.query.redirect as string
@@ -62,7 +62,7 @@ export function useAuth() {
         router.push('/dashboard')
       }
     }
-    
+
     return result
   }
 
@@ -81,18 +81,18 @@ export function useAuth() {
       username: data.username,
       phone: data.phone,
       password: data.password,
-      verification_code: data.verificationCode
+      verification_code: data.verificationCode,
     }
     const result = await authStore.register(registerData)
-    
+
     if (result.success) {
       // 注册成功，跳转到登录页
       router.push({
         path: '/login',
-        query: { message: '注册成功，请登录' }
+        query: { message: '注册成功，请登录' },
       })
     }
-    
+
     return result
   }
 
@@ -122,7 +122,7 @@ export function useAuth() {
    * 检查权限
    * 可以扩展为基于角色的权限检查
    */
-  const hasPermission = (permission: string): boolean => {
+  const hasPermission = (_permission: string): boolean => {
     // TODO: 实现基于角色的权限检查
     // 目前只检查是否已登录
     return isAuthenticated.value
@@ -144,7 +144,7 @@ export function useAuth() {
     user,
     isLoading,
     isAdmin,
-    
+
     // 方法
     requireAuth,
     requireGuest,

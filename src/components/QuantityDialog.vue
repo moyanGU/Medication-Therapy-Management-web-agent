@@ -1,17 +1,35 @@
 <template>
   <div v-if="visible" class="fixed inset-0 z-50 overflow-y-auto">
-    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+    <div
+      class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0"
+    >
       <!-- 背景遮罩 -->
-      <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" @click="emitClose" />
+      <div
+        class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75"
+        @click="emitClose"
+      />
 
       <!-- 对话框 -->
-      <div class="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg">
+      <div
+        class="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg"
+      >
         <!-- 标题 -->
         <div class="flex items-center justify-between mb-6">
           <h3 class="text-lg font-medium text-gray-900">库存调整</h3>
           <button @click="emitClose" class="text-gray-400 hover:text-gray-600">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -19,8 +37,14 @@
         <!-- 内容 -->
         <div class="space-y-4">
           <div class="bg-gray-50 p-3 rounded-md text-sm text-gray-700">
-            <div>药品：<span class="font-medium">{{ medicine?.name || '-' }}</span></div>
-            <div class="mt-1">当前库存：<span class="font-medium">{{ medicine?.quantity ?? '-' }}</span></div>
+            <div>
+              药品：<span class="font-medium">{{ medicine?.name || '-' }}</span>
+            </div>
+            <div class="mt-1">
+              当前库存：<span class="font-medium">{{
+                medicine?.quantity ?? '-'
+              }}</span>
+            </div>
           </div>
 
           <div>
@@ -35,16 +59,31 @@
               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="请输入非负整数"
             />
-            <p v-if="errorMessage" class="mt-1 text-sm text-red-600">{{ errorMessage }}</p>
+            <p v-if="errorMessage" class="mt-1 text-sm text-red-600">
+              {{ errorMessage }}
+            </p>
           </div>
         </div>
 
         <!-- 按钮 -->
-        <div class="flex justify-end space-x-4 pt-6 border-t border-gray-200 mt-6">
-          <button type="button" @click="emitClose" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors" :disabled="loading">
+        <div
+          class="flex justify-end space-x-4 pt-6 border-t border-gray-200 mt-6"
+        >
+          <button
+            type="button"
+            @click="emitClose"
+            class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            :disabled="loading"
+          >
             取消
           </button>
-          <button type="button" @click="onSubmit" class="px-4 py-2 rounded-lg text-white transition-colors" :class="loading ? 'bg-blue-300' : 'bg-blue-600 hover:bg-blue-700'" :disabled="loading || !canSubmit">
+          <button
+            type="button"
+            @click="onSubmit"
+            class="px-4 py-2 rounded-lg text-white transition-colors"
+            :class="loading ? 'bg-blue-300' : 'bg-blue-600 hover:bg-blue-700'"
+            :disabled="loading || !canSubmit"
+          >
             {{ loading ? '提交中...' : '保存' }}
           </button>
         </div>
@@ -75,15 +114,21 @@ const errorMessage = ref('')
 
 // 计算属性：是否可提交
 const canSubmit = computed(() => {
-  return props.medicine != null && Number.isInteger(localQuantity.value) && localQuantity.value >= 0
+  return (
+    props.medicine != null &&
+    Number.isInteger(localQuantity.value) &&
+    localQuantity.value >= 0
+  )
 })
 
 // 同步初始值为当前库存
 watch(
   () => props.medicine,
-  (med) => {
+  med => {
     if (med) {
-      localQuantity.value = Number.isFinite(med.quantity as any) ? Number(med.quantity) : 0
+      localQuantity.value = Number.isFinite(med.quantity as any)
+        ? Number(med.quantity)
+        : 0
     } else {
       localQuantity.value = 0
     }
@@ -99,7 +144,10 @@ const medicineStore = useMedicineStore()
  * 步骤：校验 → 调用 store.updateMedicineQuantity → 触发 success/close 事件
  */
 async function onSubmit() {
-  console.log('🟡 [QuantityDialog] 提交库存调整: ', { id: props.medicine?.id, newQuantity: localQuantity.value })
+  console.log('🟡 [QuantityDialog] 提交库存调整: ', {
+    id: props.medicine?.id,
+    newQuantity: localQuantity.value,
+  })
   errorMessage.value = ''
 
   if (!props.medicine) {

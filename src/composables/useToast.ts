@@ -34,6 +34,6 @@ export const useToast = () => {
     warning,
     info,
     loading,
-    dismiss
+    dismiss,
   }
 }

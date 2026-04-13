@@ -1,17 +1,20 @@
+from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.utils import timezone
-from django.contrib.auth import get_user_model
+
 from apps.medicines.models import Medicine
 from apps.reminders.models import Reminder
 from apps.reminders.scheduler import ReminderScheduler
 
 
-@override_settings(DATABASES={
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': ':memory:',
+@override_settings(
+    DATABASES={
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
     }
-})
+)
 class SchedulerFrequenciesTest(TestCase):
     def setUp(self):
         """
@@ -19,12 +22,12 @@ class SchedulerFrequenciesTest(TestCase):
         """
         User = get_user_model()
         self.user = User.objects.create_user(
-            username='tester',
-            password='pass123',
-            email='t@example.com',
-            phone='13800000001',
+            username="tester",
+            password="pass123",
+            email="t@example.com",
+            phone="13800000001",
         )
-        self.medicine = Medicine.objects.create(user=self.user, name='维生素D')
+        self.medicine = Medicine.objects.create(user=self.user, name="维生素D")
 
     def test_daily_reminder_sends_on_time(self):
         """
@@ -36,11 +39,11 @@ class SchedulerFrequenciesTest(TestCase):
             medicine=self.medicine,
             reminder_time=now_local.time(),
             start_date=now_local.date(),
-            frequency='daily',
+            frequency="daily",
             dosage=1,
-            dosage_unit='tablet',
+            dosage_unit="tablet",
             is_active=True,
-            notification_types=['sms'],
+            notification_types=["sms"],
         )
 
         scheduler = ReminderScheduler()
@@ -65,11 +68,11 @@ class SchedulerFrequenciesTest(TestCase):
             medicine=self.medicine,
             reminder_time=timezone.localtime().time(),
             start_date=start_aligned,
-            frequency='weekly',
+            frequency="weekly",
             dosage=1,
-            dosage_unit='tablet',
+            dosage_unit="tablet",
             is_active=True,
-            notification_types=['sms'],
+            notification_types=["sms"],
         )
 
         # 未命中提醒
@@ -78,11 +81,11 @@ class SchedulerFrequenciesTest(TestCase):
             medicine=self.medicine,
             reminder_time=timezone.localtime().time(),
             start_date=start_not_aligned,
-            frequency='weekly',
+            frequency="weekly",
             dosage=1,
-            dosage_unit='tablet',
+            dosage_unit="tablet",
             is_active=True,
-            notification_types=['sms'],
+            notification_types=["sms"],
         )
 
         scheduler = ReminderScheduler()
@@ -106,11 +109,11 @@ class SchedulerFrequenciesTest(TestCase):
             medicine=self.medicine,
             reminder_time=future_time,  # 初始不命中当前时间
             start_date=now_local.date(),
-            frequency='daily',
+            frequency="daily",
             dosage=1,
-            dosage_unit='tablet',
+            dosage_unit="tablet",
             is_active=True,
-            notification_types=['sms'],
+            notification_types=["sms"],
         )
 
         scheduler = ReminderScheduler()
@@ -119,7 +122,7 @@ class SchedulerFrequenciesTest(TestCase):
 
         # 临时调整到当前时间
         r.reminder_time = now_local.time()
-        r.save(update_fields=['reminder_time'])
+        r.save(update_fields=["reminder_time"])
 
         sent_after = scheduler.check_and_send_reminders()
         r.refresh_from_db()

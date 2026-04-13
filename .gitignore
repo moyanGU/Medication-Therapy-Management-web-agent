@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
+.venv/
+backend/.venv/
 
 # Editor directories and files
 .vscode/*
@@ -23,8 +25,13 @@ dist-ssr
 *.sln
 *.sw?
 .vite
-# temp files (maintenance)\r\n*.tmp
+*.tmp
 *.vue.tmp
+*.pyc
+__pycache__/
+backend/runserver.out
+backend/query
+backend/media/
 
 # Env files (never commit secrets)
 .env

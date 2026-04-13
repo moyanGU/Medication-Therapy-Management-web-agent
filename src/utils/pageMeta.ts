@@ -36,7 +36,7 @@ export function getPageTitle(routeName: string): string {
     MedicalRecordDetail: '病历详情',
     MedicalRecordEdit: '编辑病历',
     MedicalRecordStatistics: '病历统计',
-    Settings: '设置'
+    Settings: '设置',
   }
   return titleMap[key] || ''
 }
@@ -70,7 +70,7 @@ export function getPagePurpose(routeName: string): string {
     MedicalRecordDetail: '查看单条病历详情',
     MedicalRecordEdit: '编辑病历记录',
     MedicalRecordStatistics: '查看病历统计与分析',
-    Settings: '个人设置与辅助功能开关'
+    Settings: '个人设置与辅助功能开关',
   }
   return purposeMap[key] || ''
 }

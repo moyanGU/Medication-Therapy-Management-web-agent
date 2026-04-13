@@ -23,13 +23,13 @@
           </button>
           <button
             @click="toggleActive"
-            :class="[
-              'btn',
-              reminder.is_active ? 'btn-warning' : 'btn-success'
-            ]"
+            :class="['btn', reminder.is_active ? 'btn-warning' : 'btn-success']"
             :disabled="loading"
           >
-            <component :is="reminder.is_active ? PauseCircleIcon : PlayCircleIcon" class="w-4 h-4 mr-2" />
+            <component
+              :is="reminder.is_active ? PauseCircleIcon : PlayCircleIcon"
+              class="w-4 h-4 mr-2"
+            />
             {{ reminder.is_active ? '停用提醒' : '启用提醒' }}
           </button>
           <router-link
@@ -46,7 +46,9 @@
     <!-- 加载状态 -->
     <div v-if="loading && !reminder" class="loading-state">
       <div class="flex items-center justify-center py-12">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div
+          class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"
+        ></div>
         <span class="ml-3 text-gray-600">加载中...</span>
       </div>
     </div>
@@ -57,16 +59,23 @@
       <div class="info-card">
         <div class="card-header">
           <div class="flex items-center space-x-3">
-            <div class="status-indicator" :class="reminder.is_active ? 'active' : 'inactive'">
+            <div
+              class="status-indicator"
+              :class="reminder.is_active ? 'active' : 'inactive'"
+            >
               <Bell class="w-5 h-5" />
             </div>
             <div>
-              <h2 class="card-title">{{ reminder.title || reminder.medicine_name }}</h2>
+              <h2 class="card-title">
+                {{ reminder.title || reminder.medicine_name }}
+              </h2>
               <p class="card-subtitle">
-                <span :class="[
-                  'status-badge',
-                  reminder.is_active ? 'status-active' : 'status-inactive'
-                ]">
+                <span
+                  :class="[
+                    'status-badge',
+                    reminder.is_active ? 'status-active' : 'status-inactive',
+                  ]"
+                >
                   {{ reminder.is_active ? '活跃' : '停用' }}
                 </span>
                 <span class="mx-2">•</span>
@@ -75,7 +84,7 @@
             </div>
           </div>
         </div>
-        
+
         <div class="card-content">
           <div class="info-grid">
             <!-- 药品信息 -->
@@ -90,11 +99,14 @@
                   {{ medicineObj?.specification || '无规格信息' }}
                 </div>
                 <div class="text-sm text-gray-600">
-                  {{ getMedicineTypeText(medicineObj?.medicine_type) || '无类型信息' }}
+                  {{
+                    getMedicineTypeText(medicineObj?.medicine_type) ||
+                    '无类型信息'
+                  }}
                 </div>
               </div>
             </div>
-            
+
             <!-- 剂量信息 -->
             <div class="info-item">
               <div class="info-label">
@@ -103,10 +115,12 @@
               </div>
               <div class="info-value">
                 <span class="text-lg font-semibold">{{ reminder.dosage }}</span>
-                <span class="ml-1">{{ getDosageUnitLabel(reminder.dosage_unit) }}</span>
+                <span class="ml-1">{{
+                  getDosageUnitLabel(reminder.dosage_unit)
+                }}</span>
               </div>
             </div>
-            
+
             <!-- 提醒时间 -->
             <div class="info-item">
               <div class="info-label">
@@ -114,10 +128,12 @@
                 提醒时间
               </div>
               <div class="info-value">
-                <span class="text-lg font-semibold">{{ formatTime(reminder.reminder_time) }}</span>
+                <span class="text-lg font-semibold">{{
+                  formatTime(reminder.reminder_time)
+                }}</span>
               </div>
             </div>
-            
+
             <!-- 提醒频率 -->
             <div class="info-item">
               <div class="info-label">
@@ -125,13 +141,21 @@
                 提醒频率
               </div>
               <div class="info-value">
-                <div class="font-medium">{{ getFrequencyLabel(reminder.frequency) }}</div>
-                <div v-if="reminder.frequency === 'custom' && reminder.weekdays.length > 0" class="text-sm text-gray-600">
+                <div class="font-medium">
+                  {{ getFrequencyLabel(reminder.frequency) }}
+                </div>
+                <div
+                  v-if="
+                    reminder.frequency === 'custom' &&
+                    reminder.weekdays.length > 0
+                  "
+                  class="text-sm text-gray-600"
+                >
                   {{ getWeekdaysDisplay(reminder.weekdays) }}
                 </div>
               </div>
             </div>
-            
+
             <!-- 用药时机 -->
             <div class="info-item">
               <div class="info-label">
@@ -142,7 +166,7 @@
                 {{ getMealTimingLabel(reminder.meal_timing) }}
               </div>
             </div>
-            
+
             <!-- 有效期 -->
             <div class="info-item">
               <div class="info-label">
@@ -152,12 +176,16 @@
               <div class="info-value">
                 <div>{{ formatDate(reminder.start_date) }}</div>
                 <div class="text-sm text-gray-600">
-                  {{ reminder.end_date ? `至 ${formatDate(reminder.end_date)}` : '长期有效' }}
+                  {{
+                    reminder.end_date
+                      ? `至 ${formatDate(reminder.end_date)}`
+                      : '长期有效'
+                  }}
                 </div>
               </div>
             </div>
           </div>
-          
+
           <!-- 高级设置 -->
           <div v-if="hasAdvancedSettings" class="advanced-settings">
             <h3 class="settings-title">
@@ -167,32 +195,46 @@
             <div class="settings-grid">
               <div v-if="reminder.advance_minutes > 0" class="setting-item">
                 <span class="setting-label">提前提醒:</span>
-                <span class="setting-value">{{ reminder.advance_minutes }} 分钟</span>
+                <span class="setting-value"
+                  >{{ reminder.advance_minutes }} 分钟</span
+                >
               </div>
               <div v-if="reminder.repeat_interval > 0" class="setting-item">
                 <span class="setting-label">重复间隔:</span>
-                <span class="setting-value">{{ reminder.repeat_interval }} 分钟</span>
+                <span class="setting-value"
+                  >{{ reminder.repeat_interval }} 分钟</span
+                >
               </div>
               <div v-if="reminder.max_repeats > 0" class="setting-item">
                 <span class="setting-label">最大重复:</span>
                 <span class="setting-value">{{ reminder.max_repeats }} 次</span>
               </div>
-              <div v-if="reminder.notification_types.length > 0" class="setting-item">
+              <div
+                v-if="reminder.notification_types.length > 0"
+                class="setting-item"
+              >
                 <span class="setting-label">通知方式:</span>
-                <span class="setting-value">{{ getNotificationTypesDisplay(reminder.notification_types) }}</span>
+                <span class="setting-value">{{
+                  getNotificationTypesDisplay(reminder.notification_types)
+                }}</span>
               </div>
             </div>
           </div>
-          
+
           <!-- 特殊说明 -->
-          <div v-if="reminder.special_instructions" class="special-instructions">
+          <div
+            v-if="reminder.special_instructions"
+            class="special-instructions"
+          >
             <h3 class="instructions-title">
               <FileText class="w-4 h-4 mr-2" />
               特殊说明
             </h3>
-            <p class="instructions-content">{{ reminder.special_instructions }}</p>
+            <p class="instructions-content">
+              {{ reminder.special_instructions }}
+            </p>
           </div>
-          
+
           <!-- 自定义消息 -->
           <div v-if="reminder.message" class="custom-message">
             <h3 class="message-title">
@@ -247,80 +289,108 @@
                 <option value="all">全部记录</option>
                 <option value="responded">已响应</option>
                 <option value="missed">未响应</option>
+                <option value="failed">失败</option>
+                <option value="pending">待发送</option>
                 <option value="recent">最近7天</option>
               </select>
+              <div class="flex items-center space-x-2 text-xs text-gray-600">
+                <span>总{{ historyStats.total }}</span>
+                <span class="text-green-600"
+                  >已响应{{ historyStats.responded }}</span
+                >
+                <span class="text-yellow-600"
+                  >待发送{{ historyStats.pending }}</span
+                >
+                <span class="text-red-600">失败{{ historyStats.failed }}</span>
+              </div>
               <button @click="refreshHistory" class="btn btn-sm btn-outline">
-                <RefreshCw :class="{ 'animate-spin': historyLoading }" class="w-4 h-4" />
+                <RefreshCw
+                  :class="{ 'animate-spin': historyLoading }"
+                  class="w-4 h-4"
+                />
               </button>
             </div>
           </div>
         </div>
-        
+
         <div class="card-content">
           <div v-if="historyLoading" class="loading-state">
             <div class="flex items-center justify-center py-8">
-              <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              <div
+                class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"
+              ></div>
               <span class="ml-3 text-gray-600">加载历史记录...</span>
             </div>
           </div>
-          
+
           <div v-else-if="filteredHistory.length === 0" class="empty-state">
             <div class="text-center py-8">
               <History class="mx-auto h-8 w-8 text-gray-400" />
-              <h3 class="mt-2 text-sm font-medium text-gray-900">暂无执行记录</h3>
+              <h3 class="mt-2 text-sm font-medium text-gray-900">
+                暂无执行记录
+              </h3>
               <p class="mt-1 text-sm text-gray-500">还没有执行记录</p>
             </div>
           </div>
-          
+
           <div v-else class="history-list">
             <div
               v-for="record in filteredHistory"
               :key="record.id"
               class="history-item"
               :class="{
-                'responded': record.is_responded,
-                'missed': !record.is_responded && isPastDue(record.scheduled_time)
+                responded: record.is_responded,
+                missed:
+                  !record.is_responded && isPastDue(record.scheduled_time),
               }"
             >
               <div class="history-icon">
-                <component 
-                  :is="getHistoryIcon(record)" 
+                <component
+                  :is="getHistoryIcon(record)"
                   class="w-4 h-4"
                   :class="getHistoryIconClass(record)"
                 />
               </div>
-              
+
               <div class="history-content">
                 <div class="history-main">
                   <div class="history-time">
                     {{ formatDateTime(record.scheduled_time) }}
                   </div>
                   <div class="history-status">
-                    <span :class="[
-                      'status-badge',
-                      record.is_responded ? 'status-success' : 'status-warning'
-                    ]">
-                      {{ record.is_responded ? '已响应' : '未响应' }}
+                    <span
+                      :class="['status-badge', getHistoryStatusClass(record)]"
+                    >
+                      {{ getHistoryStatusText(record) }}
                     </span>
                   </div>
                 </div>
-                
+
                 <div v-if="record.is_responded" class="history-details">
                   <div class="detail-item">
                     <span class="detail-label">响应时间:</span>
-                    <span class="detail-value">{{ formatDateTime(record.responded_at) }}</span>
+                    <span class="detail-value">{{
+                      formatDateTime(record.responded_at)
+                    }}</span>
                   </div>
                   <div v-if="record.response_delay_minutes" class="detail-item">
                     <span class="detail-label">延迟:</span>
-                    <span class="detail-value">{{ record.response_delay_minutes }} 分钟</span>
+                    <span class="detail-value"
+                      >{{ record.response_delay_minutes }} 分钟</span
+                    >
                   </div>
                   <div v-if="record.notes" class="detail-item">
                     <span class="detail-label">备注:</span>
                     <span class="detail-value">{{ record.notes }}</span>
                   </div>
                 </div>
-                
-                <div v-if="!record.is_responded && !isPastDue(record.scheduled_time)" class="history-actions">
+
+                <div
+                  v-if="
+                    !record.is_responded && !isPastDue(record.scheduled_time)
+                  "
+                  class="history-actions"
+                >
                   <button
                     @click="markAsResponded(record)"
                     class="btn btn-sm btn-success"
@@ -332,16 +402,25 @@
               </div>
             </div>
           </div>
-          
+
           <!-- 分页 -->
           <div v-if="historyPagination.total > 0" class="history-pagination">
             <div class="flex items-center justify-between">
               <div class="text-sm text-gray-700">
-                显示第 {{ (historyPagination.page - 1) * historyPagination.pageSize + 1 }} - 
-                {{ Math.min(historyPagination.page * historyPagination.pageSize, historyPagination.total) }} 条，
-                共 {{ historyPagination.total }} 条记录
+                显示第
+                {{
+                  (historyPagination.page - 1) * historyPagination.pageSize + 1
+                }}
+                -
+                {{
+                  Math.min(
+                    historyPagination.page * historyPagination.pageSize,
+                    historyPagination.total
+                  )
+                }}
+                条， 共 {{ historyPagination.total }} 条记录
               </div>
-              
+
               <div class="flex items-center space-x-2">
                 <button
                   @click="changeHistoryPage(historyPagination.page - 1)"
@@ -350,14 +429,17 @@
                 >
                   <ChevronLeft class="w-4 h-4" />
                 </button>
-                
+
                 <span class="text-sm text-gray-600">
-                  {{ historyPagination.page }} / {{ historyPagination.totalPages }}
+                  {{ historyPagination.page }} /
+                  {{ historyPagination.totalPages }}
                 </span>
-                
+
                 <button
                   @click="changeHistoryPage(historyPagination.page + 1)"
-                  :disabled="historyPagination.page >= historyPagination.totalPages"
+                  :disabled="
+                    historyPagination.page >= historyPagination.totalPages
+                  "
                   class="btn btn-sm btn-outline"
                 >
                   <ChevronRight class="w-4 h-4" />
@@ -390,12 +472,35 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useReminderStore } from '@/stores/reminder'
 import { useToast } from '@/composables/useToast'
+import { isRequestCancelledError } from '@/utils/api'
+import { showLocalTestNotification } from '@/services/pushService'
 import {
-  ArrowLeft, Bell, Edit, Volume2, PauseCircle as PauseCircleIcon, PlayCircle as PlayCircleIcon,
-  Pill, Calculator, Clock, Repeat, Utensils, Calendar,
-  Settings, FileText, MessageSquare, BarChart3, History,
-  RefreshCw, Check, ChevronLeft, ChevronRight, AlertCircle,
-  CheckCircle, XCircle, Clock3 } from 'lucide-vue-next'
+  ArrowLeft,
+  Bell,
+  Edit,
+  Volume2,
+  PauseCircle as PauseCircleIcon,
+  PlayCircle as PlayCircleIcon,
+  Pill,
+  Calculator,
+  Clock,
+  Repeat,
+  Utensils,
+  Calendar,
+  Settings,
+  FileText,
+  MessageSquare,
+  BarChart3,
+  History,
+  RefreshCw,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  AlertCircle,
+  CheckCircle,
+  XCircle,
+  Clock3,
+} from 'lucide-vue-next'
 import type { Reminder, ReminderHistory } from '@/services/reminderService'
 
 const router = useRouter()
@@ -420,7 +525,9 @@ const medicineObj = computed(() => {
 
 const responseRate = computed(() => {
   if (!reminder.value || reminder.value.reminder_count === 0) return 0
-  return Math.round((reminder.value.response_count / reminder.value.reminder_count) * 100)
+  return Math.round(
+    (reminder.value.response_count / reminder.value.reminder_count) * 100
+  )
 })
 
 /**
@@ -451,32 +558,56 @@ const consecutiveDays = computed(() => {
 
 const hasAdvancedSettings = computed(() => {
   if (!reminder.value) return false
-  return reminder.value.advance_minutes > 0 ||
-         reminder.value.repeat_interval > 0 ||
-         reminder.value.max_repeats > 0 ||
-         reminder.value.notification_types.length > 0
+  return (
+    reminder.value.advance_minutes > 0 ||
+    reminder.value.repeat_interval > 0 ||
+    reminder.value.max_repeats > 0 ||
+    reminder.value.notification_types.length > 0
+  )
 })
 
 const reminderHistory = computed(() => reminderStore.reminderHistory)
 const historyPagination = computed(() => reminderStore.historyPagination)
 
+const historyStats = computed(() => {
+  const history = reminderHistory.value
+  const failed = history.filter(h => h.status === 'failed').length
+  const pending = history.filter(h => h.status === 'pending').length
+  const responded = history.filter(h => h.is_responded).length
+  return {
+    total: history.length,
+    failed,
+    pending,
+    responded,
+  }
+})
+
 const filteredHistory = computed(() => {
   let history = reminderHistory.value
-  
+
   switch (historyFilter.value) {
     case 'responded':
       history = history.filter(h => h.is_responded)
       break
     case 'missed':
-      history = history.filter(h => !h.is_responded && isPastDue(h.scheduled_time))
+      history = history.filter(
+        h => !h.is_responded && isPastDue(h.scheduled_time)
+      )
       break
-    case 'recent':
+    case 'failed':
+      history = history.filter(h => h.status === 'failed')
+      break
+    case 'pending':
+      history = history.filter(h => h.status === 'pending')
+      break
+    case 'recent': {
       const sevenDaysAgo = new Date()
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
       history = history.filter(h => new Date(h.scheduled_time) >= sevenDaysAgo)
       break
+    }
   }
-  
+
   return history
 })
 
@@ -501,11 +632,20 @@ watch(historyFilter, () => {
 const loadReminderData = async () => {
   try {
     loading.value = true
-    console.log('[ReminderDetail] loadReminderData:start', { id: reminderId.value })
+    console.log('[ReminderDetail] loadReminderData:start', {
+      id: reminderId.value,
+    })
     const data = await reminderStore.fetchReminder(reminderId.value)
     reminder.value = data
-    console.log('[ReminderDetail] loadReminderData:success', { reminder: reminder.value })
+    console.log('[ReminderDetail] loadReminderData:success', {
+      reminder: reminder.value,
+    })
   } catch (error) {
+    if (isRequestCancelledError(error)) {
+      console.log('[ReminderDetail] loadReminderData:cancelled')
+      return
+    }
+
     console.error('[ReminderDetail] loadReminderData:error', error)
     toast.error('加载提醒详情失败')
   } finally {
@@ -522,17 +662,39 @@ const loadReminderData = async () => {
 const loadHistoryData = async () => {
   try {
     historyLoading.value = true
-    console.log('[ReminderDetail] loadHistoryData:start', { filter: historyFilter.value, id: reminderId.value })
-    await reminderStore.fetchReminderHistory({
+    console.log('[ReminderDetail] loadHistoryData:start', {
+      filter: historyFilter.value,
+      id: reminderId.value,
+    })
+    const params: Record<string, any> = {
       reminder: reminderId.value,
       page: 1,
-      page_size: 20
+      page_size: 20,
+    }
+    if (historyFilter.value === 'responded') {
+      params.is_responded = true
+    } else if (historyFilter.value === 'missed') {
+      params.is_responded = false
+    } else if (historyFilter.value === 'failed') {
+      params.status = 'failed'
+    } else if (historyFilter.value === 'pending') {
+      params.status = 'pending'
+    } else if (historyFilter.value === 'recent') {
+      params.time_range = 'last_7_days'
+    }
+    await reminderStore.fetchReminderHistory({
+      ...params,
     })
     console.log('[ReminderDetail] loadHistoryData:success', {
       count: reminderStore.reminderHistory.length,
-      pagination: reminderStore.historyPagination
+      pagination: reminderStore.historyPagination,
     })
   } catch (error) {
+    if (isRequestCancelledError(error)) {
+      console.log('[ReminderDetail] loadHistoryData:cancelled')
+      return
+    }
+
     console.error('[ReminderDetail] loadHistoryData:error', error)
     toast.error('加载执行历史失败')
   } finally {
@@ -559,7 +721,7 @@ const changeHistoryPage = (page: number) => {
     reminderStore.fetchReminderHistory({
       reminder: reminderId.value,
       page,
-      page_size: 20
+      page_size: 20,
     })
   }
 }
@@ -577,7 +739,7 @@ const handleGoBack = () => {
  */
 const toggleActive = async () => {
   if (!reminder.value) return
-  
+
   try {
     console.log('[ReminderDetail] toggleActive', { id: reminder.value.id })
     const result = await reminderStore.toggleReminderActive(reminder.value.id)
@@ -596,11 +758,25 @@ const toggleActive = async () => {
  */
 const testNotification = async () => {
   if (!reminder.value) return
-  
+
   try {
     console.log('[ReminderDetail] testNotification', { id: reminder.value.id })
-    await reminderStore.testNotification(reminder.value.id)
-    toast.success('测试通知已发送')
+    const result = await reminderStore.testNotification(reminder.value.id)
+    if (!result.success) {
+      toast.error(result.message || '发送测试通知失败')
+      return
+    }
+
+    try {
+      await showLocalTestNotification()
+      if (result.delivered) {
+        toast.success('测试通知已触发，已显示本地提示框')
+      } else {
+        toast.warning('服务器通知通道不可用，已显示本地测试提示框')
+      }
+    } catch (notifyError: any) {
+      toast.warning(notifyError?.message || '本地提示框触发失败')
+    }
   } catch (error) {
     console.error('[ReminderDetail] testNotification:error', error)
     toast.error('发送测试通知失败')
@@ -615,7 +791,7 @@ const markAsResponded = async (record: ReminderHistory) => {
     console.log('[ReminderDetail] markAsResponded', { historyId: record.id })
     await reminderStore.respondToReminder(record.id, {
       response_type: 'taken',
-      notes: '手动标记'
+      notes: '手动标记',
     })
     toast.success('已标记为已服用')
     loadHistoryData()
@@ -633,7 +809,7 @@ const markAsResponded = async (record: ReminderHistory) => {
 const formatTime = (time: string) => {
   return new Date(`2000-01-01T${time}`).toLocaleTimeString('zh-CN', {
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   })
 }
 
@@ -668,7 +844,7 @@ const getMedicineTypeText = (type: string) => {
     injection: '注射剂',
     ointment: '软膏',
     powder: '粉剂',
-    other: '其他'
+    other: '其他',
   }
   return typeMap[type] || type
 }
@@ -688,7 +864,7 @@ const getDosageUnitLabel = (unit: string) => {
     drop: '滴',
     spray: '喷',
     patch: '贴',
-    injection: '针'
+    injection: '针',
   }
   return labels[unit] || unit
 }
@@ -706,7 +882,7 @@ const getFrequencyLabel = (frequency: string) => {
     four_times_daily: '每日四次',
     weekly: '每周',
     every_other_day: '隔日',
-    custom: '自定义'
+    custom: '自定义',
   }
   return labels[frequency] || frequency
 }
@@ -724,7 +900,7 @@ const getMealTimingLabel = (timing: string) => {
     anytime: '任意时间',
     before_breakfast: '早饭前',
     after_dinner: '晚饭后',
-    before_bed: '睡前'
+    before_bed: '睡前',
   }
   return labels[timing] || timing
 }
@@ -749,7 +925,7 @@ const getNotificationTypesDisplay = (types: string[]) => {
     push: '推送',
     sound: '声音',
     vibration: '震动',
-    email: '邮件'
+    email: '邮件',
   }
   return types.map(type => typeLabels[type] || type).join('、')
 }
@@ -769,6 +945,12 @@ const isPastDue = (scheduledTime: string) => {
  * @returns lucide 图标组件
  */
 const getHistoryIcon = (record: ReminderHistory) => {
+  if (record.status === 'failed') {
+    return XCircle
+  }
+  if (record.status === 'pending') {
+    return Clock3
+  }
   if (record.is_responded) {
     return CheckCircle
   } else if (isPastDue(record.scheduled_time)) {
@@ -784,6 +966,12 @@ const getHistoryIcon = (record: ReminderHistory) => {
  * @returns tailwind 文本颜色类
  */
 const getHistoryIconClass = (record: ReminderHistory) => {
+  if (record.status === 'failed') {
+    return 'text-red-500'
+  }
+  if (record.status === 'pending') {
+    return 'text-yellow-500'
+  }
   if (record.is_responded) {
     return 'text-green-500'
   } else if (isPastDue(record.scheduled_time)) {
@@ -791,6 +979,20 @@ const getHistoryIconClass = (record: ReminderHistory) => {
   } else {
     return 'text-yellow-500'
   }
+}
+
+const getHistoryStatusText = (record: ReminderHistory) => {
+  if (record.status === 'failed') return '失败'
+  if (record.status === 'pending') return '待发送'
+  if (record.is_responded) return '已响应'
+  return '未响应'
+}
+
+const getHistoryStatusClass = (record: ReminderHistory) => {
+  if (record.status === 'failed') return 'status-error'
+  if (record.status === 'pending') return 'status-warning'
+  if (record.is_responded) return 'status-success'
+  return 'status-warning'
 }
 </script>
 
@@ -887,6 +1089,10 @@ const getHistoryIconClass = (record: ReminderHistory) => {
 
 .status-warning {
   @apply bg-yellow-100 text-yellow-800;
+}
+
+.status-error {
+  @apply bg-red-100 text-red-800;
 }
 
 /* 信息网格 */

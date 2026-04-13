@@ -1,15 +1,20 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+  <div
+    class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100"
+  >
     <div class="max-w-md w-full space-y-8 p-8 bg-white rounded-xl shadow-lg">
       <div class="text-center">
         <h2 class="text-3xl font-bold text-gray-900 mb-2">用户注册</h2>
         <p class="text-gray-600">创建您的新账号</p>
       </div>
-      
+
       <form @submit.prevent="handleRegister" class="space-y-6">
         <!-- 用户名输入 -->
         <div>
-          <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
+          <label
+            for="username"
+            class="block text-sm font-medium text-gray-700 mb-2"
+          >
             用户名
           </label>
           <input
@@ -21,12 +26,17 @@
             :class="{ 'border-red-500': errors.username }"
             placeholder="请输入用户名"
           />
-          <p v-if="errors.username" class="mt-1 text-sm text-red-600">{{ errors.username }}</p>
+          <p v-if="errors.username" class="mt-1 text-sm text-red-600">
+            {{ errors.username }}
+          </p>
         </div>
-        
+
         <!-- 手机号输入 -->
         <div>
-          <label for="phone" class="block text-sm font-medium text-gray-700 mb-2">
+          <label
+            for="phone"
+            class="block text-sm font-medium text-gray-700 mb-2"
+          >
             手机号
           </label>
           <input
@@ -38,12 +48,17 @@
             :class="{ 'border-red-500': errors.phone }"
             placeholder="请输入手机号"
           />
-          <p v-if="errors.phone" class="mt-1 text-sm text-red-600">{{ errors.phone }}</p>
+          <p v-if="errors.phone" class="mt-1 text-sm text-red-600">
+            {{ errors.phone }}
+          </p>
         </div>
-        
+
         <!-- 验证码输入 -->
         <div>
-          <label for="verificationCode" class="block text-sm font-medium text-gray-700 mb-2">
+          <label
+            for="verificationCode"
+            class="block text-sm font-medium text-gray-700 mb-2"
+          >
             验证码
           </label>
           <div class="flex space-x-2">
@@ -68,12 +83,17 @@
               <span v-else>发送验证码</span>
             </button>
           </div>
-          <p v-if="errors.verification_code" class="mt-1 text-sm text-red-600">{{ errors.verification_code }}</p>
+          <p v-if="errors.verification_code" class="mt-1 text-sm text-red-600">
+            {{ errors.verification_code }}
+          </p>
         </div>
-        
+
         <!-- 密码输入 -->
         <div>
-          <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
+          <label
+            for="password"
+            class="block text-sm font-medium text-gray-700 mb-2"
+          >
             密码
           </label>
           <div class="relative">
@@ -95,12 +115,17 @@
               <span v-else>🙈</span>
             </button>
           </div>
-          <p v-if="errors.password" class="mt-1 text-sm text-red-600">{{ errors.password }}</p>
+          <p v-if="errors.password" class="mt-1 text-sm text-red-600">
+            {{ errors.password }}
+          </p>
         </div>
-        
+
         <!-- 确认密码输入 -->
         <div>
-          <label for="confirmPassword" class="block text-sm font-medium text-gray-700 mb-2">
+          <label
+            for="confirmPassword"
+            class="block text-sm font-medium text-gray-700 mb-2"
+          >
             确认密码
           </label>
           <div class="relative">
@@ -122,9 +147,11 @@
               <span v-else>🙈</span>
             </button>
           </div>
-          <p v-if="errors.confirmPassword" class="mt-1 text-sm text-red-600">{{ errors.confirmPassword }}</p>
+          <p v-if="errors.confirmPassword" class="mt-1 text-sm text-red-600">
+            {{ errors.confirmPassword }}
+          </p>
         </div>
-        
+
         <!-- 同意条款 -->
         <div class="flex items-center">
           <input
@@ -142,10 +169,15 @@
             <a href="#" class="text-blue-600 hover:text-blue-500">隐私政策</a>
           </label>
         </div>
-        <p v-if="errors.agreeTerms" class="mt-1 text-sm text-red-600">{{ errors.agreeTerms }}</p>
-        
+        <p v-if="errors.agreeTerms" class="mt-1 text-sm text-red-600">
+          {{ errors.agreeTerms }}
+        </p>
+
         <!-- 错误信息显示 -->
-        <div v-if="errorMessage" class="bg-red-50 border border-red-200 rounded-md p-3">
+        <div
+          v-if="errorMessage"
+          class="bg-red-50 border border-red-200 rounded-md p-3"
+        >
           <div class="flex">
             <span class="text-red-400">⚠️</span>
             <div class="ml-3">
@@ -153,9 +185,12 @@
             </div>
           </div>
         </div>
-        
+
         <!-- 成功信息显示 -->
-        <div v-if="successMessage" class="bg-green-50 border border-green-200 rounded-md p-3">
+        <div
+          v-if="successMessage"
+          class="bg-green-50 border border-green-200 rounded-md p-3"
+        >
           <div class="flex">
             <span class="text-green-500">✅</span>
             <div class="ml-3">
@@ -163,17 +198,19 @@
             </div>
           </div>
         </div>
-        
+
         <!-- 注册按钮 -->
         <button
           type="submit"
           :disabled="loading"
           class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <span v-if="loading" class="animate-spin -ml-1 mr-3 text-white">⏳</span>
+          <span v-if="loading" class="animate-spin -ml-1 mr-3 text-white"
+            >⏳</span
+          >
           {{ loading ? '注册中...' : '注册' }}
         </button>
-        
+
         <!-- 登录链接 -->
         <div class="text-center">
           <span class="text-sm text-gray-600">已有账号？</span>
@@ -204,7 +241,7 @@ const form = reactive({
   verification_code: '',
   password: '',
   confirmPassword: '',
-  agreeTerms: false
+  agreeTerms: false,
 })
 
 // 表单验证错误
@@ -214,7 +251,7 @@ const errors = reactive({
   verification_code: '',
   password: '',
   confirmPassword: '',
-  agreeTerms: ''
+  agreeTerms: '',
 })
 
 // 组件状态
@@ -241,9 +278,9 @@ const validateForm = (): boolean => {
     errors[key as keyof typeof errors] = ''
   })
   errorMessage.value = ''
-  
+
   let isValid = true
-  
+
   // 验证用户名
   if (!form.username.trim()) {
     errors.username = '请输入用户名'
@@ -255,7 +292,7 @@ const validateForm = (): boolean => {
     errors.username = '用户名不能超过20个字符'
     isValid = false
   }
-  
+
   // 验证手机号
   if (!form.phone) {
     errors.phone = '请输入手机号'
@@ -264,7 +301,7 @@ const validateForm = (): boolean => {
     errors.phone = '请输入正确的手机号'
     isValid = false
   }
-  
+
   // 验证验证码
   if (!form.verification_code) {
     errors.verification_code = '请输入验证码'
@@ -273,7 +310,7 @@ const validateForm = (): boolean => {
     errors.verification_code = '验证码应为6位数字'
     isValid = false
   }
-  
+
   // 验证密码
   if (!form.password) {
     errors.password = '请输入密码'
@@ -285,7 +322,7 @@ const validateForm = (): boolean => {
     errors.password = '密码不能超过20个字符'
     isValid = false
   }
-  
+
   // 验证确认密码
   if (!form.confirmPassword) {
     errors.confirmPassword = '请确认密码'
@@ -294,13 +331,13 @@ const validateForm = (): boolean => {
     errors.confirmPassword = '两次输入的密码不一致'
     isValid = false
   }
-  
+
   // 验证同意条款
   if (!form.agreeTerms) {
     errors.agreeTerms = '请同意用户协议和隐私政策'
     isValid = false
   }
-  
+
   return isValid
 }
 
@@ -312,21 +349,21 @@ const sendCode = async () => {
     errors.phone = '请输入正确的手机号'
     return
   }
-  
+
   codeSending.value = true
   successMessage.value = ''
   errorMessage.value = ''
-  
+
   try {
     console.log('发送验证码到:', form.phone)
     const res = await authStore.sendVerificationCode(form.phone)
-    
+
     if (res && res.success) {
       successMessage.value = '验证码已发送，请查收短信'
       if ((res as any).code) {
         successMessage.value += `（开发环境验证码：${(res as any).code}）`
       }
-      
+
       // 开始倒计时（仅在发送成功时）
       countdown.value = 60
       const timer = setInterval(() => {
@@ -351,25 +388,25 @@ const sendCode = async () => {
  */
 const handleRegister = async () => {
   console.log('开始注册流程', form)
-  
+
   if (!validateForm()) {
     console.log('表单验证失败')
     return
   }
-  
+
   loading.value = true
   errorMessage.value = ''
   successMessage.value = ''
-  
+
   try {
     console.log('调用注册API')
     const result = await authStore.register({
       username: form.username.trim(),
       phone: form.phone,
       password: form.password,
-      verification_code: form.verification_code
+      verification_code: form.verification_code,
     })
-    
+
     if (result.success) {
       successMessage.value = result.message || '注册成功！请登录'
       console.log('注册成功，跳转到登录页')
@@ -380,7 +417,7 @@ const handleRegister = async () => {
     }
   } catch (error: any) {
     console.error('注册失败:', error)
-    
+
     // 处理不同类型的错误
     if (error.message.includes('用户名已存在')) {
       errors.username = '用户名已存在'
@@ -391,7 +428,7 @@ const handleRegister = async () => {
     } else {
       errorMessage.value = error.message || '注册失败，请稍后重试'
     }
-    
+
     console.error('注册失败:', errorMessage.value || '注册失败')
   } finally {
     loading.value = false

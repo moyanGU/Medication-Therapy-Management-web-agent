@@ -2,40 +2,83 @@
   <header class="bg-white shadow-sm border-b border-gray-200">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <!-- PWA 更新横幅 -->
-      <div v-if="showUpdateBanner" class="bg-blue-50 border-b border-blue-200 text-blue-800 text-sm px-4 py-2 flex justify-between items-center">
+      <div
+        v-if="showUpdateBanner"
+        class="bg-blue-50 border-b border-blue-200 text-blue-800 text-sm px-4 py-2 flex justify-between items-center"
+      >
         <span>发现新版本，点击更新以应用最新功能。</span>
         <div class="space-x-2">
-          <button @click="applyUpdate" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded">更新</button>
-          <button @click="showUpdateBanner = false" class="text-blue-600 px-3 py-1">稍后</button>
+          <button
+            @click="applyUpdate"
+            class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded"
+          >
+            更新
+          </button>
+          <button
+            @click="showUpdateBanner = false"
+            class="text-blue-600 px-3 py-1"
+          >
+            稍后
+          </button>
         </div>
       </div>
       <!-- PWA 安装横幅（Android Chrome 等支持 beforeinstallprompt 的浏览器） -->
-      <div v-if="showInstallBanner" class="bg-green-50 border-b border-green-200 text-green-800 text-sm px-4 py-2 flex justify-between items-center">
+      <div
+        v-if="showInstallBanner"
+        class="bg-green-50 border-b border-green-200 text-green-800 text-sm px-4 py-2 flex justify-between items-center"
+      >
         <span>将 MTM-用药助手 安装到设备，获得类原生体验。</span>
         <div class="space-x-2">
-          <button @click="triggerInstall" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded">安装</button>
-          <button @click="showInstallBanner = false" class="text-green-600 px-3 py-1">稍后</button>
+          <button
+            @click="triggerInstall"
+            class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded"
+          >
+            安装
+          </button>
+          <button
+            @click="showInstallBanner = false"
+            class="text-green-600 px-3 py-1"
+          >
+            稍后
+          </button>
         </div>
       </div>
 
       <!-- iOS 安装引导横幅（Safari 不支持 beforeinstallprompt） -->
-      <div v-if="showIosInstallGuide" class="bg-amber-50 border-b border-amber-200 text-amber-800 text-sm px-4 py-2 flex justify-between items-start">
+      <div
+        v-if="showIosInstallGuide"
+        class="bg-amber-50 border-b border-amber-200 text-amber-800 text-sm px-4 py-2 flex justify-between items-start"
+      >
         <span>
-          iPhone/iPad 安装指引：
-          1) 使用 Safari 打开；
-          2) 点击底部“分享”按钮；
-          3) 选择“添加到主屏幕”；
-          4) 添加后即可以独立应用方式使用。
+          iPhone/iPad 安装指引： 1) 使用 Safari 打开； 2) 点击底部“分享”按钮；
+          3) 选择“添加到主屏幕”； 4) 添加后即可以独立应用方式使用。
         </span>
-        <button @click="showIosInstallGuide = false" class="text-amber-700 px-3 py-1">知道了</button>
+        <button
+          @click="showIosInstallGuide = false"
+          class="text-amber-700 px-3 py-1"
+        >
+          知道了
+        </button>
       </div>
       <div class="flex justify之间 items-center h-16">
         <!-- Logo和标题 -->
         <div class="flex items-center">
           <router-link to="/" class="flex items-center space-x-3">
-            <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 9.172V5L8 4z"></path>
+            <div
+              class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center"
+            >
+              <svg
+                class="w-5 h-5 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 9.172V5L8 4z"
+                ></path>
               </svg>
             </div>
             <span class="text-xl font-bold text-gray-900">MTM-用药助手</span>
@@ -47,14 +90,18 @@
           <router-link
             to="/dashboard"
             class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
-            :class="{ 'text-blue-600 bg-blue-50': $route.path === '/dashboard' }"
+            :class="{
+              'text-blue-600 bg-blue-50': $route.path === '/dashboard',
+            }"
           >
             仪表板
           </router-link>
           <router-link
             to="/medicines"
             class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
-            :class="{ 'text-blue-600 bg-blue-50': $route.path === '/medicines' }"
+            :class="{
+              'text-blue-600 bg-blue-50': $route.path === '/medicines',
+            }"
           >
             药品管理
           </router-link>
@@ -68,7 +115,9 @@
           <router-link
             to="/reminders"
             class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
-            :class="{ 'text-blue-600 bg-blue-50': $route.path === '/reminders' }"
+            :class="{
+              'text-blue-600 bg-blue-50': $route.path === '/reminders',
+            }"
           >
             用药提醒
           </router-link>
@@ -89,10 +138,22 @@
             @click="handleToggleSenior"
             :aria-pressed="isSenior"
           >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6M12 9v6M4 6h16M4 18h16" />
+            <svg
+              class="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 12h6M12 9v6M4 6h16M4 18h16"
+              />
             </svg>
-            <span class="text-sm font-medium">{{ isSenior ? '老年人模式：开' : '老年人模式：关' }}</span>
+            <span class="text-sm font-medium">{{
+              isSenior ? '老年人模式：开' : '老年人模式：关'
+            }}</span>
           </button>
           <!-- 语音播报开关（所有用户可见） -->
           <button
@@ -102,10 +163,22 @@
             :aria-pressed="isSpeechEnabled"
             :title="!isSpeechSupported ? '当前浏览器不支持语音播报' : ''"
           >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5a1 1 0 011 1v2a6 6 0 016 6h2a1 1 0 110 2h-2a6 6 0 01-6 6v2a1 1 0 11-2 0v-2a6 6 0 01-6-6H3a1 1 0 110-2h2a6 6 0 016-6V6a1 1 0 011-1z" />
+            <svg
+              class="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M11 5a1 1 0 011 1v2a6 6 0 016 6h2a1 1 0 110 2h-2a6 6 0 01-6 6v2a1 1 0 11-2 0v-2a6 6 0 01-6-6H3a1 1 0 110-2h2a6 6 0 016-6V6a1 1 0 011-1z"
+              />
             </svg>
-            <span class="text-sm font-medium">{{ isSpeechEnabled ? '语音播报：开' : '语音播报：关' }}</span>
+            <span class="text-sm font-medium">{{
+              isSpeechEnabled ? '语音播报：开' : '语音播报：关'
+            }}</span>
           </button>
           <!-- 朗读当前页面标题（仅在开启时显示） -->
           <button
@@ -113,18 +186,33 @@
             class="px-2 py-1 rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200 text-sm"
             @click="handleSpeakTitle"
             title="朗读当前页面标题"
-          >朗读</button>
+          >
+            朗读
+          </button>
           <!-- 通知图标 -->
           <button
             v-if="isAuthenticated"
             class="relative p-2 text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-full"
             @click="toggleNotifications"
           >
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-5 5v-5zM10.5 3.75a6 6 0 0 1 6 6v2.25l2.25 2.25v.75H2.25v-.75L4.5 12V9.75a6 6 0 0 1 6-6z"></path>
+            <svg
+              class="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 17h5l-5 5v-5zM10.5 3.75a6 6 0 0 1 6 6v2.25l2.25 2.25v.75H2.25v-.75L4.5 12V9.75a6 6 0 0 1 6-6z"
+              ></path>
             </svg>
             <!-- 通知小红点 -->
-            <span v-if="hasUnreadNotifications" class="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-400 ring-2 ring-white"></span>
+            <span
+              v-if="hasUnreadNotifications"
+              class="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-400 ring-2 ring-white"
+            ></span>
           </button>
 
           <!-- 用户头像和菜单 -->
@@ -133,14 +221,38 @@
               @click="toggleUserMenu"
               class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
-              <div class="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+              <div
+                class="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center"
+              >
+                <svg
+                  class="w-5 h-5 text-gray-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                  ></path>
                 </svg>
               </div>
-              <span class="hidden md:block text-sm font-medium text-gray-700">{{ userName || '用户' }}</span>
-              <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              <span class="hidden md:block text-sm font-medium text-gray-700">{{
+                userName || '用户'
+              }}</span>
+              <svg
+                class="w-4 h-4 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 9l-7 7-7-7"
+                ></path>
               </svg>
             </button>
 
@@ -164,7 +276,7 @@
               >
                 就医记录
               </router-link>
-              <hr class="my-1">
+              <hr class="my-1" />
               <button
                 @click="handleLogout"
                 class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -175,7 +287,7 @@
           </div>
 
           <!-- 登录/注册按钮 (未登录时) -->
-          <div v-else class="flex items-center space-x-3">
+          <div v-else class="hidden">
             <router-link
               to="/login"
               class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
@@ -189,27 +301,41 @@
               注册
             </router-link>
           </div>
-
           <!-- 移动端菜单按钮 -->
           <button
             v-if="isAuthenticated"
             @click="toggleMobileMenu"
             class="md:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
           >
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+            <svg
+              class="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 6h16M4 12h16M4 18h16"
+              ></path>
             </svg>
           </button>
         </div>
       </div>
 
       <!-- 移动端导航菜单 -->
-      <div v-if="showMobileMenu && isAuthenticated" class="md:hidden border-t border-gray-200 pt-4 pb-3">
+      <div
+        v-if="showMobileMenu && isAuthenticated"
+        class="md:hidden border-t border-gray-200 pt-4 pb-3"
+      >
         <div class="space-y-1">
           <router-link
             to="/dashboard"
             class="block px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-            :class="{ 'text-blue-600 bg-blue-50': $route.path === '/dashboard' }"
+            :class="{
+              'text-blue-600 bg-blue-50': $route.path === '/dashboard',
+            }"
             @click="showMobileMenu = false"
           >
             仪表板
@@ -217,7 +343,9 @@
           <router-link
             to="/medicines"
             class="block px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-            :class="{ 'text-blue-600 bg-blue-50': $route.path === '/medicines' }"
+            :class="{
+              'text-blue-600 bg-blue-50': $route.path === '/medicines',
+            }"
             @click="showMobileMenu = false"
           >
             药品管理
@@ -233,7 +361,9 @@
           <router-link
             to="/reminders"
             class="block px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-            :class="{ 'text-blue-600 bg-blue-50': $route.path === '/reminders' }"
+            :class="{
+              'text-blue-600 bg-blue-50': $route.path === '/reminders',
+            }"
             @click="showMobileMenu = false"
           >
             用药提醒
@@ -260,7 +390,10 @@
         <h3 class="text-lg font-medium text-gray-900">通知</h3>
       </div>
       <div class="max-h-96 overflow-y-auto">
-        <div v-if="notifications.length === 0" class="p-4 text-center text-gray-500">
+        <div
+          v-if="notifications.length === 0"
+          class="p-4 text-center text-gray-500"
+        >
           暂无通知
         </div>
         <div v-else>
@@ -272,12 +405,21 @@
           >
             <div class="flex items-start space-x-3">
               <div class="flex-shrink-0">
-                <div class="w-2 h-2 bg-blue-500 rounded-full mt-2" v-if="!notification.read"></div>
+                <div
+                  class="w-2 h-2 bg-blue-500 rounded-full mt-2"
+                  v-if="!notification.read"
+                ></div>
               </div>
               <div class="flex-1">
-                <p class="text-sm font-medium text-gray-900">{{ notification.title }}</p>
-                <p class="text-sm text-gray-600 mt-1">{{ notification.message }}</p>
-                <p class="text-xs text-gray-400 mt-2">{{ formatTime(notification.createdAt) }}</p>
+                <p class="text-sm font-medium text-gray-900">
+                  {{ notification.title }}
+                </p>
+                <p class="text-sm text-gray-600 mt-1">
+                  {{ notification.message }}
+                </p>
+                <p class="text-xs text-gray-400 mt-2">
+                  {{ formatTime(notification.createdAt) }}
+                </p>
               </div>
             </div>
           </div>
@@ -389,7 +531,7 @@ const isDueNow = (rem: Reminder): boolean => {
   if (!scheduled) return false
   const diffMs = scheduled.getTime() - today.getTime()
   const beforeWindowMs = -1 * 60 * 1000 // 提前1分钟
-  const afterWindowMs = 2 * 60 * 1000   // 延后2分钟
+  const afterWindowMs = 2 * 60 * 1000 // 延后2分钟
   return diffMs >= beforeWindowMs && diffMs <= afterWindowMs
 }
 
@@ -398,9 +540,14 @@ const isDueNow = (rem: Reminder): boolean => {
  */
 const speakReminder = (rem: Reminder) => {
   if (!isSpeechSupported.value || !isSpeechEnabled.value) return
-  const medName = rem.medicine_name
-    || (typeof rem.medicine === 'object' && rem.medicine ? (rem.medicine.name ?? '药品') : '药品')
-  const dose = rem.dosage ? `${rem.dosage}${unitLabelSpeech(rem.dosage_unit)}` : ''
+  const medName =
+    rem.medicine_name ||
+    (typeof rem.medicine === 'object' && rem.medicine
+      ? (rem.medicine.name ?? '药品')
+      : '药品')
+  const dose = rem.dosage
+    ? `${rem.dosage}${unitLabelSpeech(rem.dosage_unit)}`
+    : ''
   const meal = mealTimingLabel(rem.meal_timing)
   const title = rem.title || '用药提醒'
   const parts = [
@@ -411,7 +558,14 @@ const speakReminder = (rem: Reminder) => {
   ].filter(Boolean)
   const text = parts.join('，')
   console.log('[Speech] 自动播报提醒:', text)
-  speak(text, 0.8)
+  speak(text, {
+    rate: 0.8,
+    category: 'reminder',
+    priority: 'high',
+    interrupt: true,
+    dedupeWindowMs: 60000,
+    maxSegmentLength: 40,
+  })
 }
 
 /**
@@ -421,7 +575,11 @@ const pollSpeakDueReminders = async () => {
   try {
     if (!isAuthenticated.value) return
     if (!isSpeechSupported.value || !isSpeechEnabled.value) return
-    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+    if (
+      typeof document !== 'undefined' &&
+      document.visibilityState !== 'visible'
+    )
+      return
 
     // 日期切换时清理去重集合
     const now = new Date()
@@ -435,12 +593,12 @@ const pollSpeakDueReminders = async () => {
     }
 
     const resp = await reminderService.getTodayReminders()
-    const list = Array.isArray(resp?.data) ? resp.data : (Array.isArray((resp as any)?.data?.data) ? (resp as any).data.data : [])
+    const list = Array.isArray(resp?.data) ? resp.data : []
     if (!Array.isArray(list)) return
 
     list.forEach(rem => {
       if (!isDueNow(rem)) return
-      const key = `${todayKey}_${rem.id}_${(rem.reminder_time || '').slice(0,5)}`
+      const key = `${todayKey}_${rem.id}_${(rem.reminder_time || '').slice(0, 5)}`
       if (spokenTodayKeys.has(key)) return
       spokenTodayKeys.add(key)
       speakReminder(rem)
@@ -466,7 +624,10 @@ const handleToggleSpeech = () => {
     console.warn('[Header] 浏览器不支持 SpeechSynthesis')
     return
   }
-  console.log('[Header] 用户点击切换语音播报, 当前状态 =', isSpeechEnabled.value)
+  console.log(
+    '[Header] 用户点击切换语音播报, 当前状态 =',
+    isSpeechEnabled.value
+  )
   toggleSpeech()
 }
 
@@ -478,10 +639,18 @@ const route = useRoute()
 const handleSpeakTitle = () => {
   if (!isSpeechSupported.value || !isSpeechEnabled.value) return
   const name = String(route.name || '')
-  const title = getPageTitle(name) || (document.title || 'MTM-用药助手')
+  const title = getPageTitle(name) || document.title || 'MTM-用药助手'
   const purpose = getPagePurpose(name)
-  const text = purpose ? `当前页面：${title}。主要作用：${purpose}。` : `当前页面：${title}`
-  speak(text, 0.8)
+  const text = purpose
+    ? `当前页面：${title}。主要作用：${purpose}。`
+    : `当前页面：${title}`
+  speak(text, {
+    rate: 0.8,
+    category: 'route',
+    priority: 'low',
+    dedupeWindowMs: 8000,
+    maxSegmentLength: 36,
+  })
 }
 
 // 组件状态
@@ -497,7 +666,9 @@ let deferredPrompt: any = null
 // 新增：iOS 安装引导（Safari 不支持 beforeinstallprompt，只能通过“分享 -> 添加到主屏幕”）
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
 // iOS 已安装判断：iOS Safari 安装后 (navigator as any).standalone 为 true；其他浏览器可用 display-mode 媒体查询
-const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true
+const isStandalone =
+  window.matchMedia('(display-mode: standalone)').matches ||
+  (navigator as any).standalone === true
 const showIosInstallGuide = ref(false)
 
 // 计算属性
@@ -521,7 +692,9 @@ const notifications = ref<NotificationItem[]>([])
  * 是否存在未读通知
  * 基于通知列表中 read 字段计算
  */
-const hasUnreadNotifications = computed(() => notifications.value.some(n => !n.read))
+const hasUnreadNotifications = computed(() =>
+  notifications.value.some(n => !n.read)
+)
 
 // PWA 事件处理
 function handleBeforeInstallPrompt(event: Event) {
@@ -587,7 +760,7 @@ const fetchNotifications = async () => {
       // 低库存
       medicineApi.getLowStockMedicines(),
       // 获取药品列表，前端计算 180 天内到期并生成通知；同时稳健解析后端响应的双层 data 结构，增加关键日志。
-      medicineApi.getMedicines({ page_size: 1000, ordering: 'expiry_date' })
+      medicineApi.getMedicines({ page_size: 1000, ordering: 'expiry_date' }),
     ])
 
     const now = new Date().toISOString()
@@ -653,18 +826,23 @@ const fetchNotifications = async () => {
         const list = pickArray(r.value) as Reminder[]
         console.log('🔔 [通知] 今日提醒数:', list.length)
         list.forEach((rem, idx) => {
-          const time = rem.reminder_time?.slice(0,5) || ''
+          const time = rem.reminder_time?.slice(0, 5) || ''
           // medicine 可能是 number（ID）或对象，这里进行类型收窄，避免 TS 报错
           // 优先使用后端派生字段 medicine_name，其次再从对象中读取 name
-          const medName = rem.medicine_name
-            || (typeof rem.medicine === 'object' && rem.medicine ? (rem.medicine.name ?? '药品') : '药品')
-          const dose = rem.dosage ? `${rem.dosage}${unitLabel(rem.dosage_unit)}` : ''
+          const medName =
+            rem.medicine_name ||
+            (typeof rem.medicine === 'object' && rem.medicine
+              ? (rem.medicine.name ?? '药品')
+              : '药品')
+          const dose = rem.dosage
+            ? `${rem.dosage}${unitLabel(rem.dosage_unit)}`
+            : ''
           tmp.push({
             id: `rem-${rem.id}-${idx}`,
             title: '用药提醒',
             message: `今天${time} 服用 ${medName}${dose ? ` · ${dose}` : ''}`,
             read: false,
-            createdAt: rem.last_reminded_at || now
+            createdAt: rem.last_reminded_at || now,
           })
         })
       }
@@ -682,7 +860,7 @@ const fetchNotifications = async () => {
             title: '药品过期提醒',
             message: `${m.name} 已过期${m.expiry_date ? `（有效期：${formatDateYMD(m.expiry_date)}）` : ''}`,
             read: false,
-            createdAt: now
+            createdAt: now,
           })
         })
       }
@@ -700,7 +878,7 @@ const fetchNotifications = async () => {
             title: '库存不足提醒',
             message: `${m.name} 库存不足（当前${m.quantity}），请尽快补购`,
             read: false,
-            createdAt: now
+            createdAt: now,
           })
         })
       }
@@ -725,14 +903,17 @@ const fetchNotifications = async () => {
             title: '6个月有效期提醒',
             message: `${m.name} ${suffix}`,
             read: false,
-            createdAt: now
+            createdAt: now,
           })
         })
       }
     }
 
     // 按时间/重要性可排序（简单按创建时间降序）
-    notifications.value = tmp.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    notifications.value = tmp.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
   } catch (e) {
     // 失败不打断UI，仅记录
     console.error('[通知] 获取失败:', e)
@@ -796,7 +977,7 @@ const formatTime = (timeString: string) => {
   const time = new Date(timeString)
   const now = new Date()
   const diff = now.getTime() - time.getTime()
-  
+
   if (diff < 60000) {
     return '刚刚'
   } else if (diff < 3600000) {
@@ -823,42 +1004,64 @@ const handleClickOutside = (event: Event) => {
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   // 监听 PWA 事件
-  window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt as EventListener)
+  window.addEventListener(
+    'beforeinstallprompt',
+    handleBeforeInstallPrompt as EventListener
+  )
   window.addEventListener('appinstalled', handleAppInstalled as EventListener)
-  window.addEventListener('pwa:need-refresh', handlePwaNeedRefresh as EventListener)
+  window.addEventListener(
+    'pwa:need-refresh',
+    handlePwaNeedRefresh as EventListener
+  )
 
   // iOS：在未安装且使用 Safari 的情况下，显示安装引导横幅
-  const isSafariOnIOS = isIOS && /Safari/i.test(navigator.userAgent) && !/CriOS|FxiOS|EdgiOS/i.test(navigator.userAgent)
+  const isSafariOnIOS =
+    isIOS &&
+    /Safari/i.test(navigator.userAgent) &&
+    !/CriOS|FxiOS|EdgiOS/i.test(navigator.userAgent)
   if (isSafariOnIOS && !isStandalone) {
     console.log('[PWA][iOS] Safari 检测到未安装，显示引导横幅')
     showIosInstallGuide.value = true
   }
 
   // 初始化语音播报轮询（根据开关即时启动/停止）
-  watch([isSpeechEnabled, isSpeechSupported, isAuthenticated], ([enabled, supported, authed]) => {
-    // 停止已有定时器
-    if (speechReminderTimer) {
-      clearInterval(speechReminderTimer)
-      speechReminderTimer = null
-    }
-    if (enabled && supported && authed) {
-      console.log('[Speech] 启动到期提醒自动播报轮询（每60秒）')
-      // 立即执行一次，然后每60秒轮询
-      pollSpeakDueReminders()
-      speechReminderTimer = setInterval(() => {
+  watch(
+    [isSpeechEnabled, isSpeechSupported, isAuthenticated],
+    ([enabled, supported, authed]) => {
+      // 停止已有定时器
+      if (speechReminderTimer) {
+        clearInterval(speechReminderTimer)
+        speechReminderTimer = null
+      }
+      if (enabled && supported && authed) {
+        console.log('[Speech] 启动到期提醒自动播报轮询（每60秒）')
+        // 立即执行一次，然后每60秒轮询
         pollSpeakDueReminders()
-      }, 60000)
-    } else {
-      console.log('[Speech] 自动播报未启用或不支持，轮询已停止')
-    }
-  }, { immediate: true })
+        speechReminderTimer = setInterval(() => {
+          pollSpeakDueReminders()
+        }, 60000)
+      } else {
+        console.log('[Speech] 自动播报未启用或不支持，轮询已停止')
+      }
+    },
+    { immediate: true }
+  )
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
-  window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt as EventListener)
-  window.removeEventListener('appinstalled', handleAppInstalled as EventListener)
-  window.removeEventListener('pwa:need-refresh', handlePwaNeedRefresh as EventListener)
+  window.removeEventListener(
+    'beforeinstallprompt',
+    handleBeforeInstallPrompt as EventListener
+  )
+  window.removeEventListener(
+    'appinstalled',
+    handleAppInstalled as EventListener
+  )
+  window.removeEventListener(
+    'pwa:need-refresh',
+    handlePwaNeedRefresh as EventListener
+  )
   if (speechReminderTimer) {
     clearInterval(speechReminderTimer)
     speechReminderTimer = null

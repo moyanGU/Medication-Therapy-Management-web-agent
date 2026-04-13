@@ -1,15 +1,13 @@
-import os
-import time
 import logging
+import os
 import sys
+import time
 
-from django.core.management.base import BaseCommand
 from django.conf import settings
-
+from django.core.management.base import BaseCommand
 from django_redis import get_redis_connection
 
 from apps.reminders.scheduler import ReminderScheduler
-
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +16,12 @@ logger = logging.getLogger(__name__)
 if not logger.handlers:
     logger.propagate = False  # avoid duplicate logs if parent handlers exist
     _handler = logging.StreamHandler(sys.stdout)
-    _handler.setFormatter(logging.Formatter(
-        fmt="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    ))
+    _handler.setFormatter(
+        logging.Formatter(
+            fmt="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
     logger.addHandler(_handler)
     logger.setLevel(logging.INFO)
 

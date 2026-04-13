@@ -15,7 +15,12 @@ export type PlanType =
 export type PlanPriority = 'low' | 'medium' | 'high' | 'urgent'
 
 // 计划状态（与后端 STATUS_CHOICES 对齐）
-export type PlanStatus = 'draft' | 'active' | 'paused' | 'completed' | 'cancelled'
+export type PlanStatus =
+  | 'draft'
+  | 'active'
+  | 'paused'
+  | 'completed'
+  | 'cancelled'
 
 // 分页信息（与后端 StandardResultsSetPagination.get_paginated_response 对齐）
 export interface Pagination {
@@ -86,6 +91,15 @@ export interface MedicationPlan {
 
 // 查询参数（与 ViewSet 的 filterset/search/order 对齐）
 export interface PlanListParams {
+  [key: string]:
+    | string
+    | number
+    | boolean
+    | null
+    | undefined
+    | string[]
+    | number[]
+    | boolean[]
   page?: number
   page_size?: number
   search?: string

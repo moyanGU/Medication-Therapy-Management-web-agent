@@ -1,15 +1,20 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+  <div
+    class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100"
+  >
     <div class="max-w-md w-full space-y-8 p-8 bg-white rounded-xl shadow-lg">
       <div class="text-center">
         <h2 class="text-3xl font-bold text-gray-900 mb-2">用户登录</h2>
         <p class="text-gray-600">请输入您的账号信息</p>
       </div>
-      
+
       <form @submit.prevent="handleLogin" class="space-y-6">
         <!-- 用户名/手机号输入 -->
         <div>
-          <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
+          <label
+            for="username"
+            class="block text-sm font-medium text-gray-700 mb-2"
+          >
             用户名或手机号
           </label>
           <input
@@ -21,12 +26,17 @@
             :class="{ 'border-red-500': errors.username }"
             placeholder="请输入用户名或手机号"
           />
-          <p v-if="errors.username" class="mt-1 text-sm text-red-600">{{ errors.username }}</p>
+          <p v-if="errors.username" class="mt-1 text-sm text-red-600">
+            {{ errors.username }}
+          </p>
         </div>
-        
+
         <!-- 密码输入 -->
         <div>
-          <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
+          <label
+            for="password"
+            class="block text-sm font-medium text-gray-700 mb-2"
+          >
             密码
           </label>
           <div class="relative">
@@ -48,9 +58,11 @@
               <span v-else class="text-gray-400">🙈</span>
             </button>
           </div>
-          <p v-if="errors.password" class="mt-1 text-sm text-red-600">{{ errors.password }}</p>
+          <p v-if="errors.password" class="mt-1 text-sm text-red-600">
+            {{ errors.password }}
+          </p>
         </div>
-        
+
         <!-- 记住我 -->
         <div class="flex items-center justify-between">
           <div class="flex items-center">
@@ -71,9 +83,12 @@
             忘记密码？
           </router-link>
         </div>
-        
+
         <!-- 错误信息显示 -->
-        <div v-if="errorMessage" class="bg-red-50 border border-red-200 rounded-md p-3">
+        <div
+          v-if="errorMessage"
+          class="bg-red-50 border border-red-200 rounded-md p-3"
+        >
           <div class="flex">
             <span class="text-red-400">⚠️</span>
             <div class="ml-3">
@@ -81,17 +96,19 @@
             </div>
           </div>
         </div>
-        
+
         <!-- 登录按钮 -->
         <button
           type="submit"
           :disabled="loading"
           class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <span v-if="loading" class="animate-spin -ml-1 mr-3 text-white">⏳</span>
+          <span v-if="loading" class="animate-spin -ml-1 mr-3 text-white"
+            >⏳</span
+          >
           {{ loading ? '登录中...' : '登录' }}
         </button>
-        
+
         <!-- 注册链接 -->
         <div class="text-center">
           <span class="text-sm text-gray-600">还没有账号？</span>
@@ -112,6 +129,21 @@ import { ref, reactive, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
+const isDebug = import.meta.env.MODE !== 'production'
+const log = (...args: any[]) => {
+  if (isDebug) console.log(...args)
+}
+const warn = (...args: any[]) => {
+  if (isDebug) console.warn(...args)
+}
+const logError = (message: string, error?: unknown) => {
+  if (isDebug && error !== undefined) {
+    console.error(message, error)
+    return
+  }
+  console.error(message)
+}
+
 const router = useRouter()
 const authStore = useAuthStore()
 
@@ -119,13 +151,13 @@ const authStore = useAuthStore()
 const form = reactive({
   username: '',
   password: '',
-  remember: false
+  remember: false,
 })
 
 // 表单验证错误
 const errors = reactive({
   username: '',
-  password: ''
+  password: '',
 })
 
 // 组件状态
@@ -141,9 +173,9 @@ const validateForm = (): boolean => {
   errors.username = ''
   errors.password = ''
   errorMessage.value = ''
-  
+
   let isValid = true
-  
+
   // 验证用户名
   if (!form.username.trim()) {
     errors.username = '请输入用户名或手机号'
@@ -152,7 +184,7 @@ const validateForm = (): boolean => {
     errors.username = '用户名至少2个字符'
     isValid = false
   }
-  
+
   // 验证密码
   if (!form.password) {
     errors.password = '请输入密码'
@@ -161,7 +193,7 @@ const validateForm = (): boolean => {
     errors.password = '密码至少6个字符'
     isValid = false
   }
-  
+
   return isValid
 }
 
@@ -169,64 +201,62 @@ const validateForm = (): boolean => {
  * 处理登录
  */
 const handleLogin = async () => {
-  console.log('开始登录流程', form)
-  
+  log('开始登录流程', form)
+
   if (!validateForm()) {
-    console.log('表单验证失败')
+    log('表单验证失败')
     return
   }
-  
+
   loading.value = true
   errorMessage.value = ''
-  
+
   try {
-    console.log('调用登录API')
+    log('调用登录API')
     const result = await authStore.login({
       username: form.username.trim(),
-      password: form.password
+      password: form.password,
     })
 
     if (!result?.success) {
-      console.warn('登录失败（业务失败）：', result?.message)
+      warn('登录失败（业务失败）：', result?.message)
       errorMessage.value = result?.message || '用户名或密码错误'
       return
     }
-    
-    console.log('登录成功，准备跳转')
-    
+
+    log('登录成功，准备跳转')
+
     // 等待Vue响应式系统更新完成
     await nextTick()
-    
+
     // 再次等待确保认证状态更新
     await new Promise(resolve => setTimeout(resolve, 100))
-    
+
     // 获取重定向路径
     const redirect = router.currentRoute.value.query.redirect as string
     const targetPath = redirect || '/dashboard'
-    
-    console.log('目标路径:', targetPath)
-    console.log('当前认证状态:', authStore.isAuthenticated)
-    console.log('accessToken:', authStore.accessToken)
-    
+
+    log('目标路径:', targetPath)
+    log('当前认证状态:', authStore.isAuthenticated)
+    log('accessToken:', authStore.accessToken)
+
     // 如果认证状态仍然是false，强制刷新页面
     if (!authStore.isAuthenticated) {
-      console.log('认证状态异常，强制刷新页面')
+      log('认证状态异常，强制刷新页面')
       window.location.href = targetPath
       return
     }
-    
+
     // 使用replace而不是push，避免在历史记录中留下登录页
     await router.replace(targetPath)
-    
-    console.log('路由跳转完成')
-    
+
+    log('路由跳转完成')
   } catch (error: any) {
-    console.error('登录失败（异常）:', error)
-    console.log('登录功能又出问题了')
-    
+    logError('登录失败（异常）', error)
+
     // ApiClient 抛出的为 ApiError，不含 axios 的 error.response 结构
     errorMessage.value = error?.message || '登录失败，请稍后重试'
-    console.error('登录失败:', errorMessage.value)
+    logError('登录失败', errorMessage.value)
   } finally {
     loading.value = false
   }

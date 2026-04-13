@@ -29,14 +29,28 @@ html.senior body {
 
 /* 提升常见灰度文本的对比度（在 senior 模式下） */
 /* 在高对比度下，统一提升到接近黑色 */
-html.senior .text-gray-400 { color: #111111 !important; }
-html.senior .text-gray-500 { color: #111111 !important; }
-html.senior .text-gray-600 { color: #000000 !important; }
-html.senior .text-gray-700 { color: #000000 !important; }
+html.senior .text-gray-400 {
+  color: #111111 !important;
+}
+html.senior .text-gray-500 {
+  color: #111111 !important;
+}
+html.senior .text-gray-600 {
+  color: #000000 !important;
+}
+html.senior .text-gray-700 {
+  color: #000000 !important;
+}
 
 /* 链接的默认颜色与 hover 下划线，保证可辨识性 */
-html.senior a { color: #0a58ff; text-decoration: underline; }
-html.senior a:hover { color: #0638a8; text-decoration-thickness: 2px; }
+html.senior a {
+  color: #0a58ff;
+  text-decoration: underline;
+}
+html.senior a:hover {
+  color: #0638a8;
+  text-decoration-thickness: 2px;
+}
 
 /* 点击目标最小尺寸与更明显的焦点样式 */
 html.senior button,
@@ -53,8 +67,10 @@ html.senior :focus {
   outline-offset: 3px;
 }
 
-/* 提升图标尺寸（依赖于 em 使其随根字体一起增大） */
-html.senior svg {
+/* 提升可交互控件中的图标尺寸（避免影响自定义插画/大型 SVG） */
+html.senior button svg,
+html.senior a svg,
+html.senior [role='button'] svg {
   width: 1.25em;
   height: 1.25em;
 }
@@ -64,3 +80,7 @@ html.senior button {
   padding: 0.75rem 1rem; /* 约等于 py-3 px-4 */
 }
 
+html.senior .ai-assistant-container .robot-avatar {
+  width: 6rem !important;
+  height: 8.4rem !important;
+}

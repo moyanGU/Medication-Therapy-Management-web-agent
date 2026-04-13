@@ -51,7 +51,7 @@ function Parse-DotEnv([string]$Path) {
       $val = $Matches['val'].Trim()
       # 去除包裹引号
       if ($val.StartsWith('"') -and $val.EndsWith('"')) { $val = $val.Trim('"') }
-      if ($val.StartsWith('\'') -and $val.EndsWith('\'')) { $val = $val.Trim('\'') }
+      if ($val.StartsWith("'") -and $val.EndsWith("'")) { $val = $val.Trim("'") }
       $result[$key] = $val
     }
   }

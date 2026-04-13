@@ -42,11 +42,13 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-600">总记录数</p>
-              <p class="text-2xl font-bold text-gray-900">{{ statistics.total_records }}</p>
+              <p class="text-2xl font-bold text-gray-900">
+                {{ statistics.total_records }}
+              </p>
             </div>
           </div>
         </div>
-        
+
         <div class="bg-white rounded-lg shadow p-6">
           <div class="flex items-center">
             <div class="p-3 rounded-full bg-green-100 text-green-600">
@@ -54,11 +56,13 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-600">依从性</p>
-              <p class="text-2xl font-bold text-gray-900">{{ statistics.adherence_rate }}%</p>
+              <p class="text-2xl font-bold text-gray-900">
+                {{ statistics.adherence_rate }}%
+              </p>
             </div>
           </div>
         </div>
-        
+
         <div class="bg-white rounded-lg shadow p-6">
           <div class="flex items-center">
             <div class="p-3 rounded-full bg-orange-100 text-orange-600">
@@ -66,7 +70,9 @@
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-600">当日用药种类</p>
-              <p class="text-2xl font-bold text-gray-900">{{ todayMedicineTypes }}</p>
+              <p class="text-2xl font-bold text-gray-900">
+                {{ todayMedicineTypes }}
+              </p>
             </div>
           </div>
         </div>
@@ -77,7 +83,9 @@
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
           <!-- 搜索框：保留输入防抖，不新增多余按钮 -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">搜索</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2"
+              >搜索</label
+            >
             <input
               v-model="searchQuery"
               type="text"
@@ -87,25 +95,33 @@
               @keyup.enter="applyFilters"
             />
           </div>
-          
+
           <!-- 状态筛选 -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">状态</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2"
+              >状态</label
+            >
             <select
               v-model="filters.status"
               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               @change="applyFilters"
             >
               <option value="">全部状态</option>
-              <option v-for="option in statusOptions" :key="option.value" :value="option.value">
+              <option
+                v-for="option in statusOptions"
+                :key="option.value"
+                :value="option.value"
+              >
                 {{ option.label }}
               </option>
             </select>
           </div>
-          
+
           <!-- 日期范围 -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">开始日期</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2"
+              >开始日期</label
+            >
             <input
               v-model="filters.start_date"
               type="date"
@@ -113,9 +129,11 @@
               @change="applyFilters"
             />
           </div>
-          
+
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">结束日期</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2"
+              >结束日期</label
+            >
             <input
               v-model="filters.end_date"
               type="date"
@@ -124,7 +142,7 @@
             />
           </div>
         </div>
-        
+
         <div class="flex justify-end mt-4">
           <button
             @click="applyFilters"
@@ -144,10 +162,12 @@
       <!-- 记录列表 -->
       <div class="bg-white rounded-lg shadow overflow-hidden">
         <div v-if="loading" class="p-8 text-center">
-          <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div
+            class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"
+          ></div>
           <p class="mt-2 text-gray-600">加载中...</p>
         </div>
-        
+
         <div v-else-if="error" class="p-8 text-center text-red-600">
           <i class="fas fa-exclamation-triangle text-4xl mb-4"></i>
           <p>{{ error }}</p>
@@ -158,7 +178,7 @@
             重试
           </button>
         </div>
-        
+
         <div v-else-if="!hasRecords" class="p-8 text-center text-gray-500">
           <i class="fas fa-clipboard-list text-4xl mb-4"></i>
           <p>暂无用药记录</p>
@@ -169,11 +189,13 @@
             添加第一条记录
           </button>
         </div>
-        
+
         <div v-else>
           <!-- 表格头部 -->
           <div class="bg-gray-50 px-6 py-3 border-b border-gray-200">
-            <div class="grid grid-cols-7 gap-4 text-sm font-medium text-gray-700">
+            <div
+              class="grid grid-cols-7 gap-4 text-sm font-medium text-gray-700"
+            >
               <div>药品信息</div>
               <div>服药时间</div>
               <div>数量</div>
@@ -183,7 +205,7 @@
               <div>操作</div>
             </div>
           </div>
-          
+
           <!-- 记录列表 -->
           <div class="divide-y divide-gray-200">
             <div
@@ -194,35 +216,62 @@
               <div class="grid grid-cols-7 gap-4 items-center">
                 <!-- 药品信息 -->
                 <div class="flex items-center">
-                  <img
-                    :src="record.medicine_image || '/placeholder-medicine.png'"
-                    :alt="record.medicine_name"
-                    class="w-10 h-10 rounded-lg object-cover mr-3"
-                  />
+                  <div
+                    class="w-10 h-10 rounded-lg bg-gray-100 mr-3 flex items-center justify-center text-gray-400 flex-shrink-0"
+                    aria-hidden="true"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="w-5 h-5"
+                    >
+                      <path d="M10 2h4" />
+                      <path d="M12 14v8" />
+                      <path d="M8 10a4 4 0 0 1 8 0v2a4 4 0 0 1-8 0z" />
+                    </svg>
+                  </div>
                   <div>
-                    <p class="font-medium text-gray-900">{{ record.medicine_name }}</p>
-                    <p class="text-sm text-gray-500">{{ record.medicine_specification }}</p>
+                    <p class="font-medium text-gray-900">
+                      {{ record.medicine_name }}
+                    </p>
+                    <p class="text-sm text-gray-500">
+                      {{ record.medicine_specification }}
+                    </p>
                   </div>
                 </div>
-                
+
                 <!-- 服药时间 -->
                 <div>
-                  <p class="text-sm text-gray-900">{{ formatDateTime(record.taken_at) }}</p>
-                  <p class="text-xs text-gray-500">{{ formatTimeAgo(record.taken_at) }}</p>
+                  <p class="text-sm text-gray-900">
+                    {{ formatDateTime(record.taken_at) }}
+                  </p>
+                  <p class="text-xs text-gray-500">
+                    {{ formatTimeAgo(record.taken_at) }}
+                  </p>
                 </div>
-                
+
                 <!-- 数量 -->
                 <div>
-                  <span class="text-sm text-gray-900">{{ record.quantity_taken }}</span>
+                  <span class="text-sm text-gray-900">{{
+                    record.quantity_taken
+                  }}</span>
                 </div>
-                
+
                 <!-- 状态 -->
                 <div>
-                  <span :class="getStatusClass(record.status)" class="px-2 py-1 rounded-full text-xs font-medium">
+                  <span
+                    :class="getStatusClass(record.status)"
+                    class="px-2 py-1 rounded-full text-xs font-medium"
+                  >
                     {{ getStatusLabel(record.status) }}
                   </span>
                 </div>
-                
+
                 <!-- 依从性 -->
                 <div>
                   <div class="flex items-center">
@@ -233,26 +282,40 @@
                         :style="{ width: `${record.adherence_score ?? 0}%` }"
                       ></div>
                     </div>
-                    <span class="text-xs text-gray-600">{{ record.adherence_score ?? 0 }}%</span>
+                    <span class="text-xs text-gray-600"
+                      >{{ record.adherence_score ?? 0 }}%</span
+                    >
                   </div>
                 </div>
-                
+
                 <!-- 效果评分（修复：支持0分显示，使用星级+数值） -->
                 <div>
-                  <div v-if="record.effectiveness_score !== undefined && record.effectiveness_score !== null" class="flex items-center">
+                  <div
+                    v-if="
+                      record.effectiveness_score !== undefined &&
+                      record.effectiveness_score !== null
+                    "
+                    class="flex items-center"
+                  >
                     <div class="flex text-yellow-400">
                       <i
                         v-for="i in 10"
                         :key="i"
-                        :class="i <= (Number(record.effectiveness_score) || 0) ? 'fas fa-star' : 'far fa-star'"
+                        :class="
+                          i <= (Number(record.effectiveness_score) || 0)
+                            ? 'fas fa-star'
+                            : 'far fa-star'
+                        "
                         class="text-xs"
                       ></i>
                     </div>
-                    <span class="ml-1 text-xs text-gray-600">{{ record.effectiveness_score }}</span>
+                    <span class="ml-1 text-xs text-gray-600">{{
+                      record.effectiveness_score
+                    }}</span>
                   </div>
                   <span v-else class="text-xs text-gray-400">未评分</span>
                 </div>
-                
+
                 <!-- 操作（包含删除按钮） -->
                 <div class="flex space-x-2">
                   <button
@@ -293,20 +356,21 @@
           >
             上一页
           </button>
-          
+
           <button
             v-for="page in getPageNumbers()"
             :key="page"
             @click="changePage(page as number)"
             :class="{
               'bg-blue-600 text-white': page === pagination.page,
-              'bg-white text-gray-700 hover:bg-gray-50': page !== pagination.page
+              'bg-white text-gray-700 hover:bg-gray-50':
+                page !== pagination.page,
             }"
             class="px-3 py-2 text-sm border border-gray-300 rounded-md"
           >
             {{ page }}
           </button>
-          
+
           <button
             @click="changePage(pagination.page + 1)"
             :disabled="pagination.page >= pagination.totalPages"
@@ -336,10 +400,15 @@
     />
 
     <!-- 删除确认模态框（单条） -->
-    <div v-if="showDeleteModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div
+      v-if="showDeleteModal"
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+    >
       <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
         <h3 class="text-lg font-medium text-gray-900 mb-4">确认删除</h3>
-        <p class="text-gray-600 mb-6">确定要删除这条用药记录吗？此操作无法撤销。</p>
+        <p class="text-gray-600 mb-6">
+          确定要删除这条用药记录吗？此操作无法撤销。
+        </p>
         <div class="flex justify-end space-x-3">
           <button
             @click="showDeleteModal = false"
@@ -372,6 +441,7 @@ import RecordDetail from '../components/RecordDetail.vue'
 import { debounce } from 'lodash-es'
 import { recordApi } from '../api/record'
 import { storeToRefs } from 'pinia'
+import { isRequestCancelledError } from '@/utils/api'
 
 // 当日用药种类（修复：从独立查询计算）
 // 保留唯一定义，删除重复定义
@@ -383,7 +453,7 @@ const searchQuery = ref('')
 const filters = ref({
   status: '',
   start_date: '',
-  end_date: ''
+  end_date: '',
 })
 
 // 模态框状态
@@ -416,7 +486,7 @@ const formatDateTime = (dateTime: string) => {
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit'
+      second: '2-digit',
     })
     return result
   } catch (e) {
@@ -478,7 +548,7 @@ const getStatusClass = (status: string) => {
     taken: 'bg-green-100 text-green-800',
     missed: 'bg-red-100 text-red-800',
     delayed: 'bg-yellow-100 text-yellow-800',
-    partial: 'bg-orange-100 text-orange-800'
+    partial: 'bg-orange-100 text-orange-800',
   }
   return map[status] || 'bg-gray-100 text-gray-800'
 }
@@ -501,9 +571,15 @@ const authStore = useAuthStore()
 // 状态管理
 const recordStore = useRecordStore()
 // 使用 storeToRefs 保持状态/计算属性的响应性，避免直接解构导致的响应性丢失
-const { records, statistics, loading, error, pagination, hasRecords } = storeToRefs(recordStore)
+const { records, statistics, loading, error, pagination, hasRecords } =
+  storeToRefs(recordStore)
 // 方法可直接从 store 解构
-const { fetchRecords, fetchStatistics, deleteRecord, exportRecords: storeExportRecords } = recordStore
+const {
+  fetchRecords,
+  fetchStatistics,
+  deleteRecord,
+  exportRecords: storeExportRecords,
+} = recordStore
 
 // 为模板暴露导出函数别名，避免 @click="exportRecords" 未定义导致的类型错误
 const exportRecords = async () => {
@@ -524,28 +600,31 @@ const loadRecords = async () => {
   console.log('🔵 [RecordsPage] loadRecords被调用')
   const params: any = {
     page: pagination.value.page,
-    page_size: pagination.value.pageSize
+    page_size: pagination.value.pageSize,
   }
-  
+
   if (searchQuery.value) {
     params.search = searchQuery.value
   }
-  
+
   if (filters.value.status) {
     params.status = filters.value.status
   }
-  
+
   if (filters.value.start_date) {
     params.start_date = filters.value.start_date
   }
-  
+
   if (filters.value.end_date) {
     params.end_date = filters.value.end_date
   }
-  
+
   console.log('🔵 [RecordsPage] 调用fetchRecords，参数:', params)
   await fetchRecords(params)
-  console.log('🔵 [RecordsPage] fetchRecords完成，当前records数量:', records.value?.length ?? 0)
+  console.log(
+    '🔵 [RecordsPage] fetchRecords完成，当前records数量:',
+    records.value?.length ?? 0
+  )
 }
 
 // 应用筛选
@@ -560,7 +639,7 @@ const resetFilters = () => {
   filters.value = {
     status: '',
     start_date: '',
-    end_date: ''
+    end_date: '',
   }
   pagination.value.page = 1
   loadRecords()
@@ -578,7 +657,7 @@ const getPageNumbers = () => {
   const pages: Array<number | string> = []
   const total = pagination.value.totalPages
   const current = pagination.value.page
-  
+
   if (total <= 7) {
     for (let i = 1; i <= total; i++) {
       pages.push(i)
@@ -602,7 +681,7 @@ const getPageNumbers = () => {
       pages.push('...', total)
     }
   }
-  
+
   return pages
 }
 
@@ -640,28 +719,30 @@ const handleDelete = async () => {
 }
 
 // 批量删除（当前筛选结果，最多1000条）
-const confirmDeleteAll = () => {
+const _confirmDeleteAll = () => {
   showDeleteAllModal.value = true
 }
 
 /**
  * 批量删除（分页抓取，page_size=100，直到取完）
  */
-const handleDeleteAll = async () => {
+const _handleDeleteAll = async () => {
   try {
     console.log('🔵 [RecordsPage] 开始批量删除（分页抓取）')
 
     const baseParams: any = {}
     if (searchQuery.value) baseParams.search = searchQuery.value
     if (filters.value.status) baseParams.status = filters.value.status
-    if (filters.value.start_date) baseParams.start_date = filters.value.start_date
+    if (filters.value.start_date)
+      baseParams.start_date = filters.value.start_date
     if (filters.value.end_date) baseParams.end_date = filters.value.end_date
 
     const pageSize = 100
     let page = 1
     let totalDeleted = 0
 
-    while (true) {
+    let hasMore = true
+    while (hasMore) {
       const params = { ...baseParams, page, page_size: pageSize }
       console.log('🔵 [RecordsPage] 批量删除抓取页:', params)
       const resp = await recordApi.getRecords(params)
@@ -688,8 +769,8 @@ const handleDeleteAll = async () => {
         }
       }
 
-      if (results.length < pageSize) break
-      page += 1
+      hasMore = results.length === pageSize
+      if (hasMore) page += 1
     }
 
     showDeleteAllModal.value = false
@@ -708,15 +789,26 @@ const handleDeleteAll = async () => {
 const updateTodayMedicineTypes = async () => {
   try {
     const today = new Date().toISOString().split('T')[0]
-    console.log('🔵 [RecordsPage] 调用后端聚合接口获取当日用药种类，日期:', today)
+    console.log(
+      '🔵 [RecordsPage] 调用后端聚合接口获取当日用药种类，日期:',
+      today
+    )
     const resp = await recordApi.getTodayMedicineTypes(today)
 
     const data: any = resp?.data ?? {}
-    const count = (data?.data?.count ?? data?.count ?? 0) as number
+    const count = (data?.count ?? 0) as number
 
     todayMedicineTypesCount.value = Number(count) || 0
-    console.log('🟢 [RecordsPage] 当日用药种类（来自后端聚合）:', todayMedicineTypesCount.value)
+    console.log(
+      '🟢 [RecordsPage] 当日用药种类（来自后端聚合）:',
+      todayMedicineTypesCount.value
+    )
   } catch (e) {
+    if (isRequestCancelledError(e)) {
+      console.log('🟡 [RecordsPage] 获取当日用药种类请求已取消')
+      return
+    }
+
     console.error('🔴 [RecordsPage] 获取当日用药种类失败:', e)
     todayMedicineTypesCount.value = 0
   }
@@ -729,16 +821,19 @@ const dataLoaded = ref(false)
 watchEffect(async () => {
   console.log('🔵 [RecordsPage] watchEffect触发，检查认证状态')
   console.log('🔵 [RecordsPage] isAuthenticated:', authStore.isAuthenticated)
-  console.log('🔵 [RecordsPage] localStorage access_token:', !!localStorage.getItem('access_token'))
+  console.log(
+    '🔵 [RecordsPage] localStorage access_token:',
+    !!localStorage.getItem('access_token')
+  )
   console.log('🔵 [RecordsPage] accessToken value:', authStore.accessToken)
-  
+
   // 如果用户未登录，重定向到登录页面
   if (authStore.isAuthenticated === false) {
     console.log('🔴 [RecordsPage] 用户未登录，重定向到登录页面')
     router.push('/login')
     return
   }
-  
+
   // 如果用户已登录且数据未加载，则加载数据
   if (authStore.isAuthenticated === true && !dataLoaded.value) {
     console.log('🔵 [RecordsPage] 用户已登录，开始加载数据')
@@ -749,6 +844,11 @@ watchEffect(async () => {
       await updateTodayMedicineTypes()
       console.log('🔵 [RecordsPage] 数据加载完成')
     } catch (error) {
+      if (isRequestCancelledError(error)) {
+        console.log('🟡 [RecordsPage] 初始化数据请求已取消')
+        return
+      }
+
       console.error('🔴 [RecordsPage] 数据加载失败:', error)
       // 不重置dataLoaded状态，避免无限循环
       // 用户可以通过刷新页面或重新登录来重试

@@ -10,6 +10,7 @@ django-redis==5.4.0
 # 认证和安全
 djangorestframework-simplejwt==5.3.0
 django-cors-headers==4.3.1
+drf-spectacular==0.27.2
 
 # 工具库
 python-dotenv==1.0.0

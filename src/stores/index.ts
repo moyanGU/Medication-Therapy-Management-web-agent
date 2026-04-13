@@ -12,6 +12,6 @@ export { useMedicineStore } from './medicine'
 export { useRecordStore } from './record'
 
 // 类型定义
-export type { } from './user'
-export type { } from './medicine'
-export type { } from './record'
+export type {} from './user'
+export type {} from './medicine'
+export type {} from './record'

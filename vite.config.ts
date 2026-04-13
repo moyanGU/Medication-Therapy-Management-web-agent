@@ -46,6 +46,7 @@ export default defineConfig({
       filename: 'sw.ts',
       devOptions: {
         enabled: true,
+        type: 'module',
       },
       includeAssets: ['favicon.svg', 'icons/app-icon.svg', 'icons/maskable-icon.svg', 'icons/app-icon-192.png', 'icons/app-icon-512.png'],
       manifest: {

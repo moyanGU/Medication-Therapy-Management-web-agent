@@ -13,13 +13,13 @@
             :disabled="loading"
             class="btn-secondary"
           >
-            <RefreshCw :class="{ 'animate-spin': loading }" class="w-4 h-4 mr-2" />
+            <RefreshCw
+              :class="{ 'animate-spin': loading }"
+              class="w-4 h-4 mr-2"
+            />
             刷新
           </button>
-          <router-link
-            to="/reminders/create"
-            class="btn-primary"
-          >
+          <router-link to="/reminders/create" class="btn-primary">
             <Plus class="w-4 h-4 mr-2" />
             新建提醒
           </router-link>
@@ -27,10 +27,36 @@
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
-        <button class="cta-btn primary" @click="subscribePush" :disabled="subscribing">{{ subscribing ? '订阅中...' : '订阅通知' }}</button>
-        <button class="cta-btn warn" @click="unsubscribePush">取消订阅</button>
-        <button class="cta-btn outline" @click="testLocal">测试通知</button>
+        <button
+          :class="[
+            'cta-btn',
+            pushSubscribed ? 'success' : 'primary',
+          ]"
+          @click="subscribePush"
+          :disabled="subscribing || pushBusy"
+        >
+          {{
+            subscribing || pushBusy
+              ? '处理中...'
+              : pushSubscribed
+                ? '订阅成功'
+                : '订阅提醒'
+          }}
+        </button>
+        <button
+          :class="['cta-btn', pushSubscribed ? 'secondary' : 'muted']"
+          @click="unsubscribePush"
+          :disabled="pushBusy"
+        >
+          {{ pushBusy ? '处理中...' : pushSubscribed ? '取消订阅' : '已取消' }}
+        </button>
+        <button class="cta-btn outline" @click="testLocal" :disabled="pushBusy">
+          {{ pushBusy ? '处理中...' : '测试通知' }}
+        </button>
       </div>
+      <p class="mt-2 text-sm" :class="pushHintType === 'success' ? 'text-green-600' : 'text-gray-600'">
+        {{ pushHintText }}
+      </p>
     </div>
 
     <!-- 统计卡片 -->
@@ -42,11 +68,13 @@
           </div>
           <div class="ml-4">
             <p class="text-sm font-medium text-gray-600">总提醒数</p>
-            <p class="text-2xl font-bold text-gray-900">{{ stats.total_reminders ?? 0 }}</p>
+            <p class="text-2xl font-bold text-gray-900">
+              {{ stats.total_reminders ?? 0 }}
+            </p>
           </div>
         </div>
       </div>
-      
+
       <div class="stats-card">
         <div class="flex items-center">
           <div class="stats-icon bg-green-100 text-green-600">
@@ -54,11 +82,13 @@
           </div>
           <div class="ml-4">
             <p class="text-sm font-medium text-gray-600">活跃提醒</p>
-            <p class="text-2xl font-bold text-gray-900">{{ stats.active_reminders ?? 0 }}</p>
+            <p class="text-2xl font-bold text-gray-900">
+              {{ stats.active_reminders ?? 0 }}
+            </p>
           </div>
         </div>
       </div>
-      
+
       <div class="stats-card">
         <div class="flex items-center">
           <div class="stats-icon bg-yellow-100 text-yellow-600">
@@ -66,11 +96,13 @@
           </div>
           <div class="ml-4">
             <p class="text-sm font-medium text-gray-600">今日提醒</p>
-            <p class="text-2xl font-bold text-gray-900">{{ stats.today_reminders ?? 0 }}</p>
+            <p class="text-2xl font-bold text-gray-900">
+              {{ stats.today_reminders ?? 0 }}
+            </p>
           </div>
         </div>
       </div>
-      
+
       <div class="stats-card">
         <div class="flex items-center">
           <div class="stats-icon bg-purple-100 text-purple-600">
@@ -78,7 +110,9 @@
           </div>
           <div class="ml-4">
             <p class="text-sm font-medium text-gray-600">响应率</p>
-            <p class="text-2xl font-bold text-gray-900">{{ stats.response_rate ?? 0 }}%</p>
+            <p class="text-2xl font-bold text-gray-900">
+              {{ stats.response_rate ?? 0 }}%
+            </p>
           </div>
         </div>
       </div>
@@ -89,7 +123,9 @@
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <!-- 搜索框 -->
         <div class="relative">
-          <Search class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Search
+            class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
+          />
           <input
             v-model="searchQuery"
             type="text"
@@ -98,14 +134,14 @@
             @input="debouncedSearch"
           />
         </div>
-        
+
         <!-- 状态筛选 -->
         <select v-model="filters.is_active" class="input-field">
           <option value="">全部状态</option>
           <option :value="true">活跃</option>
           <option :value="false">停用</option>
         </select>
-        
+
         <!-- 频率筛选 -->
         <select v-model="filters.frequency" class="input-field">
           <option value="">全部频率</option>
@@ -117,7 +153,7 @@
           <option value="every_other_day">隔日</option>
           <option value="custom">自定义</option>
         </select>
-        
+
         <!-- 用药时机筛选 -->
         <select v-model="filters.meal_timing" class="input-field">
           <option value="">全部时机</option>
@@ -130,24 +166,18 @@
           <option value="anytime">任意时间</option>
         </select>
       </div>
-      
+
       <!-- 快速筛选标签 -->
       <div class="flex flex-wrap gap-2 mb-4">
         <button
           @click="setQuickFilter('all')"
-          :class="[
-            'quick-filter-btn',
-            quickFilter === 'all' ? 'active' : ''
-          ]"
+          :class="['quick-filter-btn', quickFilter === 'all' ? 'active' : '']"
         >
           全部
         </button>
         <button
           @click="setQuickFilter('today')"
-          :class="[
-            'quick-filter-btn',
-            quickFilter === 'today' ? 'active' : ''
-          ]"
+          :class="['quick-filter-btn', quickFilter === 'today' ? 'active' : '']"
         >
           今日提醒
         </button>
@@ -155,7 +185,7 @@
           @click="setQuickFilter('active')"
           :class="[
             'quick-filter-btn',
-            quickFilter === 'active' ? 'active' : ''
+            quickFilter === 'active' ? 'active' : '',
           ]"
         >
           活跃提醒
@@ -164,13 +194,13 @@
           @click="setQuickFilter('expired')"
           :class="[
             'quick-filter-btn',
-            quickFilter === 'expired' ? 'active' : ''
+            quickFilter === 'expired' ? 'active' : '',
           ]"
         >
           已过期
         </button>
       </div>
-      
+
       <!-- 批量操作 -->
       <div v-if="selectedReminders.length > 0" class="batch-actions">
         <div class="flex items-center justify-between">
@@ -190,10 +220,7 @@
             >
               批量停用
             </button>
-            <button
-              @click="batchDelete"
-              class="btn-sm btn-danger"
-            >
+            <button @click="batchDelete" class="btn-sm btn-danger">
               批量删除
             </button>
           </div>
@@ -205,11 +232,13 @@
     <div class="reminder-list">
       <div v-if="loading && reminders.length === 0" class="loading-state">
         <div class="flex items-center justify-center py-12">
-          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div
+            class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"
+          ></div>
           <span class="ml-3 text-gray-600">加载中...</span>
         </div>
       </div>
-      
+
       <div v-else-if="reminders.length === 0" class="empty-state">
         <div class="text-center py-12">
           <Bell class="mx-auto h-12 w-12 text-gray-400" />
@@ -218,17 +247,14 @@
             {{ hasFilters ? '没有找到符合条件的提醒' : '您还没有创建任何提醒' }}
           </p>
           <div class="mt-6">
-            <router-link
-              to="/reminders/create"
-              class="btn-primary"
-            >
+            <router-link to="/reminders/create" class="btn-primary">
               <Plus class="w-4 h-4 mr-2" />
               创建第一个提醒
             </router-link>
           </div>
         </div>
       </div>
-      
+
       <div v-else class="space-y-4">
         <div
           v-for="reminder in reminders"
@@ -237,7 +263,7 @@
           :class="{
             'opacity-60': !reminder.is_active,
             'border-l-4 border-l-green-500': reminder.is_active,
-            'border-l-4 border-l-gray-300': !reminder.is_active
+            'border-l-4 border-l-gray-300': !reminder.is_active,
           }"
         >
           <div class="flex items-start justify-between">
@@ -249,7 +275,7 @@
                 v-model="selectedReminders"
                 class="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              
+
               <!-- 提醒信息 -->
               <div class="flex-1">
                 <div class="flex items-center space-x-2">
@@ -259,21 +285,22 @@
                   <span
                     :class="[
                       'status-badge',
-                      reminder.is_active ? 'status-active' : 'status-inactive'
+                      reminder.is_active ? 'status-active' : 'status-inactive',
                     ]"
                   >
                     {{ reminder.is_active ? '活跃' : '停用' }}
                   </span>
                 </div>
-                
+
                 <div class="mt-1 space-y-1">
                   <p class="text-sm text-gray-600">
                     <Pill class="inline w-4 h-4 mr-1" />
                     {{ reminder.medicine_name }}
                     <span class="mx-2">•</span>
-                    {{ reminder.dosage }} {{ getDosageUnitLabel(reminder.dosage_unit) }}
+                    {{ reminder.dosage }}
+                    {{ getDosageUnitLabel(reminder.dosage_unit) }}
                   </p>
-                  
+
                   <p class="text-sm text-gray-600">
                     <Clock class="inline w-4 h-4 mr-1" />
                     {{ formatTime(reminder.reminder_time) }}
@@ -282,47 +309,58 @@
                     <span class="mx-2">•</span>
                     {{ getMealTimingLabel(reminder.meal_timing) }}
                   </p>
-                  
-                  <div class="flex items-center space-x-4 text-sm text-gray-500">
+
+                  <div
+                    class="flex items-center space-x-4 text-sm text-gray-500"
+                  >
                     <span>
                       <Calendar class="inline w-4 h-4 mr-1" />
                       {{ formatDate(reminder.start_date) }}
-                      {{ reminder.end_date ? ` - ${formatDate(reminder.end_date)}` : ' 起' }}
+                      {{
+                        reminder.end_date
+                          ? ` - ${formatDate(reminder.end_date)}`
+                          : ' 起'
+                      }}
                     </span>
-                    
-                    <span>
-                      提醒 {{ reminder.reminder_count }} 次
-                    </span>
-                    
-                    <span>
-                      响应 {{ reminder.response_count }} 次
-                    </span>
-                    
+
+                    <span> 提醒 {{ reminder.reminder_count }} 次 </span>
+
+                    <span> 响应 {{ reminder.response_count }} 次 </span>
+
                     <span v-if="reminder.reminder_count > 0">
-                      响应率 {{ Math.round((reminder.response_count / reminder.reminder_count) * 100) }}%
+                      响应率
+                      {{
+                        Math.round(
+                          (reminder.response_count / reminder.reminder_count) *
+                            100
+                        )
+                      }}%
                     </span>
                   </div>
-                  
-                  <div v-if="reminder.special_instructions" class="text-sm text-gray-600">
+
+                  <div
+                    v-if="reminder.special_instructions"
+                    class="text-sm text-gray-600"
+                  >
                     <FileText class="inline w-4 h-4 mr-1" />
                     {{ reminder.special_instructions }}
                   </div>
                 </div>
               </div>
             </div>
-            
+
             <!-- 操作按钮 -->
             <div class="flex items-center space-x-2">
               <button
                 @click="toggleReminderActive(reminder)"
                 :class="[
                   'btn-sm',
-                  reminder.is_active ? 'btn-secondary' : 'btn-primary'
+                  reminder.is_active ? 'btn-secondary' : 'btn-primary',
                 ]"
               >
                 {{ reminder.is_active ? '停用' : '启用' }}
               </button>
-              
+
               <router-link
                 :to="`/reminders/${reminder.id}/edit`"
                 class="btn-sm btn-secondary"
@@ -330,7 +368,7 @@
                 <Edit class="w-4 h-4 mr-1" />
                 编辑
               </router-link>
-              
+
               <button
                 @click="deleteReminder(reminder)"
                 class="btn-sm btn-danger"
@@ -345,14 +383,19 @@
     </div>
 
     <!-- 分页 -->
-    <div v-if="pagination.total > pagination.page_size" class="pagination-wrapper">
+    <div
+      v-if="pagination.total > pagination.page_size"
+      class="pagination-wrapper"
+    >
       <div class="flex items-center justify-between">
         <div class="text-sm text-gray-700">
-          显示第 {{ (pagination.page - 1) * pagination.page_size + 1 }} - 
-          {{ Math.min(pagination.page * pagination.page_size, pagination.total) }} 条，
-          共 {{ pagination.total }} 条记录
+          显示第 {{ (pagination.page - 1) * pagination.page_size + 1 }} -
+          {{
+            Math.min(pagination.page * pagination.page_size, pagination.total)
+          }}
+          条， 共 {{ pagination.total }} 条记录
         </div>
-        
+
         <div class="flex items-center space-x-2">
           <button
             @click="changePage(pagination.page - 1)"
@@ -362,7 +405,7 @@
             <ChevronLeft class="w-4 h-4" />
             上一页
           </button>
-          
+
           <div class="flex items-center space-x-1">
             <button
               v-for="page in getPageNumbers()"
@@ -370,16 +413,19 @@
               @click="changePage(page)"
               :class="[
                 'btn-sm',
-                page === pagination.page ? 'btn-primary' : 'btn-secondary'
+                page === pagination.page ? 'btn-primary' : 'btn-secondary',
               ]"
             >
               {{ page }}
             </button>
           </div>
-          
+
           <button
             @click="changePage(pagination.page + 1)"
-            :disabled="pagination.page >= Math.ceil(pagination.total / pagination.page_size)"
+            :disabled="
+              pagination.page >=
+              Math.ceil(pagination.total / pagination.page_size)
+            "
             class="btn-sm btn-secondary"
           >
             下一页
@@ -393,14 +439,17 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import { useReminderStore } from '@/stores/reminder'
 import { debounce } from 'lodash-es'
 import { notificationService } from '@/services/notificationService'
-import { subscribeAndSave, unsubscribeAndCleanup, showLocalTestNotification } from '@/services/pushService'
-import { useTheme } from '@/composables/useTheme'
-import { useSpeech } from '@/composables/useSpeech'
+import { isRequestCancelledError } from '@/utils/api'
+import {
+  subscribeAndSave,
+  unsubscribeAndCleanup,
+  showLocalTestNotification,
+  getCurrentSubscription,
+} from '@/services/pushService'
 import {
   Bell,
   CheckCircle,
@@ -415,7 +464,7 @@ import {
   Edit,
   Trash2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
 } from 'lucide-vue-next'
 
 // 接口类型定义
@@ -455,8 +504,7 @@ interface Pagination {
 }
 
 // 响应式数据
-const router = useRouter()
-const { success, error, warning, info } = useToast()
+const { success, error } = useToast()
 
 const reminderStore = useReminderStore()
 const loading = computed(() => reminderStore.loading)
@@ -465,7 +513,7 @@ const stats = ref<Stats>({
   total_reminders: 0,
   active_reminders: 0,
   today_reminders: 0,
-  response_rate: 0
+  response_rate: 0,
 })
 
 const searchQuery = ref('')
@@ -475,25 +523,31 @@ const selectedReminders = ref<number[]>([])
 const filters = reactive({
   is_active: '',
   frequency: '',
-  meal_timing: ''
+  meal_timing: '',
 })
 
 const pagination = reactive<Pagination>({
   page: 1,
   page_size: 10,
   total: 0,
-  total_pages: 0
+  total_pages: 0,
 })
 
 const subscribing = ref(false)
+const pushBusy = ref(false)
+const pushSubscribed = ref(false)
+const pushHintType = ref<'default' | 'success'>('default')
+const pushHintText = ref('未订阅')
 
 // 计算属性
 const hasFilters = computed(() => {
-  return searchQuery.value || 
-         filters.is_active !== '' || 
-         filters.frequency || 
-         filters.meal_timing ||
-         quickFilter.value !== 'all'
+  return (
+    searchQuery.value ||
+    filters.is_active !== '' ||
+    filters.frequency ||
+    filters.meal_timing ||
+    quickFilter.value !== 'all'
+  )
 })
 
 // 防抖搜索
@@ -533,6 +587,11 @@ const fetchReminders = async () => {
     pagination.total_pages = pg.totalPages
     console.log('[Reminders] 列表分页(store):', pg)
   } catch (err: any) {
+    if (isRequestCancelledError(err)) {
+      console.log('获取提醒列表请求已取消')
+      return
+    }
+
     console.error('获取提醒列表失败(store):', err)
     error(err?.message || '获取提醒列表失败')
   }
@@ -550,10 +609,15 @@ const fetchStats = async () => {
       total_reminders: 0,
       active_reminders: 0,
       today_reminders: 0,
-      response_rate: 0
+      response_rate: 0,
     }
     console.log('[Reminders] 统计数据(store):', data)
   } catch (err: any) {
+    if (isRequestCancelledError(err)) {
+      console.log('获取统计数据请求已取消')
+      return
+    }
+
     console.error('获取统计数据失败(store):', err)
     error(err?.message || '获取统计数据失败')
   }
@@ -579,28 +643,26 @@ const getPageNumbers = () => {
   const pages = [] as number[]
   const start = Math.max(1, pagination.page - 2)
   const end = Math.min(pagination.total_pages, pagination.page + 2)
-  
+
   for (let i = start; i <= end; i++) {
     pages.push(i)
   }
-  
+
   return pages
 }
 
 /**
  * 启用/停用提醒
  */
-/**
- * 启用/停用提醒（使用 Store）
- * 函数级注释：调用 store.toggleReminderActive，避免直接操作 API；
- * 成功后由 store 更新列表状态并刷新统计。
- */
 const toggleReminderActive = async (reminder: Reminder) => {
   try {
     console.log('[Reminders] 切换提醒状态(store):', reminder.id)
-    await reminderStore.toggleReminderActive(reminder.id)
-    success(`提醒已${reminder.is_active ? '启用' : '停用'}`)
-    fetchStats()
+    const result = await reminderStore.toggleReminderActive(reminder.id)
+    if (result) {
+      success(`提醒已${result.is_active ? '启用' : '停用'}`)
+      await fetchReminders()
+      await fetchStats()
+    }
   } catch (err: any) {
     console.error('切换提醒状态失败(store):', err)
     error(err?.message || '操作失败')
@@ -615,7 +677,10 @@ const toggleReminderActive = async (reminder: Reminder) => {
  * 函数级注释：调用 store.deleteReminder 并刷新列表与统计。
  */
 const deleteReminder = async (reminder: Reminder) => {
-  if (!confirm(`确定要删除提醒"${reminder.title || reminder.medicine_name}"吗？`)) return
+  if (
+    !confirm(`确定要删除提醒"${reminder.title || reminder.medicine_name}"吗？`)
+  )
+    return
   try {
     await reminderStore.deleteReminder(reminder.id)
     success('提醒已删除')
@@ -639,9 +704,11 @@ const batchToggleActive = async (isActive: boolean) => {
   try {
     await reminderStore.batchToggleReminders({
       reminder_ids: selectedReminders.value,
-      is_active: isActive
+      is_active: isActive,
     })
-    success(`已${isActive ? '启用' : '停用'} ${selectedReminders.value.length} 个提醒`)
+    success(
+      `已${isActive ? '启用' : '停用'} ${selectedReminders.value.length} 个提醒`
+    )
     selectedReminders.value = []
     fetchReminders()
     fetchStats()
@@ -660,10 +727,11 @@ const batchToggleActive = async (isActive: boolean) => {
  */
 const batchDelete = async () => {
   if (selectedReminders.value.length === 0) return
-  if (!confirm(`确定要删除选中的 ${selectedReminders.value.length} 个提醒吗？`)) return
+  if (!confirm(`确定要删除选中的 ${selectedReminders.value.length} 个提醒吗？`))
+    return
   try {
     await reminderStore.batchDeleteReminders({
-      reminder_ids: selectedReminders.value
+      reminder_ids: selectedReminders.value,
     })
     success(`已删除 ${selectedReminders.value.length} 个提醒`)
     selectedReminders.value = []
@@ -680,15 +748,53 @@ const batchDelete = async () => {
  */
 const subscribePush = async () => {
   try {
+    pushBusy.value = true
+    if (!notificationService.isSupported()) {
+      pushHintType.value = 'default'
+      pushHintText.value = '当前浏览器不支持通知订阅'
+      error('当前浏览器不支持通知订阅')
+      return
+    }
+    const insecureContext =
+      typeof window !== 'undefined' &&
+      !window.isSecureContext &&
+      !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)
+    if (insecureContext) {
+      pushHintType.value = 'default'
+      pushHintText.value = '当前站点不是 HTTPS 或 localhost，浏览器会禁用通知订阅'
+      error('当前站点不是 HTTPS 或 localhost，浏览器会禁用通知订阅')
+      return
+    }
+    const currentPermission = notificationService.getPermission()
+    if (currentPermission === 'denied') {
+      pushHintType.value = 'default'
+      pushHintText.value = '通知权限已被禁用，请点击地址栏左侧图标重新允许通知'
+      error('通知权限已被禁用，请点击地址栏左侧图标重新允许通知')
+      return
+    }
     const perm = await notificationService.requestPermission()
-    if (perm.permission !== 'granted') return
+    if (perm.permission !== 'granted') {
+      pushHintType.value = 'default'
+      pushHintText.value =
+        perm.permission === 'default'
+          ? '通知权限尚未授权，请允许通知后重试'
+          : '通知权限未开启，无法订阅'
+      error(pushHintText.value)
+      return
+    }
     subscribing.value = true
     await subscribeAndSave()
-    success('订阅已启用')
+    pushSubscribed.value = true
+    pushHintType.value = 'success'
+    pushHintText.value = '订阅成功'
+    success('订阅成功')
   } catch (e: any) {
+    pushHintType.value = 'default'
+    pushHintText.value = '订阅失败'
     error(e?.message || '订阅失败')
   } finally {
     subscribing.value = false
+    pushBusy.value = false
   }
 }
 
@@ -697,10 +803,25 @@ const subscribePush = async () => {
  */
 const unsubscribePush = async () => {
   try {
-    await unsubscribeAndCleanup()
-    success('订阅已取消')
+    pushBusy.value = true
+    const unsubscribed = await unsubscribeAndCleanup()
+    if (unsubscribed) {
+      pushSubscribed.value = false
+      pushHintType.value = 'default'
+      pushHintText.value = '已取消'
+      success('已取消')
+      return
+    }
+    pushSubscribed.value = false
+    pushHintType.value = 'default'
+    pushHintText.value = '当前未订阅'
+    success('当前未订阅')
   } catch (e: any) {
+    pushHintType.value = 'default'
+    pushHintText.value = '取消失败'
     error(e?.message || '取消订阅失败')
+  } finally {
+    pushBusy.value = false
   }
 }
 
@@ -709,19 +830,42 @@ const unsubscribePush = async () => {
  */
 const testLocal = async () => {
   try {
-    await showLocalTestNotification()
-    success('已触发本地测试通知')
+    pushBusy.value = true
+    const result = await showLocalTestNotification()
+    pushHintType.value = 'success'
+    pushHintText.value =
+      result.channel === 'sw'
+        ? '测试通知已触发（Service Worker）'
+        : '测试通知已触发（页面通知）'
+    success('测试通知已触发')
   } catch (e: any) {
+    pushHintType.value = 'default'
+    pushHintText.value = '测试通知失败'
     error(e?.message || '测试通知失败')
+  } finally {
+    pushBusy.value = false
   }
 }
 
+const syncPushSubscriptionState = async () => {
+  try {
+    const sub = await getCurrentSubscription()
+    pushSubscribed.value = !!sub
+    pushHintType.value = sub ? 'success' : 'default'
+    pushHintText.value = sub ? '订阅成功' : '未订阅'
+  } catch (e) {
+    console.error('[Reminders] 同步推送订阅状态失败:', e)
+    pushSubscribed.value = false
+    pushHintType.value = 'default'
+    pushHintText.value = '未订阅'
+  }
+}
 
 // 格式化函数
 const formatTime = (time: string) => {
   return new Date(`2000-01-01T${time}`).toLocaleTimeString('zh-CN', {
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   })
 }
 
@@ -737,7 +881,7 @@ const getFrequencyLabel = (frequency: string) => {
     four_times_daily: '每日四次',
     weekly: '每周',
     every_other_day: '隔日',
-    custom: '自定义'
+    custom: '自定义',
   }
   return labels[frequency] || frequency
 }
@@ -750,7 +894,7 @@ const getMealTimingLabel = (timing: string) => {
     before_breakfast: '早饭前',
     after_dinner: '晚饭后',
     before_bed: '睡前',
-    anytime: '任意时间'
+    anytime: '任意时间',
   }
   return labels[timing] || timing
 }
@@ -764,21 +908,25 @@ const getDosageUnitLabel = (unit: string) => {
     g: '克',
     drop: '滴',
     spray: '喷',
-    patch: '贴'
+    patch: '贴',
   }
   return labels[unit] || unit
 }
 
 // 监听器
-watch([() => filters.is_active, () => filters.frequency, () => filters.meal_timing], () => {
-  pagination.page = 1
-  fetchReminders()
-})
+watch(
+  [() => filters.is_active, () => filters.frequency, () => filters.meal_timing],
+  () => {
+    pagination.page = 1
+    fetchReminders()
+  }
+)
 
 // 生命周期
 onMounted(() => {
   fetchReminders()
   fetchStats()
+  syncPushSubscriptionState()
 })
 </script>
 
@@ -877,9 +1025,38 @@ onMounted(() => {
   font-size: 16px;
   font-weight: 600;
 }
-.cta-btn.primary { background:#2563eb; color:#fff; }
-.cta-btn.warn { background:#ef4444; color:#fff; }
-.cta-btn.outline { background:#fff; border:1px solid #cbd5e1; color:#374151; }
-.cta-btn.toggle { background:#f8fafc; border:1px solid #e2e8f0; color:#111827; }
-.cta-btn:disabled { opacity:.6; cursor:not-allowed; }
+.cta-btn.primary {
+  background: #2563eb;
+  color: #fff;
+}
+.cta-btn.warn {
+  background: #ef4444;
+  color: #fff;
+}
+.cta-btn.success {
+  background: #16a34a;
+  color: #fff;
+}
+.cta-btn.secondary {
+  background: #64748b;
+  color: #fff;
+}
+.cta-btn.muted {
+  background: #e5e7eb;
+  color: #6b7280;
+}
+.cta-btn.outline {
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  color: #374151;
+}
+.cta-btn.toggle {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #111827;
+}
+.cta-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 </style>

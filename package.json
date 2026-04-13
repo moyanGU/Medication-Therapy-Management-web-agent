@@ -14,8 +14,9 @@
     "lint": "eslint \"src/**/*.{ts,vue}\" --max-warnings=0"
   },
   "dependencies": {
+    "@page-agent/core": "^1.6.2",
+    "@page-agent/page-controller": "^1.6.2",
     "@heroicons/vue": "^2.1.5",
-    "axios": "^1.11.0",
     "chart.js": "^4.5.0",
     "clsx": "^2.1.1",
     "html2canvas": "^1.4.1",
@@ -51,6 +52,7 @@
     "vite-plugin-pwa": "^1.0.3",
     "vite-plugin-trae-solo-badge": "^1.0.0",
     "vue-tsc": "^1.8.27",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "zod": "^4.3.5"
   }
 }

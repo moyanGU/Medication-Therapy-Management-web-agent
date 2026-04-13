@@ -1,11 +1,19 @@
 <template>
-  <div v-if="visible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+  <div
+    v-if="visible"
+    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+  >
+    <div
+      class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
+    >
       <div class="flex justify-between items-center mb-6">
         <h2 class="text-xl font-bold text-gray-900">
           {{ isEdit ? '编辑病历' : '添加病历' }}
         </h2>
-        <button @click="$emit('close')" class="text-gray-400 hover:text-gray-600">
+        <button
+          @click="$emit('close')"
+          class="text-gray-400 hover:text-gray-600"
+        >
           <X class="w-6 h-6" />
         </button>
       </div>
@@ -110,7 +118,7 @@
             :disabled="isSubmitting"
             class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:opacity-50"
           >
-            {{ isSubmitting ? '保存中...' : (isEdit ? '更新' : '保存') }}
+            {{ isSubmitting ? '保存中...' : isEdit ? '更新' : '保存' }}
           </button>
         </div>
       </form>
@@ -123,7 +131,13 @@ import { ref, reactive, computed, watch } from 'vue'
 import { useMedicalRecordStore } from '@/stores/medicalRecords'
 import { toast } from 'vue-sonner'
 import { X } from 'lucide-vue-next'
-import type { MedicalRecordCreate, MedicalRecordUpdate, UrgencyLevel, MedicalStatus, VisitType } from '@/types/medicalRecord'
+import type {
+  MedicalRecordCreate,
+  MedicalRecordUpdate,
+  UrgencyLevel,
+  MedicalStatus,
+  VisitType,
+} from '@/types/medicalRecord'
 
 interface Props {
   visible: boolean
@@ -132,7 +146,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   visible: false,
-  record: null
+  record: null,
 })
 
 const emit = defineEmits<{
@@ -158,57 +172,64 @@ const form = reactive<MedicalRecordCreate>({
   total_cost: 0,
   satisfaction_score: 5,
   status: 'completed' as MedicalStatus,
-  notes: ''
+  notes: '',
 })
 
 const isEdit = computed(() => !!props.record)
 
-watch(() => props.record, (newRecord) => {
-  if (newRecord) {
-    // 兼容历史字段命名（doctor_name/urgency_level/treatment_plan）到新字段（doctor/urgency/treatment）
-    const mappedUrgency: UrgencyLevel =
-      (newRecord.urgency as UrgencyLevel) ||
-      (newRecord.urgency_level === 'low' ? 'routine'
-        : newRecord.urgency_level === 'medium' ? 'urgent'
-        : newRecord.urgency_level === 'high' ? 'critical'
-        : (newRecord.urgency_level as UrgencyLevel)) ||
-      'routine'
+watch(
+  () => props.record,
+  newRecord => {
+    if (newRecord) {
+      // 兼容历史字段命名（doctor_name/urgency_level/treatment_plan）到新字段（doctor/urgency/treatment）
+      const mappedUrgency: UrgencyLevel =
+        (newRecord.urgency as UrgencyLevel) ||
+        (newRecord.urgency_level === 'low'
+          ? 'routine'
+          : newRecord.urgency_level === 'medium'
+            ? 'urgent'
+            : newRecord.urgency_level === 'high'
+              ? 'critical'
+              : (newRecord.urgency_level as UrgencyLevel)) ||
+        'routine'
 
-    Object.assign(form, {
-      hospital: newRecord.hospital || '',
-      department: newRecord.department || '',
-      doctor: newRecord.doctor ?? newRecord.doctor_name ?? '',
-      visit_date: newRecord.visit_date || '',
-      visit_type: (newRecord.visit_type as VisitType) || 'outpatient',
-      urgency: mappedUrgency,
-      chief_complaint: newRecord.chief_complaint || '',
-      present_illness: newRecord.present_illness || '',
-      diagnosis: newRecord.diagnosis || '',
-      treatment: newRecord.treatment ?? newRecord.treatment_plan ?? '',
-      total_cost: newRecord.total_cost ?? 0,
-      satisfaction_score: newRecord.satisfaction_score ?? 5,
-      status: (newRecord.status as MedicalStatus) || 'completed',
-      notes: newRecord.notes || ''
-    })
-  } else {
-    Object.assign(form, {
-      hospital: '',
-      department: '',
-      doctor: '',
-      visit_date: '',
-      visit_type: 'outpatient' as VisitType,
-      urgency: 'routine' as UrgencyLevel,
-      chief_complaint: '',
-      present_illness: '',
-      diagnosis: '',
-      treatment: '',
-      total_cost: 0,
-      satisfaction_score: 5,
-      status: 'completed' as MedicalStatus,
-      notes: ''
-    })
-  }
-}, { immediate: true })
+      Object.assign(form, {
+        hospital: newRecord.hospital || '',
+        department: newRecord.department || '',
+        doctor: newRecord.doctor ?? newRecord.doctor_name ?? '',
+        visit_date: newRecord.visit_date || '',
+        visit_type: (newRecord.visit_type as VisitType) || 'outpatient',
+        urgency: mappedUrgency,
+        chief_complaint: newRecord.chief_complaint || '',
+        present_illness: newRecord.present_illness || '',
+        diagnosis: newRecord.diagnosis || '',
+        treatment: newRecord.treatment ?? newRecord.treatment_plan ?? '',
+        total_cost: newRecord.total_cost ?? 0,
+        satisfaction_score: newRecord.satisfaction_score ?? 5,
+        status: (newRecord.status as MedicalStatus) || 'completed',
+        notes: newRecord.notes || '',
+      })
+    } else {
+      Object.assign(form, {
+        hospital: '',
+        department: '',
+        doctor: '',
+        visit_date: '',
+        visit_type: 'outpatient' as VisitType,
+        urgency: 'routine' as UrgencyLevel,
+        chief_complaint: '',
+        present_illness: '',
+        diagnosis: '',
+        treatment: '',
+        total_cost: 0,
+        satisfaction_score: 5,
+        status: 'completed' as MedicalStatus,
+        notes: '',
+      })
+    }
+  },
+  { immediate: true }
+)
 
 const handleSubmit = async () => {
   try {

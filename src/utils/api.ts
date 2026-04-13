@@ -4,45 +4,511 @@
  */
 
 // API响应接口
-interface ApiResponse<T = any> {
+interface ApiResponse<T = unknown> {
   success: boolean
   data: T
   message?: string
   code?: number
 }
 
+type QueryValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | string[]
+  | number[]
+  | boolean[]
+type QueryParams = Record<string, QueryValue>
+type ApiErrorKind =
+  | 'validation'
+  | 'auth'
+  | 'cancelled'
+  | 'timeout'
+  | 'network'
+  | 'server'
+  | 'client'
+  | 'unknown'
+type TraceSeverity = 'info' | 'warn' | 'error'
+type SubmissionTraceContext = {
+  scope: string
+  submitSessionId: string
+  startedAt: number
+  startedAtIso: string
+}
+
 // 请求配置接口
-interface RequestConfig extends RequestInit {
+interface RequestOptions extends RequestInit {
   timeout?: number
   skipAuth?: boolean
   skipErrorHandler?: boolean
-  params?: Record<string, any>
   isFormData?: boolean
+  requestId?: string
   // 明确指定响应解析方式：不指定时按 Content-Type 自动解析
   responseType?: 'json' | 'text' | 'blob'
+  _retry401?: boolean
 }
+type RequestConfig = RequestOptions & { params?: QueryParams }
 
 // 错误类型
 class ApiError extends Error {
   code: number
   response?: Response
-  
-  constructor(message: string, code: number, response?: Response) {
+  details?: any
+
+  constructor(
+    message: string,
+    code: number,
+    response?: Response,
+    details?: any
+  ) {
     super(message)
     this.name = 'ApiError'
     this.code = code
     this.response = response
+    this.details = details
   }
+}
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+  return Object.prototype.toString.call(value) === '[object Object]'
+}
+
+const collectValidationMessages = (value: unknown): string[] => {
+  if (typeof value === 'string') {
+    const normalized = value.trim()
+    return normalized ? [normalized] : []
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return [String(value)]
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap(item => collectValidationMessages(item))
+  }
+
+  if (isPlainObject(value)) {
+    return Object.values(value).flatMap(item => collectValidationMessages(item))
+  }
+
+  return []
+}
+
+const pickValidationSource = (value: unknown): Record<string, unknown> | null => {
+  if (!isPlainObject(value)) {
+    return null
+  }
+
+  const filteredEntries = Object.entries(value).filter(([key]) => {
+    return !['success', 'message', 'error_code', 'status_code'].includes(key)
+  })
+
+  if (filteredEntries.length === 0) {
+    return null
+  }
+
+  return Object.fromEntries(filteredEntries)
+}
+
+export const extractApiValidationErrors = (
+  error: unknown
+): Record<string, string> => {
+  const details = (error as { details?: unknown } | undefined)?.details
+  const candidates = [
+    pickValidationSource((details as { data?: unknown } | undefined)?.data),
+    pickValidationSource((details as { errors?: unknown } | undefined)?.errors),
+    pickValidationSource(details),
+  ].filter((candidate): candidate is Record<string, unknown> => candidate !== null)
+
+  for (const candidate of candidates) {
+    const entries = Object.entries(candidate)
+      .map(([field, value]) => {
+        const messages = collectValidationMessages(value)
+        if (messages.length === 0) {
+          return null
+        }
+        return [field, messages[0]] as const
+      })
+      .filter((entry): entry is readonly [string, string] => entry !== null)
+
+    if (entries.length > 0) {
+      return Object.fromEntries(entries)
+    }
+  }
+
+  const message = typeof (error as { message?: unknown } | undefined)?.message === 'string'
+    ? (error as { message: string }).message.trim()
+    : ''
+  const fieldMessageMatch = message.match(/^([A-Za-z0-9_]+):\s*(.+)$/)
+
+  if (fieldMessageMatch) {
+    return {
+      [fieldMessageMatch[1]]: fieldMessageMatch[2].trim(),
+    }
+  }
+
+  if (message) {
+    return {
+      non_field_errors: message,
+    }
+  }
+
+  return {}
+}
+
+const getApiErrorStatus = (error: unknown) => {
+  const responseStatus = (error as { response?: { status?: unknown } } | undefined)?.response
+    ?.status
+  if (typeof responseStatus === 'number') {
+    return responseStatus
+  }
+
+  const code = (error as { code?: unknown } | undefined)?.code
+  return typeof code === 'number' ? code : null
+}
+
+const getApiErrorName = (error: unknown) => {
+  const name = (error as { name?: unknown } | undefined)?.name
+  return typeof name === 'string' && name.trim() ? name : 'UnknownError'
+}
+
+const getApiErrorMessage = (error: unknown) => {
+  const message = (error as { message?: unknown } | undefined)?.message
+  return typeof message === 'string' && message.trim()
+    ? message.trim()
+    : '未知错误'
+}
+
+const getApiErrorCode = (error: unknown) => {
+  const details = (error as { details?: { error_code?: unknown } } | undefined)?.details
+  const detailCode = details?.error_code
+  if (typeof detailCode === 'string' && detailCode.trim()) {
+    return detailCode.trim()
+  }
+
+  const code = (error as { code?: unknown } | undefined)?.code
+  if (typeof code === 'string' && code.trim()) {
+    return code.trim()
+  }
+  if (typeof code === 'number') {
+    return String(code)
+  }
+
+  return null
+}
+
+const isAbortLikeError = (error: unknown) => {
+  const errorName = getApiErrorName(error)
+  const message = getApiErrorMessage(error).toLowerCase()
+
+  if (errorName === 'AbortError') {
+    return true
+  }
+
+  return (
+    message.includes('err_aborted') ||
+    message.includes('request aborted') ||
+    message.includes('request was aborted') ||
+    message.includes('signal is aborted') ||
+    message.includes('user aborted') ||
+    message.includes('aborted')
+  )
+}
+
+const getApiErrorDetailsSnapshot = (error: unknown) => {
+  const details = (error as { details?: unknown } | undefined)?.details
+  if (!details) {
+    return null
+  }
+
+  if (Array.isArray(details)) {
+    return details.slice(0, 5)
+  }
+
+  if (isPlainObject(details)) {
+    return details
+  }
+
+  return String(details)
+}
+
+const getValidationErrorFieldList = (validationErrors: Record<string, string>) => {
+  return Object.keys(validationErrors).sort()
+}
+
+const classifyApiError = (error: unknown): ApiErrorKind => {
+  const errorName = getApiErrorName(error)
+  const status = getApiErrorStatus(error)
+  const validationErrors = extractApiValidationErrors(error)
+
+  if (Object.keys(validationErrors).length > 0) {
+    return 'validation'
+  }
+
+  if (status === 499 || isAbortLikeError(error)) {
+    return 'cancelled'
+  }
+
+  if (status === 401 || status === 403) {
+    return 'auth'
+  }
+
+  if (errorName === 'AbortError') {
+    return 'timeout'
+  }
+
+  if (errorName === 'TypeError' && getApiErrorMessage(error).includes('fetch')) {
+    return 'network'
+  }
+
+  if (typeof status === 'number' && status >= 500) {
+    return 'server'
+  }
+
+  if (typeof status === 'number' && status >= 400) {
+    return 'client'
+  }
+
+  return 'unknown'
+}
+
+const buildApiErrorFingerprint = (error: unknown) => {
+  const validationErrors = extractApiValidationErrors(error)
+  const fieldSignature = getValidationErrorFieldList(validationErrors).join('|') || 'none'
+  return [
+    classifyApiError(error),
+    getApiErrorStatus(error) ?? 'no-status',
+    getApiErrorCode(error) ?? 'no-code',
+    getApiErrorMessage(error),
+    fieldSignature,
+  ].join('::')
+}
+
+const RECENT_API_ERROR_LIMIT = 100
+const REQUEST_ID_HEADER = 'X-Request-ID'
+const recentApiErrorTimeline = new Map<
+  string,
+  { count: number; firstSeenAt: string; lastSeenAt: string }
+>()
+
+export const createTraceId = (prefix = 'trace') => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${prefix}-${crypto.randomUUID()}`
+  }
+
+  return `${prefix}-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 10)}`
+}
+
+export const createSubmissionTraceContext = (
+  scope: string
+): SubmissionTraceContext => {
+  const startedAt = Date.now()
+  return {
+    scope,
+    submitSessionId: createTraceId('submit'),
+    startedAt,
+    startedAtIso: new Date(startedAt).toISOString(),
+  }
+}
+
+export const logClientTraceEvent = (
+  scope: string,
+  event: string,
+  context: Record<string, unknown> = {},
+  options: {
+    traceContext?: SubmissionTraceContext
+    severity?: TraceSeverity
+  } = {}
+) => {
+  const timestamp = new Date().toISOString()
+  const { traceContext, severity = 'info' } = options
+  const logger =
+    severity === 'error'
+      ? console.error
+      : severity === 'warn'
+        ? console.warn
+        : console.log
+
+  logger(`🔵 [${scope}] ${event}`, {
+    timestamp,
+    event,
+    severity,
+    submitSessionId: traceContext?.submitSessionId ?? null,
+    submitStartedAt: traceContext?.startedAtIso ?? null,
+    elapsedMs: traceContext ? Date.now() - traceContext.startedAt : null,
+    context,
+  })
+}
+
+const readRequestIdHeader = (
+  headers?: Headers | { get?: (name: string) => string | null } | null
+) => {
+  if (!headers || typeof headers.get !== 'function') {
+    return null
+  }
+
+  const requestId =
+    headers.get(REQUEST_ID_HEADER) ?? headers.get(REQUEST_ID_HEADER.toLowerCase())
+  return typeof requestId === 'string' && requestId.trim() ? requestId.trim() : null
+}
+
+const getApiBackendRequestId = (error: unknown) => {
+  const detailsRequestId = (
+    error as { details?: { request_id?: unknown } } | undefined
+  )?.details?.request_id
+  if (typeof detailsRequestId === 'string' && detailsRequestId.trim()) {
+    return detailsRequestId.trim()
+  }
+
+  const responseHeaders = (
+    error as { response?: { headers?: Headers | { get?: (name: string) => string | null } } } | undefined
+  )?.response?.headers
+  return readRequestIdHeader(responseHeaders)
+}
+
+const trackApiErrorOccurrence = (error: unknown) => {
+  const fingerprint = buildApiErrorFingerprint(error)
+  const now = new Date().toISOString()
+  const existing = recentApiErrorTimeline.get(fingerprint)
+
+  if (existing) {
+    const updated = {
+      count: existing.count + 1,
+      firstSeenAt: existing.firstSeenAt,
+      lastSeenAt: now,
+    }
+    recentApiErrorTimeline.set(fingerprint, updated)
+    return { fingerprint, ...updated }
+  }
+
+  if (recentApiErrorTimeline.size >= RECENT_API_ERROR_LIMIT) {
+    const oldestKey = recentApiErrorTimeline.keys().next().value
+    if (oldestKey) {
+      recentApiErrorTimeline.delete(oldestKey)
+    }
+  }
+
+  const created = {
+    count: 1,
+    firstSeenAt: now,
+    lastSeenAt: now,
+  }
+  recentApiErrorTimeline.set(fingerprint, created)
+  return { fingerprint, ...created }
+}
+
+export const buildApiErrorDebugPayload = (
+  error: unknown,
+  context: Record<string, unknown> = {}
+) => {
+  const validationErrors = extractApiValidationErrors(error)
+  const occurrence = trackApiErrorOccurrence(error)
+  const backendRequestId = getApiBackendRequestId(error)
+  return {
+    timestamp: new Date().toISOString(),
+    kind: classifyApiError(error),
+    errorName: getApiErrorName(error),
+    message: getApiErrorMessage(error),
+    status: getApiErrorStatus(error),
+    errorCode: getApiErrorCode(error),
+    validationErrors,
+    validationFields: getValidationErrorFieldList(validationErrors),
+    details: getApiErrorDetailsSnapshot(error),
+    fingerprint: occurrence.fingerprint,
+    occurrenceCount: occurrence.count,
+    firstSeenAt: occurrence.firstSeenAt,
+    lastSeenAt: occurrence.lastSeenAt,
+    frontendRequestId:
+      typeof context.requestId === 'string' && context.requestId.trim()
+        ? context.requestId.trim()
+        : null,
+    backendRequestId,
+    context,
+  }
+}
+
+export const isRequestCancelledError = (error: unknown) => {
+  return getApiErrorStatus(error) === 499 || classifyApiError(error) === 'cancelled'
+}
+
+export const logApiErrorEvent = (
+  scope: string,
+  error: unknown,
+  context: Record<string, unknown> = {}
+) => {
+  const payload = buildApiErrorDebugPayload(error, context)
+  const logger =
+    payload.kind === 'cancelled'
+      ? console.info
+      : payload.kind === 'validation' || payload.kind === 'client'
+        ? console.warn
+        : console.error
+  logger(`🔴 [${scope}] API错误`, payload)
 }
 
 /**
  * 安全解析 VITE_API_BASE_URL，回退到同域 /api
  */
-function resolveApiBaseURL(): string {
-  const envVal = (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.VITE_API_BASE_URL) || ''
+function isPrivateIpv4Host(host: string): boolean {
+  return (
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+  )
+}
+
+function isLoopbackHost(host: string): boolean {
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1'
+}
+
+function shouldUseExplicitBackendOrigin(host: string, port: string): boolean {
+  if (!port || port === '8000') {
+    return false
+  }
+
+  return (
+    ['5173', '4173', '3000', '8080'].includes(port) ||
+    isLoopbackHost(host) ||
+    isPrivateIpv4Host(host)
+  )
+}
+
+function buildOriginWithPort(locationLike: Location, port: string): string {
+  const protocol = locationLike.protocol || 'http:'
+  const host = locationLike.hostname
+  const formattedHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host
+  return `${protocol}//${formattedHost}:${port}`
+}
+
+export function resolveApiBaseURL(): string {
+  const envVal =
+    (typeof import.meta !== 'undefined' &&
+      (import.meta as any).env &&
+      (import.meta as any).env.VITE_API_BASE_URL) ||
+    ''
   const fromEnv = typeof envVal === 'string' ? envVal.trim() : ''
   if (fromEnv) return fromEnv
+  const backendOriginFromEnv =
+    (typeof import.meta !== 'undefined' &&
+      (import.meta as any).env &&
+      ((import.meta as any).env.VITE_BACKEND_ORIGIN ||
+        (import.meta as any).env.VITE_BACKEND_URL)) ||
+    ''
+  const normalizedBackendOrigin =
+    typeof backendOriginFromEnv === 'string' ? backendOriginFromEnv.trim() : ''
+  if (normalizedBackendOrigin) {
+    return `${normalizedBackendOrigin.replace(/\/+$/, '')}/api`
+  }
   if (typeof window !== 'undefined' && window.location) {
+    const host = window.location.hostname
+    const port = window.location.port
+    if (shouldUseExplicitBackendOrigin(host, port)) {
+      return `${buildOriginWithPort(window.location, '8000')}/api`
+    }
     return `${window.location.origin}/api`
   }
   // SSR/测试环境兜底：使用相对路径，避免硬编码主机
@@ -65,9 +531,28 @@ export function getBackendOrigin(): string {
     // ignore
   }
   // 若为相对路径（如 /api），在浏览器环境下退回到当前 origin
-  if (typeof window !== 'undefined' && window.location) return window.location.origin
+  if (typeof window !== 'undefined' && window.location)
+    return window.location.origin
   // SSR/测试环境兜底：返回空串，调用处以相对路径访问同源
   return ''
+}
+
+export function resolveMediaUrl(imagePath?: string | null): string {
+  if (!imagePath) {
+    return ''
+  }
+  const rawPath = imagePath.trim()
+  if (!rawPath) {
+    return ''
+  }
+  if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) {
+    return rawPath
+  }
+  const normalizedPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`
+  if (normalizedPath.startsWith('/media/')) {
+    return `${getBackendOrigin()}${normalizedPath}`
+  }
+  return `${getBackendOrigin()}/media${normalizedPath}`
 }
 
 /**
@@ -76,11 +561,24 @@ export function getBackendOrigin(): string {
 class ApiClient {
   private baseURL: string
   private defaultTimeout: number
-  
+  private isDebug: boolean
+  private refreshTokenPromise: Promise<boolean> | null
+
   constructor(baseURL: string = resolveApiBaseURL(), timeout: number = 10000) {
     this.baseURL = baseURL
     this.defaultTimeout = timeout
-    console.log('[ApiClient] baseURL =', this.baseURL)
+    this.refreshTokenPromise = null
+    const envMode =
+      typeof import.meta !== 'undefined' &&
+      (import.meta as any).env &&
+      (import.meta as any).env.MODE
+    this.isDebug =
+      typeof envMode === 'string'
+        ? envMode.toLowerCase() !== 'production'
+        : true
+    if (this.isDebug) {
+      console.log('[ApiClient] baseURL =', this.baseURL)
+    }
   }
 
   /**
@@ -94,14 +592,14 @@ class ApiClient {
   /**
    * 构建完整URL
    */
-  private buildURL(endpoint: string, params?: Record<string, any>): string {
+  private buildURL(endpoint: string, params?: QueryParams): string {
     let url: string
     if (endpoint.startsWith('http')) {
       url = endpoint
     } else {
       url = `${this.baseURL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`
     }
-    
+
     // 添加查询参数
     if (params && Object.keys(params).length > 0) {
       const searchParams = new URLSearchParams()
@@ -115,14 +613,134 @@ class ApiClient {
         url += (url.includes('?') ? '&' : '?') + queryString
       }
     }
-    
+
     return url
+  }
+
+  private isAuthRefreshEndpoint(endpoint: string): boolean {
+    return /\/auth\/refresh\/?$/.test(endpoint)
+  }
+
+  private isAuthLoginEndpoint(endpoint: string): boolean {
+    return /\/auth\/login\/?$/.test(endpoint)
+  }
+
+  private isAuthLogoutEndpoint(endpoint: string): boolean {
+    return /\/auth\/logout\/?$/.test(endpoint)
+  }
+
+  private isTokenRefreshEligible(endpoint: string, config: RequestOptions): boolean {
+    if (config.skipAuth) {
+      return false
+    }
+    if (config._retry401) {
+      return false
+    }
+    if (this.isAuthRefreshEndpoint(endpoint)) {
+      return false
+    }
+    if (this.isAuthLoginEndpoint(endpoint)) {
+      return false
+    }
+    if (this.isAuthLogoutEndpoint(endpoint)) {
+      return false
+    }
+    return true
+  }
+
+  private async tryRefreshAccessToken(): Promise<boolean> {
+    const refreshToken = localStorage.getItem('refresh_token')
+    if (!refreshToken) {
+      return false
+    }
+
+    if (this.refreshTokenPromise) {
+      return this.refreshTokenPromise
+    }
+
+    const refreshUrl = this.buildURL('/auth/refresh/')
+    this.refreshTokenPromise = (async () => {
+      try {
+        const response = await fetch(refreshUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        })
+
+        const raw = await response.json().catch(() => null)
+        if (!response.ok || !raw || raw.success !== true) {
+          return false
+        }
+
+        const payload = raw.data && typeof raw.data === 'object' ? raw.data : {}
+        const access =
+          payload.access_token || payload.access || payload?.tokens?.access || ''
+        const nextRefresh =
+          payload.refresh_token || payload.refresh || payload?.tokens?.refresh || ''
+
+        if (typeof access !== 'string' || !access.trim()) {
+          return false
+        }
+
+        localStorage.setItem('access_token', access)
+        if (typeof nextRefresh === 'string' && nextRefresh.trim()) {
+          localStorage.setItem('refresh_token', nextRefresh)
+        }
+
+        return true
+      } catch (_) {
+        return false
+      } finally {
+        this.refreshTokenPromise = null
+      }
+    })()
+
+    return this.refreshTokenPromise
+  }
+
+  private getRequestBodySummary(body: RequestInit['body']) {
+    if (!body) {
+      return { hasBody: false }
+    }
+    if (typeof FormData !== 'undefined' && body instanceof FormData) {
+      const keys = Array.from(body.keys())
+      return { hasBody: true, bodyType: 'form-data', fieldCount: keys.length }
+    }
+    if (typeof body === 'string') {
+      return { hasBody: true, bodyType: 'string', size: body.length }
+    }
+    return { hasBody: true, bodyType: typeof body }
+  }
+
+  private getResponseSummary(response: Response, result: ApiResponse<any>) {
+    return {
+      status: response.status,
+      ok: response.ok,
+      success: result?.success,
+      code: result?.code,
+      message: result?.message,
+    }
   }
 
   /**
    * 构建请求头
    */
-  private buildHeaders(config: RequestConfig = {}): HeadersInit {
+  private shouldAttachRequestId(url: string): boolean {
+    if (typeof window === 'undefined' || !window.location) {
+      return true
+    }
+
+    try {
+      const target = new URL(url, window.location.origin)
+      return target.origin === window.location.origin
+    } catch (_) {
+      return true
+    }
+  }
+
+  private buildHeaders(config: RequestConfig = {}, requestUrl = ''): HeadersInit {
     const headers: Record<string, string> = {}
 
     if (!config.isFormData) {
@@ -135,6 +753,14 @@ class ApiClient {
       if (token) {
         headers['Authorization'] = `Bearer ${token}`
       }
+    }
+
+    if (
+      typeof config.requestId === 'string' &&
+      config.requestId.trim() &&
+      this.shouldAttachRequestId(requestUrl)
+    ) {
+      headers[REQUEST_ID_HEADER] = config.requestId.trim()
     }
 
     // 合并自定义头
@@ -150,17 +776,20 @@ class ApiClient {
    * - 当显式指定 responseType 时，按指定类型解析
    * - 否则按 Content-Type 自动解析
    */
-  private async handleResponse<T>(response: Response, responseType?: RequestConfig['responseType']): Promise<ApiResponse<T>> {
+  private async handleResponse<T>(
+    response: Response,
+    responseType?: RequestOptions['responseType']
+  ): Promise<ApiResponse<T>> {
     // 处理204 No Content响应
     if (response.status === 204) {
       return {
         success: true,
-        data: null as T
+        data: null as T,
       }
     }
-    
+
     let data: any
-    
+
     try {
       if (responseType === 'blob') {
         data = await response.blob()
@@ -173,7 +802,13 @@ class ApiClient {
         const contentType = response.headers.get('content-type')
         if (contentType && contentType.includes('application/json')) {
           data = await response.json()
-        } else if (contentType && (contentType.includes('application/') || contentType.includes('image/') || contentType.includes('video/') || contentType.includes('audio/'))) {
+        } else if (
+          contentType &&
+          (contentType.includes('application/') ||
+            contentType.includes('image/') ||
+            contentType.includes('video/') ||
+            contentType.includes('audio/'))
+        ) {
           // 其它二进制类型按 blob 处理
           data = await response.blob()
         } else {
@@ -185,34 +820,74 @@ class ApiClient {
     }
 
     if (!response.ok) {
-      const message = (data as any)?.message || `HTTP ${response.status}: ${response.statusText}`
-      throw new ApiError(message, response.status, response)
+      const rawMessage =
+        (data as any)?.message ||
+        `HTTP ${response.status}: ${response.statusText}`
+      const message = this.isDebug
+        ? rawMessage
+        : response.status >= 500
+          ? "服务暂时不可用，请稍后重试"
+          : "请求失败，请稍后重试"
+      throw new ApiError(message, response.status, response, data)
     }
 
-    // 如果响应数据不是标准格式，包装成标准格式
     if (typeof data === 'object' && data !== null && 'success' in data) {
+      const payload: any = (data as any).data
+      if (
+        payload &&
+        typeof payload === 'object' &&
+        'data' in payload &&
+        Object.keys(payload).length === 1
+      ) {
+        return { ...(data as any), data: payload.data as T }
+      }
       return data as ApiResponse<T>
     }
 
-    // 处理双重data结构：如果后端返回 { data: { data: [...] } }，则提取内层data
     if (typeof data === 'object' && data !== null && 'data' in data) {
+      const payload: any = (data as any).data
+      if (
+        payload &&
+        typeof payload === 'object' &&
+        'data' in payload &&
+        Object.keys(payload).length === 1
+      ) {
+        return {
+          success: true,
+          data: payload.data as T,
+        }
+      }
       return {
         success: true,
-        data: (data as any).data as T
+        data: payload as T,
       }
     }
 
     return {
       success: true,
-      data: data as T
+      data: data as T,
     }
   }
 
   /**
    * 处理错误：支持 401 清理并跳转
    */
-  private handleError(error: any, config: RequestConfig): never {
-    console.error('API请求错误:', error)
+  private handleError(
+    error: any,
+    config: RequestConfig,
+    requestMeta: Record<string, unknown> = {}
+  ): never {
+    if (this.isDebug) {
+      logApiErrorEvent('ApiClient', error, {
+        ...requestMeta,
+        requestId: config.requestId ?? null,
+        skipAuth: Boolean(config.skipAuth),
+        skipErrorHandler: Boolean(config.skipErrorHandler),
+        responseType: config.responseType || 'auto',
+      })
+    } else {
+      console.error('API请求错误')
+    }
 
     // 如果跳过错误处理，直接抛出
     if (config.skipErrorHandler) {
@@ -230,9 +905,17 @@ class ApiClient {
         localStorage.removeItem('user_info')
 
         // 在访客页（登录/注册/欢迎/忘记密码）不触发跳转，避免打断当前流程
-        const guestPaths = ['/login', '/register', '/welcome', '/forgot-password']
-        const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
-        const shouldRedirect = currentPath ? !guestPaths.includes(currentPath) : true
+        const guestPaths = [
+          '/login',
+          '/register',
+          '/welcome',
+          '/forgot-password',
+        ]
+        const currentPath =
+          typeof window !== 'undefined' ? window.location.pathname : ''
+        const shouldRedirect = currentPath
+          ? !guestPaths.includes(currentPath)
+          : true
 
         if (shouldRedirect) {
           window.location.href = '/login'
@@ -242,6 +925,10 @@ class ApiClient {
     }
 
     // 网络错误
+    if (isAbortLikeError(error)) {
+      throw new ApiError('请求已取消', 499)
+    }
+
     if (error.name === 'TypeError' && error.message.includes('fetch')) {
       throw new ApiError('网络连接失败，请检查网络设置', 0)
     }
@@ -252,7 +939,7 @@ class ApiClient {
     }
 
     // 其他错误
-    throw new ApiError(error.message || '请求失败', 0)
+    throw new ApiError('请求失败，请稍后重试', 0)
   }
 
   /**
@@ -260,49 +947,117 @@ class ApiClient {
    * @param endpoint 接口路径
    * @param config 请求配置，支持 responseType 指定响应解析方式
    */
+  private normalizeRequestConfig(
+    paramsOrConfig?: QueryParams | RequestConfig,
+    config?: RequestOptions
+  ): { params?: QueryParams; config: RequestOptions } {
+    if (paramsOrConfig && typeof paramsOrConfig === 'object') {
+      const hasConfigKeys =
+        'timeout' in paramsOrConfig ||
+        'skipAuth' in paramsOrConfig ||
+        'skipErrorHandler' in paramsOrConfig ||
+        'isFormData' in paramsOrConfig ||
+        'requestId' in paramsOrConfig ||
+        'responseType' in paramsOrConfig ||
+        'headers' in paramsOrConfig ||
+        'method' in paramsOrConfig ||
+        'params' in paramsOrConfig
+      if (hasConfigKeys) {
+        const { params, ...rest } = paramsOrConfig as RequestConfig
+        return { params, config: rest }
+      }
+      return { params: paramsOrConfig as QueryParams, config: config || {} }
+    }
+    return { params: undefined, config: config || {} }
+  }
+
   private async request<T>(
     endpoint: string,
-    config: RequestConfig = {}
+    config: RequestOptions = {},
+    params?: QueryParams
   ): Promise<ApiResponse<T>> {
-    const { params, ...requestConfig } = config
     const url = this.buildURL(endpoint, params)
     const timeout = config.timeout || this.defaultTimeout
-    
+
     // 创建AbortController用于超时控制
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), timeout)
 
     try {
       const finalRequestConfig: RequestInit = {
-        ...requestConfig,
-        headers: this.buildHeaders(config),
+        ...config,
+        headers: this.buildHeaders(config, url),
         signal: controller.signal,
       }
 
-      console.log(`API请求: ${config.method || 'GET'} ${url}`, {
-        headers: requestConfig.headers,
-        body: (requestConfig as any).body
-      })
+      const method = config.method || 'GET'
+      const bodySummary = this.getRequestBodySummary(
+        (config as any).body as RequestInit['body']
+      )
+      if (this.isDebug) {
+        console.log(`API请求: ${method} ${url}`, {
+          ...bodySummary,
+          requestId: config.requestId ?? null,
+        })
+      }
 
       const response = await fetch(url, finalRequestConfig)
       const result = await this.handleResponse<T>(response, config.responseType)
-      
-      console.log(`API响应: ${config.method || 'GET'} ${url}`, result)
-      
+
+      const responseSummary = this.getResponseSummary(response, result)
+      const responseRequestId = readRequestIdHeader(response.headers)
+      if (this.isDebug) {
+        console.log(`API响应: ${method} ${url}`, {
+          ...responseSummary,
+          requestId: config.requestId ?? null,
+          responseRequestId,
+        })
+      }
+
       return result
     } catch (error) {
-      this.handleError(error, config)
+      if (
+        error instanceof ApiError &&
+        error.code === 401 &&
+        this.isTokenRefreshEligible(endpoint, config)
+      ) {
+        const refreshed = await this.tryRefreshAccessToken()
+        if (refreshed) {
+          return this.request<T>(
+            endpoint,
+            {
+              ...config,
+              _retry401: true,
+            },
+            params
+          )
+        }
+      }
+      this.handleError(error, config as RequestConfig, {
+        url,
+        method: config.method || 'GET',
+        requestId: config.requestId ?? null,
+      })
     } finally {
       clearTimeout(timeoutId)
     }
   }
 
   /** GET请求 */
-  async get<T = any>(endpoint: string, config: RequestConfig = {}): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, {
-      ...config,
-      method: 'GET',
-    })
+  async get<T = any>(
+    endpoint: string,
+    paramsOrConfig?: QueryParams | RequestConfig,
+    config?: RequestOptions
+  ): Promise<ApiResponse<T>> {
+    const normalized = this.normalizeRequestConfig(paramsOrConfig, config)
+    return this.request<T>(
+      endpoint,
+      {
+        ...normalized.config,
+        method: 'GET',
+      },
+      normalized.params
+    )
   }
 
   /** POST请求 */
@@ -316,7 +1071,7 @@ class ApiClient {
       ...config,
       method: 'POST',
       isFormData: isForm || config.isFormData,
-      body: isForm ? data : (data ? JSON.stringify(data) : undefined),
+      body: isForm ? data : data ? JSON.stringify(data) : undefined,
     })
   }
 
@@ -331,7 +1086,7 @@ class ApiClient {
       ...config,
       method: 'PUT',
       isFormData: isForm || config.isFormData,
-      body: isForm ? data : (data ? JSON.stringify(data) : undefined),
+      body: isForm ? data : data ? JSON.stringify(data) : undefined,
     })
   }
 
@@ -346,7 +1101,7 @@ class ApiClient {
       ...config,
       method: 'PATCH',
       isFormData: isForm || config.isFormData,
-      body: isForm ? data : (data ? JSON.stringify(data) : undefined),
+      body: isForm ? data : data ? JSON.stringify(data) : undefined,
     })
   }
 
@@ -361,7 +1116,7 @@ class ApiClient {
       ...config,
       method: 'DELETE',
       isFormData: isForm || config.isFormData,
-      body: isForm ? data : (data ? JSON.stringify(data) : undefined),
+      body: isForm ? data : data ? JSON.stringify(data) : undefined,
     })
   }
 
@@ -410,30 +1165,42 @@ class ApiClient {
     const headers = this.buildHeaders(config)
 
     try {
-      console.log('🔵 [ApiClient.download] 开始下载', { url, filename })
+      if (this.isDebug) {
+        console.log('🔵 [ApiClient.download] 开始下载', { url, filename })
+      }
       const response = await fetch(url, {
         ...config,
         headers,
       })
 
       if (!response.ok) {
-        throw new ApiError(`下载失败: ${response.status} ${response.statusText}`, response.status, response)
+        throw new ApiError(
+          `下载失败: ${response.status} ${response.statusText}`,
+          response.status,
+          response
+        )
       }
 
       const blob = await response.blob()
       const downloadUrl = window.URL.createObjectURL(blob)
-      
+
       const link = document.createElement('a')
       link.href = downloadUrl
       link.download = filename || 'download'
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      
+
       window.URL.revokeObjectURL(downloadUrl)
-      console.log('🟢 [ApiClient.download] 下载完成')
+      if (this.isDebug) {
+        console.log('🟢 [ApiClient.download] 下载完成')
+      }
     } catch (error) {
-      console.error('🔴 [ApiClient.download] 下载异常', error)
+      if (this.isDebug) {
+        console.error('🔴 [ApiClient.download] 下载异常', error)
+      } else {
+        console.error('🔴 [ApiClient.download] 下载异常')
+      }
       this.handleError(error, config)
     }
   }
@@ -444,7 +1211,13 @@ export const api = new ApiClient()
 
 // 导出类型和错误类
 export { ApiClient, ApiError }
-export type { ApiResponse, RequestConfig }
+export type {
+  ApiErrorKind,
+  ApiResponse,
+  RequestConfig,
+  SubmissionTraceContext,
+  TraceSeverity,
+}
 
 // 便捷方法
 export const { get, post, put, patch, delete: del, upload, download } = api

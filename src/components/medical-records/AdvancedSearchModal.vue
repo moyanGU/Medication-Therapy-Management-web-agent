@@ -6,7 +6,9 @@
     role="dialog"
     aria-modal="true"
   >
-    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+    <div
+      class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0"
+    >
       <!-- 背景遮罩 -->
       <div
         class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
@@ -14,13 +16,18 @@
       ></div>
 
       <!-- 模态框内容 -->
-      <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+      <div
+        class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full"
+      >
         <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
           <div class="sm:flex sm:items-start">
             <div class="w-full">
               <!-- 标题 -->
               <div class="flex items-center justify-between mb-6">
-                <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">
+                <h3
+                  class="text-lg leading-6 font-medium text-gray-900"
+                  id="modal-title"
+                >
                   高级搜索
                 </h3>
                 <button
@@ -44,9 +51,9 @@
                       type="text"
                       placeholder="搜索医院、科室、医生、诊断等"
                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                    >
+                    />
                   </div>
-                  
+
                   <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">
                       医院名称
@@ -56,7 +63,7 @@
                       type="text"
                       placeholder="输入医院名称"
                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                    >
+                    />
                   </div>
                 </div>
 
@@ -67,20 +74,24 @@
                   </label>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label class="block text-xs text-gray-500 mb-1">开始日期</label>
+                      <label class="block text-xs text-gray-500 mb-1"
+                        >开始日期</label
+                      >
                       <input
                         v-model="searchForm.date_from"
                         type="date"
                         class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                      >
+                      />
                     </div>
                     <div>
-                      <label class="block text-xs text-gray-500 mb-1">结束日期</label>
+                      <label class="block text-xs text-gray-500 mb-1"
+                        >结束日期</label
+                      >
                       <input
                         v-model="searchForm.date_to"
                         type="date"
                         class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                      >
+                      />
                     </div>
                   </div>
                 </div>
@@ -96,9 +107,9 @@
                       type="text"
                       placeholder="输入科室名称"
                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                    >
+                    />
                   </div>
-                  
+
                   <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">
                       医生姓名
@@ -108,7 +119,7 @@
                       type="text"
                       placeholder="输入医生姓名"
                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                    >
+                    />
                   </div>
                 </div>
 
@@ -122,7 +133,7 @@
                     type="text"
                     placeholder="输入诊断结果或疾病名称"
                     class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                  >
+                  />
                 </div>
 
                 <!-- 分类筛选 -->
@@ -136,12 +147,16 @@
                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">全部类型</option>
-                      <option v-for="option in VISIT_TYPE_OPTIONS" :key="option.value" :value="option.value">
+                      <option
+                        v-for="option in VISIT_TYPE_OPTIONS"
+                        :key="option.value"
+                        :value="option.value"
+                      >
                         {{ option.label }}
                       </option>
                     </select>
                   </div>
-                  
+
                   <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">
                       就医状态
@@ -151,12 +166,16 @@
                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">全部状态</option>
-                      <option v-for="option in STATUS_OPTIONS" :key="option.value" :value="option.value">
+                      <option
+                        v-for="option in STATUS_OPTIONS"
+                        :key="option.value"
+                        :value="option.value"
+                      >
                         {{ option.label }}
                       </option>
                     </select>
                   </div>
-                  
+
                   <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">
                       紧急程度
@@ -166,7 +185,11 @@
                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">全部程度</option>
-                      <option v-for="option in URGENCY_OPTIONS" :key="option.value" :value="option.value">
+                      <option
+                        v-for="option in URGENCY_OPTIONS"
+                        :key="option.value"
+                        :value="option.value"
+                      >
                         {{ option.label }}
                       </option>
                     </select>
@@ -180,7 +203,9 @@
                   </label>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label class="block text-xs text-gray-500 mb-1">最低费用</label>
+                      <label class="block text-xs text-gray-500 mb-1"
+                        >最低费用</label
+                      >
                       <input
                         v-model.number="searchForm.cost_min"
                         type="number"
@@ -188,10 +213,12 @@
                         step="0.01"
                         placeholder="0.00"
                         class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                      >
+                      />
                     </div>
                     <div>
-                      <label class="block text-xs text-gray-500 mb-1">最高费用</label>
+                      <label class="block text-xs text-gray-500 mb-1"
+                        >最高费用</label
+                      >
                       <input
                         v-model.number="searchForm.cost_max"
                         type="number"
@@ -199,7 +226,7 @@
                         step="0.01"
                         placeholder="不限"
                         class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                      >
+                      />
                     </div>
                   </div>
                 </div>
@@ -222,7 +249,7 @@
                       <option :value="5">5分</option>
                     </select>
                   </div>
-                  
+
                   <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">
                       复诊安排
@@ -247,7 +274,11 @@
                     v-model="searchForm.ordering"
                     class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                   >
-                    <option v-for="option in SORT_OPTIONS" :key="option.value" :value="option.value">
+                    <option
+                      v-for="option in SORT_OPTIONS"
+                      :key="option.value"
+                      :value="option.value"
+                    >
                       {{ option.label }}
                     </option>
                   </select>
@@ -256,7 +287,7 @@
             </div>
           </div>
         </div>
-        
+
         <!-- 底部按钮 -->
         <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
           <button
@@ -287,7 +318,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { reactive, watch } from 'vue'
 // 替换图标库为 lucide-vue-next
 import { X } from 'lucide-vue-next'
 import {
@@ -295,7 +326,7 @@ import {
   STATUS_OPTIONS,
   URGENCY_OPTIONS,
   SORT_OPTIONS,
-  type MedicalRecordSearchParams
+  type MedicalRecordSearchParams,
 } from '@/types/medicalRecord'
 
 // Props
@@ -330,7 +361,7 @@ const searchForm = reactive<MedicalRecordSearchParams>({
   cost_max: undefined,
   satisfaction_min: undefined,
   has_follow_up: undefined,
-  ordering: '-visit_date'
+  ordering: '-visit_date',
 })
 
 // 方法
@@ -341,15 +372,15 @@ const closeModal = () => {
 const handleSearch = () => {
   // 过滤掉空值
   const params: MedicalRecordSearchParams = {}
-  
-  Object.keys(searchForm).forEach((key) => {
+
+  Object.keys(searchForm).forEach(key => {
     const typedKey = key as keyof MedicalRecordSearchParams
     const value = searchForm[typedKey]
     if (value !== '' && value !== undefined && value !== null) {
       ;(params[typedKey] as unknown) = value as unknown
     }
   })
-  
+
   emit('search', params)
 }
 
@@ -369,14 +400,17 @@ const resetForm = () => {
     cost_max: undefined,
     satisfaction_min: undefined,
     has_follow_up: undefined,
-    ordering: '-visit_date'
+    ordering: '-visit_date',
   })
 }
 
 // 监听show变化，重置表单
-watch(() => props.show, (newShow) => {
-  if (newShow) {
-    resetForm()
+watch(
+  () => props.show,
+  newShow => {
+    if (newShow) {
+      resetForm()
+    }
   }
-})
+)
 </script>

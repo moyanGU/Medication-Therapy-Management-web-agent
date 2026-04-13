@@ -8,114 +8,81 @@ class User(AbstractUser):
     自定义用户模型
     继承Django内置的AbstractUser，添加额外字段
     """
+
     # 在交互式 createsuperuser 时强制要求填写邮箱和手机号
-    REQUIRED_FIELDS = ['email', 'phone']
+    REQUIRED_FIELDS = ["email", "phone"]
 
     phone = models.CharField(
-        max_length=20,
-        unique=True,
-        verbose_name='手机号',
-        help_text='用户手机号码'
+        max_length=20, unique=True, verbose_name="手机号", help_text="用户手机号码"
     )
-    email = models.EmailField(
-        unique=True,
-        verbose_name='邮箱',
-        help_text='用户邮箱地址'
-    )
+    email = models.EmailField(unique=True, verbose_name="邮箱", help_text="用户邮箱地址")
     is_admin = models.BooleanField(
-        default=False,
-        verbose_name='管理员',
-        help_text='是否为管理员用户'
+        default=False, verbose_name="管理员", help_text="是否为管理员用户"
     )
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name='创建时间'
-    )
-    updated_at = models.DateTimeField(
-        auto_now=True,
-        verbose_name='更新时间'
-    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
     avatar = models.URLField(
-        blank=True,
-        null=True,
-        verbose_name='头像',
-        help_text='用户头像URL'
+        blank=True, null=True, verbose_name="头像", help_text="用户头像URL"
     )
-    birth_date = models.DateField(
-        blank=True,
-        null=True,
-        verbose_name='出生日期'
-    )
+    birth_date = models.DateField(blank=True, null=True, verbose_name="出生日期")
     gender = models.CharField(
         max_length=10,
-        choices=[
-            ('male', '男'),
-            ('female', '女'),
-            ('other', '其他')
-        ],
+        choices=[("male", "男"), ("female", "女"), ("other", "其他")],
         blank=True,
         null=True,
-        verbose_name='性别'
+        verbose_name="性别",
     )
     emergency_contact = models.CharField(
-        max_length=50,
-        blank=True,
-        null=True,
-        verbose_name='紧急联系人',
-        help_text='紧急联系人姓名'
+        max_length=50, blank=True, null=True, verbose_name="紧急联系人", help_text="紧急联系人姓名"
     )
     emergency_phone = models.CharField(
-        max_length=20,
-        blank=True,
-        null=True,
-        verbose_name='紧急联系电话',
-        help_text='紧急联系人电话'
+        max_length=20, blank=True, null=True, verbose_name="紧急联系电话", help_text="紧急联系人电话"
     )
-    
+
     # 解决与Django内置User模型的冲突
     groups = models.ManyToManyField(
-        'auth.Group',
-        verbose_name='groups',
+        "auth.Group",
+        verbose_name="groups",
         blank=True,
-        help_text='The groups this user belongs to.',
-        related_name='custom_user_set',
-        related_query_name='custom_user',
+        help_text="The groups this user belongs to.",
+        related_name="custom_user_set",
+        related_query_name="custom_user",
     )
     user_permissions = models.ManyToManyField(
-        'auth.Permission',
-        verbose_name='user permissions',
+        "auth.Permission",
+        verbose_name="user permissions",
         blank=True,
-        help_text='Specific permissions for this user.',
-        related_name='custom_user_set',
-        related_query_name='custom_user',
+        help_text="Specific permissions for this user.",
+        related_name="custom_user_set",
+        related_query_name="custom_user",
     )
-    
+
     class Meta:
-        db_table = 'users'
-        verbose_name = '用户'
-        verbose_name_plural = '用户'
+        db_table = "users"
+        verbose_name = "用户"
+        verbose_name_plural = "用户"
         indexes = [
-            models.Index(fields=['phone'], name='idx_users_phone'),
-            models.Index(fields=['username'], name='idx_users_username'),
-            models.Index(fields=['email'], name='idx_users_email'),
-            models.Index(fields=['created_at'], name='idx_users_created_at'),
+            models.Index(fields=["phone"], name="idx_users_phone"),
+            models.Index(fields=["username"], name="idx_users_username"),
+            models.Index(fields=["email"], name="idx_users_email"),
+            models.Index(fields=["created_at"], name="idx_users_created_at"),
         ]
-    
+
     def __str__(self):
         return f"{self.username} ({self.phone})"
-    
+
     def get_full_name(self):
         """
         获取用户全名
         """
         return f"{self.first_name} {self.last_name}".strip() or self.username
-    
+
     def get_short_name(self):
         """
         获取用户简称
         """
         return self.first_name or self.username
-    
+
     @property
     def age(self):
         """
@@ -123,8 +90,13 @@ class User(AbstractUser):
         """
         if self.birth_date:
             today = timezone.now().date()
-            return today.year - self.birth_date.year - (
-                (today.month, today.day) < (self.birth_date.month, self.birth_date.day)
+            return (
+                today.year
+                - self.birth_date.year
+                - (
+                    (today.month, today.day)
+                    < (self.birth_date.month, self.birth_date.day)
+                )
             )
         return None
 
@@ -140,69 +112,38 @@ class PushSubscription(models.Model):
     - 记录 UA、时区、应用标识，便于诊断与多端管理
     - is_active 标记订阅是否有效（收到 404/410 可置为失效而不立即删除）
     """
+
     user = models.ForeignKey(
-        'users.User',
+        "users.User",
         on_delete=models.CASCADE,
-        related_name='push_subscriptions',
-        verbose_name='用户'
+        related_name="push_subscriptions",
+        verbose_name="用户",
     )
-    endpoint = models.URLField(
-        unique=True,
-        verbose_name='订阅端点'
-    )
+    endpoint = models.URLField(max_length=512, unique=True, verbose_name="订阅端点")
     keys = models.JSONField(
-        default=dict,
-        verbose_name='密钥信息',
-        help_text='包含 p256dh 与 auth 字段'
+        default=dict, verbose_name="密钥信息", help_text="包含 p256dh 与 auth 字段"
     )
-    expiration_time = models.DateTimeField(
-        blank=True,
-        null=True,
-        verbose_name='过期时间'
-    )
+    expiration_time = models.DateTimeField(blank=True, null=True, verbose_name="过期时间")
     user_agent = models.CharField(
-        max_length=256,
-        blank=True,
-        null=True,
-        verbose_name='UA'
+        max_length=256, blank=True, null=True, verbose_name="UA"
     )
     time_zone = models.CharField(
-        max_length=64,
-        blank=True,
-        null=True,
-        verbose_name='时区'
+        max_length=64, blank=True, null=True, verbose_name="时区"
     )
-    app = models.CharField(
-        max_length=64,
-        default='mtm-helper',
-        verbose_name='应用标识'
-    )
-    is_active = models.BooleanField(
-        default=True,
-        verbose_name='是否有效'
-    )
-    last_sent_at = models.DateTimeField(
-        blank=True,
-        null=True,
-        verbose_name='最后发送时间'
-    )
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name='创建时间'
-    )
-    updated_at = models.DateTimeField(
-        auto_now=True,
-        verbose_name='更新时间'
-    )
+    app = models.CharField(max_length=64, default="mtm-helper", verbose_name="应用标识")
+    is_active = models.BooleanField(default=True, verbose_name="是否有效")
+    last_sent_at = models.DateTimeField(blank=True, null=True, verbose_name="最后发送时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
     class Meta:
-        db_table = 'push_subscriptions'
-        verbose_name = 'Push订阅'
-        verbose_name_plural = 'Push订阅'
+        db_table = "push_subscriptions"
+        verbose_name = "Push订阅"
+        verbose_name_plural = "Push订阅"
         indexes = [
-            models.Index(fields=['user'], name='idx_push_sub_user'),
-            models.Index(fields=['is_active'], name='idx_push_sub_active'),
-            models.Index(fields=['updated_at'], name='idx_push_sub_updated'),
+            models.Index(fields=["user"], name="idx_push_sub_user"),
+            models.Index(fields=["is_active"], name="idx_push_sub_active"),
+            models.Index(fields=["updated_at"], name="idx_push_sub_updated"),
         ]
 
     def __str__(self):
@@ -211,9 +152,9 @@ class PushSubscription(models.Model):
     def mark_inactive(self):
         """将订阅标记为失效"""
         self.is_active = False
-        self.save(update_fields=['is_active'])
+        self.save(update_fields=["is_active"])
 
     def touch_sent(self):
         """更新最后发送时间戳"""
         self.last_sent_at = timezone.now()
-        self.save(update_fields=['last_sent_at'])
+        self.save(update_fields=["last_sent_at"])

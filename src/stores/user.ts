@@ -2,6 +2,25 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '@/utils/api'
 
+const isDebug = import.meta.env.MODE !== 'production'
+const log = (...args: any[]) => {
+  if (isDebug) console.log(...args)
+}
+const warn = (message: string, error?: unknown) => {
+  if (isDebug && error !== undefined) {
+    console.warn(message, error)
+    return
+  }
+  console.warn(message)
+}
+const logError = (message: string, error?: unknown) => {
+  if (isDebug && error !== undefined) {
+    console.error(message, error)
+    return
+  }
+  console.error(message)
+}
+
 // 顶层类型声明，供store导出类型安全引用，避免私有类型泄露错误
 export interface UserInfo {
   id: number
@@ -75,9 +94,14 @@ export const useUserStore = defineStore('user', () => {
       emergencyPhone: dto?.emergency_phone ?? '',
       avatar: dto?.avatar ?? '',
       createdAt: dto?.created_at ?? '',
-      updatedAt: dto?.updated_at ?? ''
+      updatedAt: dto?.updated_at ?? '',
     }
-    console.debug('[user.store] mapDtoToUserInfo ->', dto, '=>', mapped)
+    if (isDebug) {
+      console.debug('[user.store] mapDtoToUserInfo ->', {
+        hasDto: !!dto,
+        hasMapped: !!mapped,
+      })
+    }
     return mapped
   }
 
@@ -87,14 +111,25 @@ export const useUserStore = defineStore('user', () => {
   const buildUpdatePayload = (updates: Partial<UserInfo>) => {
     const payload: Record<string, any> = {}
     // 仅允许后端可写字段：email, avatar, birth_date, gender, emergency_contact, emergency_phone
-    if (Object.prototype.hasOwnProperty.call(updates, 'email')) payload.email = updates.email
-    if (Object.prototype.hasOwnProperty.call(updates, 'avatar')) payload.avatar = updates.avatar
-    if (Object.prototype.hasOwnProperty.call(updates, 'birthDate')) payload.birth_date = updates.birthDate
-    if (Object.prototype.hasOwnProperty.call(updates, 'gender')) payload.gender = updates.gender
-    if (Object.prototype.hasOwnProperty.call(updates, 'emergencyContact')) payload.emergency_contact = updates.emergencyContact
-    if (Object.prototype.hasOwnProperty.call(updates, 'emergencyPhone')) payload.emergency_phone = updates.emergencyPhone
+    if (Object.prototype.hasOwnProperty.call(updates, 'email'))
+      payload.email = updates.email
+    if (Object.prototype.hasOwnProperty.call(updates, 'avatar'))
+      payload.avatar = updates.avatar
+    if (Object.prototype.hasOwnProperty.call(updates, 'birthDate'))
+      payload.birth_date = updates.birthDate
+    if (Object.prototype.hasOwnProperty.call(updates, 'gender'))
+      payload.gender = updates.gender
+    if (Object.prototype.hasOwnProperty.call(updates, 'emergencyContact'))
+      payload.emergency_contact = updates.emergencyContact
+    if (Object.prototype.hasOwnProperty.call(updates, 'emergencyPhone'))
+      payload.emergency_phone = updates.emergencyPhone
 
-    console.debug('[user.store] buildUpdatePayload <-', updates, '=>', payload)
+    if (isDebug) {
+      console.debug('[user.store] buildUpdatePayload <-', {
+        hasUpdates: !!updates,
+        payloadKeys: Object.keys(payload || {}),
+      })
+    }
     return payload
   }
 
@@ -104,8 +139,10 @@ export const useUserStore = defineStore('user', () => {
   const login = async (credentials: LoginCredentials) => {
     isLoading.value = true
     try {
-      const response = await api.post('/auth/login/', credentials, { skipAuth: true })
-      
+      const response = await api.post('/auth/login/', credentials, {
+        skipAuth: true,
+      })
+
       if (response.success) {
         // 兼容多种返回结构：data.tokens.access|refresh / data.access_token|refresh_token / data.access|refresh
         const d: any = response.data || {}
@@ -116,7 +153,7 @@ export const useUserStore = defineStore('user', () => {
         if (!access || !refresh) {
           throw new Error('登录响应缺少令牌(access/refresh)')
         }
-        
+
         // 使用 AuthStore 统一设置令牌与Axios头
         const { useAuthStore } = await import('@/stores/auth')
         const auth = useAuthStore()
@@ -131,16 +168,16 @@ export const useUserStore = defineStore('user', () => {
         if (credentials.remember && userInfo.value) {
           localStorage.setItem('userInfo', JSON.stringify(userInfo.value))
         }
-        
+
         return { success: true }
       } else {
         throw new Error(response.message || '登录失败')
       }
     } catch (error) {
-      console.error('登录错误:', error)
-      return { 
-        success: false, 
-        message: error instanceof Error ? error.message : '登录失败' 
+      logError('登录错误', error)
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : '登录失败',
       }
     } finally {
       isLoading.value = false
@@ -153,18 +190,20 @@ export const useUserStore = defineStore('user', () => {
   const register = async (data: RegisterData) => {
     isLoading.value = true
     try {
-      const response = await api.post('/auth/register/', data, { skipAuth: true })
-      
+      const response = await api.post('/auth/register/', data, {
+        skipAuth: true,
+      })
+
       if (response.success) {
         return { success: true, message: '注册成功' }
       } else {
         throw new Error(response.message || '注册失败')
       }
     } catch (error) {
-      console.error('注册错误:', error)
-      return { 
-        success: false, 
-        message: error instanceof Error ? error.message : '注册失败' 
+      logError('注册错误', error)
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : '注册失败',
       }
     } finally {
       isLoading.value = false
@@ -179,21 +218,25 @@ export const useUserStore = defineStore('user', () => {
     isLoading.value = true
     try {
       const response = await api.get('/user/profile/')
-      
+
       if (response.success) {
         // 兼容双层 data 结构：{ success, data: { data: {...} } }
-        const rawDto: any = (response.data && (response.data as any).data !== undefined)
-          ? (response.data as any).data
-          : response.data
-        console.log('[user.store] fetchUserInfo 原始DTO:', rawDto)
+        const rawDto: any =
+          response.data && (response.data as any).data !== undefined
+            ? (response.data as any).data
+            : response.data
+        log('[user.store] fetchUserInfo 原始DTO:', {
+          hasDto: !!rawDto,
+          dtoKeys: Object.keys(rawDto || {}),
+        })
         const mapped = mapDtoToUserInfo(rawDto)
         userInfo.value = mapped
         localStorage.setItem('userInfo', JSON.stringify(mapped))
       } else {
-        console.warn('[user.store] 获取用户信息失败:', response.message)
+        warn('[user.store] 获取用户信息失败', response.message)
       }
     } catch (error) {
-      console.error('获取用户信息失败:', error)
+      logError('获取用户信息失败', error)
     } finally {
       isLoading.value = false
     }
@@ -207,13 +250,17 @@ export const useUserStore = defineStore('user', () => {
     try {
       const payload = buildUpdatePayload(updates)
       const response = await api.patch('/user/profile/', payload)
-      
+
       if (response.success) {
         // 兼容双层 data 结构
-        const rawDto: any = (response.data && (response.data as any).data !== undefined)
-          ? (response.data as any).data
-          : response.data
-        console.log('[user.store] updateUserInfo 原始DTO:', rawDto)
+        const rawDto: any =
+          response.data && (response.data as any).data !== undefined
+            ? (response.data as any).data
+            : response.data
+        log('[user.store] updateUserInfo 原始DTO:', {
+          hasDto: !!rawDto,
+          dtoKeys: Object.keys(rawDto || {}),
+        })
         const mapped = mapDtoToUserInfo(rawDto)
         userInfo.value = mapped
         localStorage.setItem('userInfo', JSON.stringify(mapped))
@@ -222,10 +269,10 @@ export const useUserStore = defineStore('user', () => {
         throw new Error(response.message || '更新失败')
       }
     } catch (error) {
-      console.error('更新用户信息失败:', error)
-      return { 
-        success: false, 
-        message: error instanceof Error ? error.message : '更新失败' 
+      logError('更新用户信息失败', error)
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : '更新失败',
       }
     } finally {
       isLoading.value = false
@@ -241,7 +288,7 @@ export const useUserStore = defineStore('user', () => {
         await api.post('/auth/logout/')
       }
     } catch (error) {
-      console.error('登出API调用失败:', error)
+      logError('登出API调用失败', error)
     } finally {
       // 清除本地状态
       token.value = null
@@ -257,26 +304,28 @@ export const useUserStore = defineStore('user', () => {
    * 从本地存储恢复用户信息
    */
   const initializeUser = () => {
-    const savedToken = localStorage.getItem('access_token') || localStorage.getItem('token')
+    const savedToken =
+      localStorage.getItem('access_token') || localStorage.getItem('token')
     const savedUserInfo = localStorage.getItem('userInfo')
-    
+
     if (savedToken) {
       token.value = savedToken
     }
-    
+
     if (savedUserInfo) {
       try {
         const parsed = JSON.parse(savedUserInfo)
         // 兼容历史数据：若是后端原始DTO，进行一次映射；否则直接使用
-        userInfo.value = parsed && (parsed.birth_date || parsed.created_at)
-          ? mapDtoToUserInfo(parsed)
-          : parsed
+        userInfo.value =
+          parsed && (parsed.birth_date || parsed.created_at)
+            ? mapDtoToUserInfo(parsed)
+            : parsed
       } catch (error) {
-        console.error('解析用户信息失败:', error)
+        logError('解析用户信息失败', error)
         localStorage.removeItem('userInfo')
       }
     }
-    
+
     // 如果有token但没有用户信息，尝试获取
     if (token.value && !userInfo.value) {
       fetchUserInfo()
@@ -288,18 +337,22 @@ export const useUserStore = defineStore('user', () => {
    */
   const sendVerificationCode = async (phone: string) => {
     try {
-      const response = await api.post('/auth/send-code/', { phone }, { skipAuth: true, skipErrorHandler: true })
-      
+      const response = await api.post(
+        '/auth/send-code/',
+        { phone },
+        { skipAuth: true, skipErrorHandler: true }
+      )
+
       if (response.success) {
         return { success: true, message: '验证码已发送' }
       } else {
         throw new Error(response.message || '发送失败')
       }
     } catch (error) {
-      console.error('发送验证码失败:', error)
-      return { 
-        success: false, 
-        message: error instanceof Error ? error.message : '发送失败' 
+      logError('发送验证码失败', error)
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : '发送失败',
       }
     }
   }
@@ -309,12 +362,12 @@ export const useUserStore = defineStore('user', () => {
     token,
     userInfo,
     isLoading,
-    
+
     // 计算属性
     isAuthenticated,
     userName,
     userPhone,
-    
+
     // 方法
     login,
     register,

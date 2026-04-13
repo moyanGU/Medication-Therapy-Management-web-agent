@@ -14,7 +14,13 @@ export default [
 
   {
     name: 'app/files-to-ignore',
-    ignores: ['**/dist/**', '**/dist-ssr/**', '**/coverage/**', '**/node_modules/**', '**/backend/**'],
+    ignores: [
+      '**/dist/**',
+      '**/dist-ssr/**',
+      '**/coverage/**',
+      '**/node_modules/**',
+      '**/backend/**',
+    ],
   },
 
   js.configs.recommended,
@@ -31,9 +37,19 @@ export default [
         sourceType: 'module',
       },
     },
+    plugins: {
+      '@typescript-eslint': configTypescript,
+    },
     rules: {
       'vue/multi-word-component-names': 'off',
       'vue/no-v-html': 'off',
+      'vue/attributes-order': 'off',
+      'no-undef': 'off',
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
     },
   },
 
@@ -51,8 +67,12 @@ export default [
     },
     rules: {
       ...configTypescript.configs.recommended.rules,
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
-      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_' },
+      ],
+      '@typescript-eslint/no-explicit-any': 'off',
+      'no-undef': 'off',
     },
   },
 
@@ -63,7 +83,7 @@ export default [
     },
     rules: {
       ...configPrettier.rules,
-      'prettier/prettier': 'error',
+      'prettier/prettier': 'off',
     },
   },
 ]

@@ -1,12 +1,13 @@
-from django.urls import path, include
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
+
 from .views import MedicationPlanViewSet
 
 router = DefaultRouter()
-router.register(r'', MedicationPlanViewSet, basename='plans')
+router.register(r"", MedicationPlanViewSet, basename="plans")
 
 urlpatterns = [
-    path('', include(router.urls)),
+    path("", include(router.urls)),
 ]
 
 # 用药计划API路由：

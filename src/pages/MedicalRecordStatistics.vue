@@ -7,7 +7,9 @@
           <div class="flex items-center justify-between">
             <div>
               <h1 class="text-2xl font-bold text-gray-900">病历统计</h1>
-              <p class="mt-1 text-sm text-gray-500">查看您的就医统计数据和健康趋势</p>
+              <p class="mt-1 text-sm text-gray-500">
+                查看您的就医统计数据和健康趋势
+              </p>
             </div>
             <div class="flex items-center space-x-3">
               <select
@@ -35,7 +37,9 @@
 
     <!-- 加载状态 -->
     <div v-if="loading" class="flex justify-center items-center py-12">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div
+        class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"
+      ></div>
       <span class="ml-2 text-gray-600">加载中...</span>
     </div>
 
@@ -46,13 +50,17 @@
         <div class="bg-white rounded-lg shadow-sm border p-6">
           <div class="flex items-center">
             <div class="flex-shrink-0">
-              <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+              <div
+                class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center"
+              >
                 <Calendar class="w-5 h-5 text-blue-600" />
               </div>
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-500">总就诊次数</p>
-              <p class="text-2xl font-bold text-gray-900">{{ statistics.total_visits ?? 0 }}</p>
+              <p class="text-2xl font-bold text-gray-900">
+                {{ statistics.total_visits ?? 0 }}
+              </p>
             </div>
           </div>
         </div>
@@ -60,13 +68,17 @@
         <div class="bg-white rounded-lg shadow-sm border p-6">
           <div class="flex items-center">
             <div class="flex-shrink-0">
-              <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+              <div
+                class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center"
+              >
                 <Building class="w-5 h-5 text-green-600" />
               </div>
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-500">就诊医院数</p>
-              <p class="text-2xl font-bold text-gray-900">{{ statistics.unique_hospitals ?? 0 }}</p>
+              <p class="text-2xl font-bold text-gray-900">
+                {{ statistics.unique_hospitals ?? 0 }}
+              </p>
             </div>
           </div>
         </div>
@@ -74,13 +86,17 @@
         <div class="bg-white rounded-lg shadow-sm border p-6">
           <div class="flex items-center">
             <div class="flex-shrink-0">
-              <div class="w-8 h-8 bg-yellow-100 rounded-lg flex items-center justify-center">
+              <div
+                class="w-8 h-8 bg-yellow-100 rounded-lg flex items-center justify-center"
+              >
                 <DollarSign class="w-5 h-5 text-yellow-600" />
               </div>
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-500">总费用</p>
-              <p class="text-2xl font-bold text-gray-900">¥{{ (statistics.total_cost ?? 0).toLocaleString() }}</p>
+              <p class="text-2xl font-bold text-gray-900">
+                ¥{{ (statistics.total_cost ?? 0).toLocaleString() }}
+              </p>
             </div>
           </div>
         </div>
@@ -88,13 +104,17 @@
         <div class="bg-white rounded-lg shadow-sm border p-6">
           <div class="flex items-center">
             <div class="flex-shrink-0">
-              <div class="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
+              <div
+                class="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center"
+              >
                 <RotateCcw class="w-5 h-5 text-red-600" />
               </div>
             </div>
             <div class="ml-4">
               <p class="text-sm font-medium text-gray-500">待复诊</p>
-              <p class="text-2xl font-bold text-gray-900">{{ statistics.follow_up_due ?? 0 }}</p>
+              <p class="text-2xl font-bold text-gray-900">
+                {{ statistics.follow_up_due ?? 0 }}
+              </p>
             </div>
           </div>
         </div>
@@ -108,7 +128,10 @@
             <p class="text-sm text-gray-500">按月统计的就诊次数变化</p>
           </div>
           <div class="p-6">
-            <div v-if="visitTrendData.length === 0" class="text-center py-8 text-gray-500">
+            <div
+              v-if="visitTrendData.length === 0"
+              class="text-center py-8 text-gray-500"
+            >
               暂无数据
             </div>
             <div v-else class="h-64">
@@ -124,10 +147,14 @@
                     <div class="w-32 bg-gray-200 rounded-full h-2">
                       <div
                         class="bg-blue-600 h-2 rounded-full"
-                        :style="{ width: `${(item.count / maxVisitCount) * 100}%` }"
+                        :style="{
+                          width: `${(item.count / maxVisitCount) * 100}%`,
+                        }"
                       ></div>
                     </div>
-                    <span class="text-sm font-medium text-gray-900 w-8">{{ item.count }}</span>
+                    <span class="text-sm font-medium text-gray-900 w-8">{{
+                      item.count
+                    }}</span>
                   </div>
                 </div>
               </div>
@@ -142,7 +169,10 @@
             <p class="text-sm text-gray-500">各科室就诊次数统计</p>
           </div>
           <div class="p-6">
-            <div v-if="departmentData.length === 0" class="text-center py-8 text-gray-500">
+            <div
+              v-if="departmentData.length === 0"
+              class="text-center py-8 text-gray-500"
+            >
               暂无数据
             </div>
             <div v-else class="space-y-3">
@@ -156,10 +186,14 @@
                   <div class="w-24 bg-gray-200 rounded-full h-2">
                     <div
                       class="bg-green-600 h-2 rounded-full"
-                      :style="{ width: `${(item.count / maxDepartmentCount) * 100}%` }"
+                      :style="{
+                        width: `${(item.count / maxDepartmentCount) * 100}%`,
+                      }"
                     ></div>
                   </div>
-                  <span class="text-sm font-medium text-gray-900 w-8">{{ item.count }}</span>
+                  <span class="text-sm font-medium text-gray-900 w-8">{{
+                    item.count
+                  }}</span>
                 </div>
               </div>
             </div>
@@ -173,7 +207,10 @@
             <p class="text-sm text-gray-500">常见疾病诊断统计</p>
           </div>
           <div class="p-6">
-            <div v-if="diseaseData.length === 0" class="text-center py-8 text-gray-500">
+            <div
+              v-if="diseaseData.length === 0"
+              class="text-center py-8 text-gray-500"
+            >
               暂无数据
             </div>
             <div v-else class="space-y-3">
@@ -182,15 +219,21 @@
                 :key="item.diagnosis"
                 class="flex items-center justify-between"
               >
-                <span class="text-sm text-gray-900 truncate flex-1 mr-2">{{ item.diagnosis }}</span>
+                <span class="text-sm text-gray-900 truncate flex-1 mr-2">{{
+                  item.diagnosis
+                }}</span>
                 <div class="flex items-center space-x-2">
                   <div class="w-24 bg-gray-200 rounded-full h-2">
                     <div
                       class="bg-purple-600 h-2 rounded-full"
-                      :style="{ width: `${(item.count / maxDiseaseCount) * 100}%` }"
+                      :style="{
+                        width: `${(item.count / maxDiseaseCount) * 100}%`,
+                      }"
                     ></div>
                   </div>
-                  <span class="text-sm font-medium text-gray-900 w-8">{{ item.count }}</span>
+                  <span class="text-sm font-medium text-gray-900 w-8">{{
+                    item.count
+                  }}</span>
                 </div>
               </div>
             </div>
@@ -249,33 +292,48 @@
           <p class="text-sm text-gray-500">各医院就诊次数和费用统计</p>
         </div>
         <div class="p-6">
-          <div v-if="hospitalData.length === 0" class="text-center py-8 text-gray-500">
+          <div
+            v-if="hospitalData.length === 0"
+            class="text-center py-8 text-gray-500"
+          >
             暂无数据
           </div>
           <div v-else class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
               <thead class="bg-gray-50">
                 <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
                     医院名称
                   </th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
                     就诊次数
                   </th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
                     总费用
                   </th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
                     平均费用
                   </th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
                     最近就诊
                   </th>
                 </tr>
               </thead>
               <tbody class="bg-white divide-y divide-gray-200">
                 <tr v-for="hospital in hospitalData" :key="hospital.hospital">
-                  <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <td
+                    class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"
+                  >
                     {{ hospital.hospital }}
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -307,31 +365,43 @@
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <!-- 就诊频率 -->
             <div class="text-center">
-              <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <div
+                class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3"
+              >
                 <Calendar class="w-8 h-8 text-blue-600" />
               </div>
               <h4 class="text-lg font-medium text-gray-900 mb-1">就诊频率</h4>
-              <p class="text-2xl font-bold text-blue-600 mb-2">{{ visitFrequency }}</p>
+              <p class="text-2xl font-bold text-blue-600 mb-2">
+                {{ visitFrequency }}
+              </p>
               <p class="text-sm text-gray-500">次/月</p>
             </div>
 
             <!-- 平均满意度 -->
             <div class="text-center">
-              <div class="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <div
+                class="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-3"
+              >
                 <BarChart3 class="w-8 h-8 text-yellow-600" />
               </div>
               <h4 class="text-lg font-medium text-gray-900 mb-1">平均满意度</h4>
-              <p class="text-2xl font-bold text-yellow-600 mb-2">{{ averageSatisfaction.toFixed(1) }}</p>
+              <p class="text-2xl font-bold text-yellow-600 mb-2">
+                {{ averageSatisfaction.toFixed(1) }}
+              </p>
               <p class="text-sm text-gray-500">分 (满分5分)</p>
             </div>
 
             <!-- 症状改善率 -->
             <div class="text-center">
-              <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <div
+                class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3"
+              >
                 <FileText class="w-8 h-8 text-green-600" />
               </div>
               <h4 class="text-lg font-medium text-gray-900 mb-1">症状改善率</h4>
-              <p class="text-2xl font-bold text-green-600 mb-2">{{ improvementRate.toFixed(1) }}%</p>
+              <p class="text-2xl font-bold text-green-600 mb-2">
+                {{ improvementRate.toFixed(1) }}%
+              </p>
               <p class="text-sm text-gray-500">基于症状评分</p>
             </div>
           </div>
@@ -344,14 +414,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useMedicalRecordStore } from '@/stores/medicalRecords'
+import { isRequestCancelledError } from '@/utils/api'
 import {
   Calendar,
   BarChart3,
   FileText,
   DollarSign,
   Building,
-  Users,
-  RotateCcw
+  RotateCcw,
 } from 'lucide-vue-next'
 
 const medicalRecordStore = useMedicalRecordStore()
@@ -369,7 +439,7 @@ const visitTrendData = ref([
   { month: '2024-03', count: 3 },
   { month: '2024-04', count: 2 },
   { month: '2024-05', count: 4 },
-  { month: '2024-06', count: 1 }
+  { month: '2024-06', count: 1 },
 ])
 
 const departmentData = ref([
@@ -377,7 +447,7 @@ const departmentData = ref([
   { department: '外科', count: 3 },
   { department: '儿科', count: 2 },
   { department: '妇科', count: 2 },
-  { department: '眼科', count: 1 }
+  { department: '眼科', count: 1 },
 ])
 
 const diseaseData = ref([
@@ -385,7 +455,7 @@ const diseaseData = ref([
   { diagnosis: '胃炎', count: 3 },
   { diagnosis: '高血压', count: 2 },
   { diagnosis: '糖尿病', count: 2 },
-  { diagnosis: '关节炎', count: 1 }
+  { diagnosis: '关节炎', count: 1 },
 ])
 
 const hospitalData = ref([
@@ -394,22 +464,22 @@ const hospitalData = ref([
     visit_count: 5,
     total_cost: 2500,
     average_cost: 500,
-    last_visit: '2024-06-15'
+    last_visit: '2024-06-15',
   },
   {
     hospital: '北京大学第一医院',
     visit_count: 3,
     total_cost: 1800,
     average_cost: 600,
-    last_visit: '2024-05-20'
+    last_visit: '2024-05-20',
   },
   {
     hospital: '清华大学附属医院',
     visit_count: 2,
     total_cost: 1200,
     average_cost: 600,
-    last_visit: '2024-04-10'
-  }
+    last_visit: '2024-04-10',
+  },
 ])
 
 // 计算属性
@@ -427,12 +497,18 @@ const maxDiseaseCount = computed(() => {
 
 const averageCost = computed(() => {
   if ((statistics.value?.total_visits ?? 0) === 0) return 0
-  return Math.round((statistics.value?.total_cost ?? 0) / (statistics.value?.total_visits ?? 1))
+  return Math.round(
+    (statistics.value?.total_cost ?? 0) / (statistics.value?.total_visits ?? 1)
+  )
 })
 
 const insuranceRate = computed(() => {
   if ((statistics.value?.total_cost ?? 0) === 0) return 0
-  return ((statistics.value?.insurance_coverage ?? 0) / (statistics.value?.total_cost ?? 1)) * 100
+  return (
+    ((statistics.value?.insurance_coverage ?? 0) /
+      (statistics.value?.total_cost ?? 1)) *
+    100
+  )
 })
 
 const visitFrequency = computed(() => {
@@ -458,6 +534,11 @@ const loadStatistics = async () => {
     await medicalRecordStore.fetchStatistics({ period: selectedPeriod.value })
     // 数据已同步至 store，模板通过 computed(statistics) 自动更新
   } catch (error) {
+    if (isRequestCancelledError(error)) {
+      console.log('加载统计数据请求已取消')
+      return
+    }
+
     console.error('加载统计数据失败:', error)
   } finally {
     loading.value = false

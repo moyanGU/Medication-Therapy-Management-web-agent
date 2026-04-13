@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="public/images/mtm-cover-logo.svg" alt="MTM-Helper Logo" width="800"/>
+</div>
+
 # MTM-用药助手 药品管理系统
 
 ## 项目简介
@@ -84,40 +88,38 @@ git clone <repository-url>
 cd mtm-helper
 ```
 
-#### 2. 前端开发
-```bash
-# 安装依赖
+#### 2. 前端开发（Windows）
+```powershell
 npm install
 
-# 启动开发服务器
+$env:VITE_API_BASE_URL = "http://127.0.0.1:8000/api"
 npm run dev
 ```
 
-#### 3. 后端开发
-```bash
-# 进入后端目录
+默认访问地址：`http://127.0.0.1:3000`
+
+#### 3. 后端开发（Windows）
+```powershell
 cd backend
 
-# 创建虚拟环境
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 
-# 安装依赖
 pip install -r requirements.txt
 
-# 配置环境变量
-cp .env.example .env
-# 编辑.env文件，配置数据库和Redis连接
-
-# 运行数据库迁移
+Copy-Item .env.example .env
 python manage.py migrate
-
-# 创建超级用户
-python manage.py createsuperuser
-
-# 启动开发服务器
-python manage.py runserver
+python manage.py runserver 127.0.0.1:8000
 ```
+
+后端最少需要补齐这些环境变量后，页面助手相关能力才能正常工作：
+- `DB_*`
+- `REDIS_*`
+- `BAICHUAN_M3_API_BASE_URL`
+- `BAICHUAN_M3_API_KEY`
+- `BAICHUAN_M3_MODEL`
+
+`page-agent-main` 目录不是独立必启服务。当前 mtm-helper 运行时实际依赖的是前端 `@page-agent/core`、`@page-agent/page-controller` 包，以及后端代理接口 `/api/ai/page-agent/chat/completions/`。
 
 ### Docker部署
 
@@ -186,7 +188,7 @@ docker compose -f docker-compose.production.yml exec nginx nginx -s reload
 
 - 前端使用ESLint + Prettier进行代码格式化
 - 后端使用Black + Flake8 + isort进行代码规范检查
-- 提交前请运行代码检查：`npm run lint` 和 `black . && flake8`
+- 提交前请运行代码检查：`npm run lint`、`python -m black .`、`python -m flake8`
 
 ### API文档
 

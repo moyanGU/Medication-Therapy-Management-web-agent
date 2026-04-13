@@ -5,10 +5,11 @@ class UsersConfig(AppConfig):
     """
     用户应用配置类
     """
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'apps.users'
-    verbose_name = '用户管理'
-    
+
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "apps.users"
+    verbose_name = "用户管理"
+
     def ready(self):
         """
         应用准备就绪时的初始化操作
