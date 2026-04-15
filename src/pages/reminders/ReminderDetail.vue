@@ -276,6 +276,120 @@
         </div>
       </div>
 
+      <!-- 快速处理 -->
+      <div class="stats-card">
+        <div class="card-header">
+          <h2 class="card-title">
+            <CheckCircle class="w-5 h-5 mr-2" />
+            快速处理这次提醒
+          </h2>
+        </div>
+        <div class="card-content">
+          <div class="space-y-4">
+            <p class="text-sm text-gray-600">
+              如果你已经处理了这次提醒，可以直接在这里记录结果，后续会自动进入记录和统计。
+            </p>
+
+            <div class="flex flex-wrap gap-3">
+              <button
+                @click="submitTaken"
+                class="btn btn-success"
+                :disabled="confirmLoading || !reminder.is_active"
+              >
+                <Check class="w-4 h-4 mr-2" />
+                已服药
+              </button>
+              <button
+                @click="submitMissed"
+                class="btn btn-warning"
+                :disabled="confirmLoading || !reminder.is_active"
+              >
+                <XCircle class="w-4 h-4 mr-2" />
+                漏服
+              </button>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+              <button
+                class="btn btn-outline"
+                :class="{ 'ring-2 ring-blue-200': confirmMode === 'delayed' }"
+                :disabled="confirmLoading || !reminder.is_active"
+                @click="confirmMode = 'delayed'"
+              >
+                <Clock3 class="w-4 h-4 mr-2" />
+                延迟服用
+              </button>
+              <button
+                class="btn btn-outline"
+                :class="{ 'ring-2 ring-blue-200': confirmMode === 'partial' }"
+                :disabled="confirmLoading || !reminder.is_active"
+                @click="confirmMode = 'partial'"
+              >
+                <CheckCircle class="w-4 h-4 mr-2" />
+                部分服用
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <label v-if="confirmMode === 'delayed'" class="block">
+                <span class="block text-sm font-medium text-gray-700 mb-2">延迟了多久</span>
+                <input
+                  v-model.number="confirmForm.delay_minutes"
+                  type="number"
+                  min="1"
+                  class="filter-select w-full"
+                  placeholder="例如 15"
+                />
+              </label>
+
+              <label v-if="confirmMode === 'partial'" class="block">
+                <span class="block text-sm font-medium text-gray-700 mb-2">实际服用了多少</span>
+                <input
+                  v-model.number="confirmForm.quantity_taken"
+                  type="number"
+                  min="1"
+                  :max="Math.max(reminder.dosage - 1, 1)"
+                  class="filter-select w-full"
+                  placeholder="请输入实际服用数量"
+                />
+                <p class="mt-1 text-xs text-gray-500">
+                  本次提醒剂量是 {{ reminder.dosage }} {{ getDosageUnitLabel(reminder.dosage_unit) }}
+                </p>
+              </label>
+
+              <label class="block md:col-span-2">
+                <span class="block text-sm font-medium text-gray-700 mb-2">备注</span>
+                <textarea
+                  v-model="confirmForm.notes"
+                  rows="3"
+                  class="filter-select w-full"
+                  placeholder="可选，方便你之后回看这次为什么没按原计划执行"
+                ></textarea>
+              </label>
+            </div>
+
+            <div class="flex flex-wrap gap-3">
+              <button
+                v-if="confirmMode === 'delayed'"
+                @click="submitDelayed"
+                class="btn btn-primary"
+                :disabled="confirmLoading || !reminder.is_active"
+              >
+                记录为延迟服用
+              </button>
+              <button
+                v-if="confirmMode === 'partial'"
+                @click="submitPartial"
+                class="btn btn-primary"
+                :disabled="confirmLoading || !reminder.is_active"
+              >
+                记录为部分服用
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 执行历史 -->
       <div class="history-card">
         <div class="card-header">
@@ -386,18 +500,12 @@
                 </div>
 
                 <div
-                  v-if="
-                    !record.is_responded && !isPastDue(record.scheduled_time)
-                  "
+                  v-if="!record.is_responded && !isPastDue(record.scheduled_time)"
                   class="history-actions"
                 >
-                  <button
-                    @click="markAsResponded(record)"
-                    class="btn btn-sm btn-success"
-                  >
-                    <Check class="w-3 h-3 mr-1" />
-                    标记已服用
-                  </button>
+                  <span class="text-xs text-gray-500">
+                    这条记录还没处理，请使用上方“快速处理这次提醒”来记录结果。
+                  </span>
                 </div>
               </div>
             </div>
@@ -501,7 +609,11 @@ import {
   XCircle,
   Clock3,
 } from 'lucide-vue-next'
-import type { Reminder, ReminderHistory } from '@/services/reminderService'
+import type {
+  Reminder,
+  ReminderConfirmPayload,
+  ReminderHistory,
+} from '@/services/reminderService'
 
 const router = useRouter()
 const route = useRoute()
@@ -513,6 +625,13 @@ const loading = ref(false)
 const historyLoading = ref(false)
 const reminder = ref<Reminder | null>(null)
 const historyFilter = ref('all')
+const confirmLoading = ref(false)
+const confirmMode = ref<'delayed' | 'partial'>('delayed')
+const confirmForm = ref({
+  delay_minutes: 15,
+  quantity_taken: 1,
+  notes: '',
+})
 
 const reminderId = computed(() => Number(route.params.id))
 
@@ -637,6 +756,9 @@ const loadReminderData = async () => {
     })
     const data = await reminderStore.fetchReminder(reminderId.value)
     reminder.value = data
+    if (reminder.value) {
+      confirmForm.value.quantity_taken = Math.max(1, reminder.value.dosage - 1)
+    }
     console.log('[ReminderDetail] loadReminderData:success', {
       reminder: reminder.value,
     })
@@ -784,21 +906,100 @@ const testNotification = async () => {
 }
 
 /**
- * 标记历史记录为已服用
+ * 执行提醒确认动作并刷新详情与历史
  */
-const markAsResponded = async (record: ReminderHistory) => {
+const submitReminderConfirm = async (payload: ReminderConfirmPayload) => {
+  if (!reminder.value) return
+
   try {
-    console.log('[ReminderDetail] markAsResponded', { historyId: record.id })
-    await reminderStore.respondToReminder(record.id, {
-      response_type: 'taken',
-      notes: '手动标记',
+    confirmLoading.value = true
+    console.log('[ReminderDetail] submitReminderConfirm:start', {
+      reminderId: reminder.value.id,
+      payload,
     })
-    toast.success('已标记为已服用')
-    loadHistoryData()
+    const result = await reminderStore.confirmReminderAction(reminder.value.id, payload)
+    if (result) {
+      toast.success(confirmActionSuccessText(payload.action))
+      await loadReminderData()
+      await loadHistoryData()
+      confirmForm.value.notes = ''
+    }
   } catch (error) {
-    console.error('[ReminderDetail] markAsResponded:error', error)
-    toast.error('标记失败')
+    console.error('[ReminderDetail] submitReminderConfirm:error', error)
+    toast.error('提醒处理失败')
+  } finally {
+    confirmLoading.value = false
   }
+}
+
+/**
+ * 快速标记已服药
+ */
+const submitTaken = async () => {
+  await submitReminderConfirm({
+    action: 'taken',
+    notes: '详情页标记已服药',
+  })
+}
+
+/**
+ * 快速标记漏服
+ */
+const submitMissed = async () => {
+  await submitReminderConfirm({
+    action: 'missed',
+    notes: '详情页标记漏服',
+  })
+}
+
+/**
+ * 提交延迟服用
+ */
+const submitDelayed = async () => {
+  if (!confirmForm.value.delay_minutes || confirmForm.value.delay_minutes <= 0) {
+    toast.error('请填写延迟分钟数')
+    return
+  }
+
+  await submitReminderConfirm({
+    action: 'delayed',
+    delay_minutes: confirmForm.value.delay_minutes,
+    notes: confirmForm.value.notes || '详情页标记延迟服用',
+  })
+}
+
+/**
+ * 提交部分服用
+ */
+const submitPartial = async () => {
+  if (!reminder.value) return
+  if (!confirmForm.value.quantity_taken || confirmForm.value.quantity_taken <= 0) {
+    toast.error('请填写实际服用数量')
+    return
+  }
+  if (confirmForm.value.quantity_taken >= reminder.value.dosage) {
+    toast.error('部分服用数量必须小于提醒剂量')
+    return
+  }
+
+  await submitReminderConfirm({
+    action: 'partial',
+    quantity_taken: confirmForm.value.quantity_taken,
+    notes: confirmForm.value.notes || '详情页标记部分服用',
+  })
+}
+
+/**
+ * 生成提醒确认动作的成功提示文案
+ */
+const confirmActionSuccessText = (action: ReminderConfirmPayload['action']) => {
+  const texts: Record<ReminderConfirmPayload['action'], string> = {
+    taken: '已记录为已服药',
+    missed: '已记录为漏服',
+    delayed: '已记录为延迟服用',
+    partial: '已记录为部分服用',
+  }
+  return texts[action]
 }
 
 /**

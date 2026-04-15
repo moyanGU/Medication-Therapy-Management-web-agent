@@ -1,5 +1,6 @@
 import { api } from '../utils/api'
 import type {
+  MedicationAdherenceSummary,
   MedicationRecordForm,
   MedicationRecordQuery,
 } from '../types/record'
@@ -90,6 +91,24 @@ export const recordApi = {
     log('获取用药趋势数据:', params)
     const response = await api.get('/records/medication-records/trends/', params)
     log('用药趋势数据响应:', response.data)
+    return response
+  },
+
+  /**
+   * 获取依从性聚合数据
+   */
+  async getAdherence(params?: {
+    start_date?: string
+    end_date?: string
+    medicine_id?: string | number
+    days?: number
+  }) {
+    log('获取依从性聚合数据:', params)
+    const response = await api.get<MedicationAdherenceSummary>(
+      '/records/medication-records/adherence/',
+      params
+    )
+    log('依从性聚合数据响应:', response.data)
     return response
   },
 

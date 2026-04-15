@@ -8,6 +8,8 @@ import type {
   ReminderHistory,
   ReminderStats,
   ReminderCreate,
+  ReminderConfirmPayload,
+  ReminderConfirmResult,
   ReminderFilters,
   ReminderHistoryFilters,
   ReminderHistoryResponse,
@@ -345,6 +347,43 @@ export const useReminderStore = defineStore('reminder', () => {
       error.value = err.message || '标记提醒失败'
       showError(error.value)
       return null
+    }
+  }
+
+  const confirmReminderAction = async (
+    id: number,
+    payload: ReminderConfirmPayload
+  ): Promise<ReminderConfirmResult | null> => {
+    try {
+      loading.value = true
+      error.value = null
+      const response = await reminderService.confirmReminder(id, payload)
+
+      if (response.success) {
+        const index = reminders.value.findIndex(r => r.id === id)
+        if (index !== -1) {
+          reminders.value[index] = {
+            ...reminders.value[index],
+            response_count: response.data.response_count,
+          }
+        }
+        if (currentReminder.value?.id === id) {
+          currentReminder.value = {
+            ...currentReminder.value,
+            response_count: response.data.response_count,
+          }
+        }
+        showSuccess(response.message || '提醒处理成功')
+        return response.data
+      }
+
+      throw new Error(response.message || '提醒处理失败')
+    } catch (err: any) {
+      error.value = err.message || '提醒处理失败'
+      showError(error.value)
+      return null
+    } finally {
+      loading.value = false
     }
   }
 
@@ -756,6 +795,7 @@ export const useReminderStore = defineStore('reminder', () => {
     // 提醒操作方法
     toggleReminderActive,
     markReminderResponded,
+    confirmReminderAction,
     testNotification,
 
     // 批量操作方法

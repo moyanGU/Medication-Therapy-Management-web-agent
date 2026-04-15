@@ -350,7 +350,36 @@
             </div>
 
             <!-- 操作按钮 -->
-            <div class="flex items-center space-x-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                @click="quickTake(reminder)"
+                class="btn-sm rounded-lg bg-green-600 px-3 py-2 text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="isConfirmingReminder(reminder.id) || !reminder.is_active"
+              >
+                已服药
+              </button>
+
+              <button
+                @click="quickMiss(reminder)"
+                class="btn-sm rounded-lg bg-rose-600 px-3 py-2 text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="isConfirmingReminder(reminder.id) || !reminder.is_active"
+              >
+                漏服
+              </button>
+
+              <button
+                @click="
+                  actionPanelReminderId === reminder.id
+                    ? closeActionPanel()
+                    : openActionPanel(reminder)
+                "
+                class="btn-sm rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="isConfirmingReminder(reminder.id) || !reminder.is_active"
+              >
+                <MoreHorizontal class="mr-1 inline h-4 w-4" />
+                更多处理
+              </button>
+
               <button
                 @click="toggleReminderActive(reminder)"
                 :class="[
@@ -375,6 +404,113 @@
               >
                 <Trash2 class="w-4 h-4 mr-1" />
                 删除
+              </button>
+            </div>
+          </div>
+
+          <div
+            v-if="actionPanelReminderId === reminder.id"
+            class="mt-4 rounded-2xl border border-sky-100 bg-sky-50/70 p-4"
+          >
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p class="text-sm font-medium text-slate-900">补充处理这次提醒</p>
+                <p class="mt-1 text-sm text-slate-600">
+                  如果不是直接已服药或漏服，可以在这里补充说明。
+                </p>
+              </div>
+              <button
+                class="inline-flex items-center gap-1 self-start text-sm text-slate-500 hover:text-slate-700"
+                @click="closeActionPanel"
+              >
+                <XCircle class="h-4 w-4" />
+                收起
+              </button>
+            </div>
+
+            <div class="mt-4 flex flex-wrap gap-2">
+              <button
+                class="rounded-full px-3 py-1 text-sm transition"
+                :class="
+                  actionPanelMode === 'delayed'
+                    ? 'bg-sky-600 text-white'
+                    : 'border border-slate-200 bg-white text-slate-700'
+                "
+                @click="openActionPanel(reminder, 'delayed')"
+              >
+                <Clock3 class="mr-1 inline h-4 w-4" />
+                延迟服用
+              </button>
+              <button
+                class="rounded-full px-3 py-1 text-sm transition"
+                :class="
+                  actionPanelMode === 'partial'
+                    ? 'bg-sky-600 text-white'
+                    : 'border border-slate-200 bg-white text-slate-700'
+                "
+                @click="openActionPanel(reminder, 'partial')"
+              >
+                <CheckCircle class="mr-1 inline h-4 w-4" />
+                部分服用
+              </button>
+            </div>
+
+            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <label v-if="actionPanelMode === 'delayed'" class="block">
+                <span class="mb-2 block text-sm font-medium text-slate-700">延迟了多久</span>
+                <input
+                  v-model.number="actionForm.delay_minutes"
+                  type="number"
+                  min="1"
+                  class="input-field"
+                  placeholder="例如 15"
+                />
+              </label>
+
+              <label v-if="actionPanelMode === 'partial'" class="block">
+                <span class="mb-2 block text-sm font-medium text-slate-700">
+                  实际服用了多少
+                </span>
+                <input
+                  v-model.number="actionForm.quantity_taken"
+                  type="number"
+                  min="1"
+                  :max="Math.max(reminder.dosage - 1, 1)"
+                  class="input-field"
+                  placeholder="请输入实际服用数量"
+                />
+                <p class="mt-1 text-xs text-slate-500">
+                  本次提醒剂量是 {{ reminder.dosage }} {{ getDosageUnitLabel(reminder.dosage_unit) }}
+                </p>
+              </label>
+
+              <label class="block md:col-span-2">
+                <span class="mb-2 block text-sm font-medium text-slate-700">备注</span>
+                <textarea
+                  v-model="actionForm.notes"
+                  rows="2"
+                  class="input-field"
+                  placeholder="可选，方便你回头查看这次为什么没按原计划执行"
+                ></textarea>
+              </label>
+            </div>
+
+            <div class="mt-4 flex flex-wrap gap-3">
+              <button
+                v-if="actionPanelMode === 'delayed'"
+                class="rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="isConfirmingReminder(reminder.id)"
+                @click="submitDelayedAction(reminder)"
+              >
+                记录为延迟服用
+              </button>
+              <button
+                v-if="actionPanelMode === 'partial'"
+                class="rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="isConfirmingReminder(reminder.id)"
+                @click="submitPartialAction(reminder)"
+              >
+                记录为部分服用
               </button>
             </div>
           </div>
@@ -454,6 +590,7 @@ import {
   Bell,
   CheckCircle,
   Clock,
+  Clock3,
   TrendingUp,
   Search,
   Plus,
@@ -465,7 +602,10 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  MoreHorizontal,
+  XCircle,
 } from 'lucide-vue-next'
+import type { ReminderConfirmPayload } from '@/services/reminderService'
 
 // 接口类型定义
 interface Reminder {
@@ -519,6 +659,14 @@ const stats = ref<Stats>({
 const searchQuery = ref('')
 const quickFilter = ref('all')
 const selectedReminders = ref<number[]>([])
+const actionPanelReminderId = ref<number | null>(null)
+const actionPanelMode = ref<'delayed' | 'partial'>('delayed')
+const actionLoadingReminderId = ref<number | null>(null)
+const actionForm = reactive({
+  delay_minutes: 15,
+  quantity_taken: 1,
+  notes: '',
+})
 
 const filters = reactive({
   is_active: '',
@@ -860,6 +1008,131 @@ const syncPushSubscriptionState = async () => {
     pushHintText.value = '未订阅'
   }
 }
+
+/**
+ * 打开提醒快捷处理面板
+ */
+const openActionPanel = (
+  reminder: Reminder,
+  mode: 'delayed' | 'partial' = 'delayed'
+) => {
+  actionPanelReminderId.value = reminder.id
+  actionPanelMode.value = mode
+  actionForm.delay_minutes = 15
+  actionForm.quantity_taken = Math.max(1, reminder.dosage - 1)
+  actionForm.notes = ''
+}
+
+/**
+ * 关闭快捷处理面板
+ */
+const closeActionPanel = () => {
+  actionPanelReminderId.value = null
+  actionForm.delay_minutes = 15
+  actionForm.quantity_taken = 1
+  actionForm.notes = ''
+}
+
+/**
+ * 执行提醒确认动作并刷新列表与统计
+ */
+const confirmReminder = async (
+  reminder: Reminder,
+  payload: ReminderConfirmPayload
+) => {
+  try {
+    actionLoadingReminderId.value = reminder.id
+    console.log('[Reminders] confirmReminder:start', {
+      id: reminder.id,
+      payload,
+    })
+    const result = await reminderStore.confirmReminderAction(reminder.id, payload)
+    if (result) {
+      success(confirmActionSuccessText(payload.action))
+      closeActionPanel()
+      await fetchReminders()
+      await fetchStats()
+    }
+  } catch (err: any) {
+    console.error('[Reminders] confirmReminder:error', err)
+    error(err?.message || '提醒处理失败')
+  } finally {
+    actionLoadingReminderId.value = null
+  }
+}
+
+/**
+ * 列表页快捷标记已服药
+ */
+const quickTake = async (reminder: Reminder) => {
+  await confirmReminder(reminder, {
+    action: 'taken',
+    notes: '列表页快捷标记已服药',
+  })
+}
+
+/**
+ * 列表页快捷标记漏服
+ */
+const quickMiss = async (reminder: Reminder) => {
+  await confirmReminder(reminder, {
+    action: 'missed',
+    notes: '列表页快捷标记漏服',
+  })
+}
+
+/**
+ * 提交延迟服用
+ */
+const submitDelayedAction = async (reminder: Reminder) => {
+  if (!actionForm.delay_minutes || actionForm.delay_minutes <= 0) {
+    error('请填写延迟分钟数')
+    return
+  }
+  await confirmReminder(reminder, {
+    action: 'delayed',
+    delay_minutes: actionForm.delay_minutes,
+    notes: actionForm.notes || '列表页标记延迟服用',
+  })
+}
+
+/**
+ * 提交部分服用
+ */
+const submitPartialAction = async (reminder: Reminder) => {
+  if (!actionForm.quantity_taken || actionForm.quantity_taken <= 0) {
+    error('请填写实际服用数量')
+    return
+  }
+  if (actionForm.quantity_taken >= reminder.dosage) {
+    error('部分服用数量必须小于提醒剂量')
+    return
+  }
+  await confirmReminder(reminder, {
+    action: 'partial',
+    quantity_taken: actionForm.quantity_taken,
+    notes: actionForm.notes || '列表页标记部分服用',
+  })
+}
+
+/**
+ * 生成动作成功提示文案
+ */
+const confirmActionSuccessText = (action: ReminderConfirmPayload['action']) => {
+  const texts: Record<ReminderConfirmPayload['action'], string> = {
+    taken: '已记录为已服药',
+    missed: '已记录为漏服',
+    delayed: '已记录为延迟服用',
+    partial: '已记录为部分服用',
+  }
+  return texts[action]
+}
+
+/**
+ * 判断当前提醒是否正在执行动作
+ */
+const isConfirmingReminder = (reminderId: number) =>
+  actionLoadingReminderId.value === reminderId
 
 // 格式化函数
 const formatTime = (time: string) => {

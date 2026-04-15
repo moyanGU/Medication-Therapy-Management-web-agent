@@ -130,6 +130,37 @@ export interface ReminderHistoryResponse {
   notes?: string
 }
 
+export interface ReminderConfirmPayload {
+  action: 'taken' | 'missed' | 'delayed' | 'partial'
+  taken_at?: string
+  delay_minutes?: number
+  quantity_taken?: number
+  notes?: string
+}
+
+export interface ReminderConfirmResult {
+  reminder_id: number
+  action: 'taken' | 'missed' | 'delayed' | 'partial'
+  response_recorded: boolean
+  response_count: number
+  history_recorded: boolean
+  record_id?: number | null
+  record_created?: boolean
+  record_payload: {
+    reminder_id: number
+    medicine_id: number
+    action: 'taken' | 'missed' | 'delayed' | 'partial'
+    record_status: 'taken' | 'missed' | 'delayed' | 'partial'
+    scheduled_time: string
+    taken_at: string | null
+    delay_minutes?: number | null
+    quantity_taken: number
+    notes?: string
+    source: 'reminder'
+    administration_method: string
+  }
+}
+
 export interface ReminderFilters {
   medicine?: number
   medicine_name?: string
@@ -271,6 +302,15 @@ class ReminderService {
   async markReminderResponded(id: number): Promise<ApiResponse<Reminder>> {
     return this.call('markReminderResponded', () =>
       api.post<Reminder>(`/reminders/${id}/mark_responded/`)
+    )
+  }
+
+  async confirmReminder(
+    id: number,
+    payload: ReminderConfirmPayload
+  ): Promise<ApiResponse<ReminderConfirmResult>> {
+    return this.call('confirmReminder', () =>
+      api.post<ReminderConfirmResult>(`/reminders/${id}/confirm/`, payload)
     )
   }
 

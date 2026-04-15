@@ -104,6 +104,57 @@ export interface MedicationTrend {
   delayed: number
 }
 
+// 依从性响应摘要
+export interface MedicationAdherenceResponseSummary {
+  scheduled_count: number
+  responded_count: number
+  unresponded_count: number
+  response_rate: number
+}
+
+// 依从性周期摘要
+export interface MedicationAdherencePeriodSummary {
+  total_records: number
+  taken_count: number
+  missed_count: number
+  delayed_count: number
+  partial_count: number
+  completed_count: number
+  adherence_rate: number
+  on_time_rate: number
+  avg_delay_minutes: number
+  risk_level: 'low' | 'medium' | 'high'
+  risk_flags: string[]
+  response_summary: MedicationAdherenceResponseSummary
+}
+
+// 依从性趋势项
+export interface MedicationAdherenceTrendItem {
+  date: string
+  total: number
+  taken: number
+  missed: number
+  delayed: number
+  partial: number
+  completed: number
+  adherence_rate: number
+  on_time_rate: number
+}
+
+// 依从性聚合结果
+export interface MedicationAdherenceSummary {
+  period: {
+    start_date: string
+    end_date: string
+    days: number
+    medicine_id: number | null
+  }
+  summary_7d: MedicationAdherencePeriodSummary
+  summary_30d: MedicationAdherencePeriodSummary
+  current_period: MedicationAdherencePeriodSummary
+  trend: MedicationAdherenceTrendItem[]
+}
+
 // 用药记录查询参数
 export interface MedicationRecordQuery {
   [key: string]:

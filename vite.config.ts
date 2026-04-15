@@ -5,6 +5,33 @@ import Inspector from 'unplugin-vue-dev-locator/vite'
 import traeBadgePlugin from 'vite-plugin-trae-solo-badge'
 import { VitePWA } from 'vite-plugin-pwa'
 
+/**
+ * 仅按少量重依赖组做最小拆包，优先缓解大 chunk warning。
+ */
+function createManualChunks(id: string): string | undefined {
+  if (!id.includes('node_modules')) {
+    return undefined
+  }
+
+  if (id.includes('jspdf')) {
+    return 'vendor-jspdf'
+  }
+
+  if (id.includes('html2canvas')) {
+    return 'vendor-html2canvas'
+  }
+
+  if (id.includes('@page-agent/core') || id.includes('@page-agent/page-controller')) {
+    return 'vendor-page-agent'
+  }
+
+  if (id.includes('sonner') || id.includes('vue-sonner')) {
+    return 'vendor-toast'
+  }
+
+  return undefined
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   build: {
@@ -13,6 +40,11 @@ export default defineConfig({
     emptyOutDir: true,
     // 强制复制 public 目录到构建产物，避免某些环境下未拷贝导致 /icons/* 等资源缺失
     copyPublicDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: createManualChunks,
+      },
+    },
   },
   // 明确声明 public 目录，确保 Vite 在不同环境下行为一致
   publicDir: 'public',

@@ -17,6 +17,7 @@ urlpatterns = [
     path("ping/", views.ping, name="ping"),
     path("system-info/", views.system_info, name="system_info"),
     path("diagnostics/", views.diagnostics, name="diagnostics"),
+    path("dashboard/summary/", views.dashboard_summary, name="dashboard_summary"),
     # API文档
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
     path(

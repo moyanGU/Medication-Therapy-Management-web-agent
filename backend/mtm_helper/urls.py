@@ -74,6 +74,11 @@ api_urlpatterns = [
         name="reminders-mark-responded",
     ),
     path(
+        "reminders/<int:pk>/confirm/",
+        ReminderViewSet.as_view({"post": "confirm"}),
+        name="reminders-confirm",
+    ),
+    path(
         "reminders/<int:pk>/test_notification/",
         ReminderViewSet.as_view({"post": "test_notification"}),
         name="reminders-test-notification",
@@ -87,6 +92,7 @@ api_urlpatterns = [
     # 其余 reminders 路由（history、扩展 action 等）
     path("reminders/", include("apps.reminders.urls")),
     path("plans/", include("apps.plans.urls")),
+    path("mtm/", include("apps.mtm.urls")),
     # 核心模块：健康检查 /api/health/、ping、系统信息、API文档等
     # 之前未挂载导致 /api/health/ 返回 404，这里补充挂载
     path("", include("apps.core.urls")),

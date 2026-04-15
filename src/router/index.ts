@@ -22,6 +22,8 @@ const WelcomePage = () => import('@/pages/WelcomePage.vue')
 const Login = () => import('@/pages/Login.vue')
 const Register = () => import('@/pages/Register.vue')
 const DashboardPage = () => import('@/pages/DashboardPage.vue')
+const MtmServiceCasesPage = () => import('@/pages/MtmServiceCasesPage.vue')
+const MtmServiceCaseDetailPage = () => import('@/pages/MtmServiceCaseDetailPage.vue')
 const MedicinesPage = () => import('@/pages/MedicinesPage.vue')
 const RecordsPage = () => import('@/pages/RecordsPage.vue')
 const PlansPage = () => import('@/pages/PlansPage.vue')
@@ -72,6 +74,19 @@ const routes: RouteRecordRaw[] = [
     name: 'Dashboard',
     component: DashboardPage,
     meta: { requiresAuth: true },
+  },
+  {
+    path: '/mtm/service-cases',
+    name: 'MtmServiceCases',
+    component: MtmServiceCasesPage,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/mtm/service-cases/:id',
+    name: 'MtmServiceCaseDetail',
+    component: MtmServiceCaseDetailPage,
+    meta: { requiresAuth: true },
+    props: true,
   },
   {
     path: '/medicines',

@@ -29,12 +29,28 @@ class MedicationRecord(models.Model):
         help_text="服用的药品",
     )
 
+    # 关联提醒
+    reminder = models.ForeignKey(
+        "reminders.Reminder",
+        on_delete=models.SET_NULL,
+        related_name="medication_records",
+        blank=True,
+        null=True,
+        verbose_name="关联提醒",
+        help_text="若记录由提醒确认生成，则关联到对应提醒",
+    )
+
     # 服药时间
     taken_at = models.DateTimeField(verbose_name="服药时间", help_text="实际服药的时间")
 
+    # 计划服药时间
+    scheduled_time = models.DateTimeField(
+        blank=True, null=True, verbose_name="计划服药时间", help_text="原计划的服药时间"
+    )
+
     # 服药数量
     quantity_taken = models.PositiveIntegerField(
-        validators=[MinValueValidator(1)], verbose_name="服药数量", help_text="本次服用的药品数量"
+        validators=[MinValueValidator(0)], verbose_name="服药数量", help_text="本次服用的药品数量"
     )
 
     # 服药方式
@@ -140,7 +156,9 @@ class MedicationRecord(models.Model):
         indexes = [
             models.Index(fields=["user"], name="idx_med_rec_user"),
             models.Index(fields=["medicine"], name="idx_med_rec_medicine"),
+            models.Index(fields=["reminder"], name="idx_med_rec_reminder"),
             models.Index(fields=["taken_at"], name="idx_med_rec_taken"),
+            models.Index(fields=["scheduled_time"], name="idx_med_rec_scheduled"),
             models.Index(fields=["user", "taken_at"], name="idx_med_rec_user_taken"),
             models.Index(fields=["created_at"], name="idx_med_rec_created"),
         ]
@@ -201,15 +219,54 @@ class MedicationRecord(models.Model):
         """
         保存时的自动处理
         """
-        # 如果是延迟服药，自动设置is_on_time为False
-        if self.status == "delayed":
+        previous = None
+        if self.pk:
+            previous = (
+                MedicationRecord.objects.select_related("medicine")
+                .filter(pk=self.pk)
+                .first()
+            )
+
+        # 如果不是按时服药场景，自动设置 is_on_time
+        if self.status in ["delayed", "missed"]:
             self.is_on_time = False
 
         super().save(*args, **kwargs)
 
-        # 更新药品库存
-        if self.status in ["taken", "partial"]:
-            self.medicine.quantity = max(
-                0, self.medicine.quantity - self.quantity_taken
-            )
-            self.medicine.save(update_fields=["quantity"])
+        self._sync_inventory(previous=previous)
+
+    def _get_inventory_impact_quantity(self):
+        """
+        计算当前记录对库存的影响数量
+        """
+        if self.status in ["taken", "partial", "delayed"]:
+            return self.quantity_taken
+        return 0
+
+    def _sync_inventory(self, previous=None):
+        """
+        根据新旧记录差值同步库存，避免更新时重复扣减
+        """
+        new_quantity = self._get_inventory_impact_quantity()
+
+        if previous and previous.medicine_id != self.medicine_id:
+            previous_quantity = previous._get_inventory_impact_quantity()
+            if previous_quantity:
+                previous_medicine = previous.medicine
+                previous_medicine.quantity += previous_quantity
+                previous_medicine.save(update_fields=["quantity"])
+
+            if new_quantity:
+                current_medicine = Medicine.objects.get(pk=self.medicine_id)
+                current_medicine.quantity = max(0, current_medicine.quantity - new_quantity)
+                current_medicine.save(update_fields=["quantity"])
+            return
+
+        previous_quantity = previous._get_inventory_impact_quantity() if previous else 0
+        delta = new_quantity - previous_quantity
+        if not delta:
+            return
+
+        current_medicine = Medicine.objects.get(pk=self.medicine_id)
+        current_medicine.quantity = max(0, current_medicine.quantity - delta)
+        current_medicine.save(update_fields=["quantity"])

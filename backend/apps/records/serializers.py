@@ -22,7 +22,9 @@ class MedicationRecordSerializer(serializers.ModelSerializer):
             "id",
             "user",
             "medicine",
+            "reminder",
             "taken_at",
+            "scheduled_time",
             "quantity_taken",
             "administration_method",
             "status",
@@ -54,8 +56,8 @@ class MedicationRecordSerializer(serializers.ModelSerializer):
         """
         验证服药数量
         """
-        if value <= 0:
-            raise serializers.ValidationError("服药数量必须大于0")
+        if value < 0:
+            raise serializers.ValidationError("服药数量不能小于0")
         return value
 
     def validate_medicine(self, value):
@@ -76,9 +78,14 @@ class MedicationRecordSerializer(serializers.ModelSerializer):
         if attrs.get("status") == "delayed" and not attrs.get("delay_minutes"):
             raise serializers.ValidationError({"delay_minutes": "延迟服用状态必须提供延迟时间"})
 
-        # 如果状态是漏服，不应该有服药数量
-        if attrs.get("status") == "missed" and attrs.get("quantity_taken", 0) > 0:
-            raise serializers.ValidationError({"quantity_taken": "漏服状态下服药数量应为0"})
+        status = attrs.get("status")
+        quantity_taken = attrs.get("quantity_taken", 0)
+
+        if status == "missed" and quantity_taken != 0:
+            raise serializers.ValidationError({"quantity_taken": "漏服状态下服药数量必须为0"})
+
+        if status in ["taken", "delayed", "partial"] and quantity_taken <= 0:
+            raise serializers.ValidationError({"quantity_taken": "该服药状态下服药数量必须大于0"})
 
         return attrs
 
@@ -120,7 +127,9 @@ class MedicationRecordListSerializer(serializers.ModelSerializer):
             "id",
             "medicine_name",
             "medicine_image",
+            "reminder",
             "taken_at",
+            "scheduled_time",
             "quantity_taken",
             "status",
             "adherence_score",

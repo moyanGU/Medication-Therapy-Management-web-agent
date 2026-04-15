@@ -1,10 +1,10 @@
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q
-from django.http import HttpResponse
+from django.http import Http404, HttpResponse
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import status, viewsets
@@ -15,11 +15,13 @@ from rest_framework.response import Response
 
 from apps.core.pagination import StandardResultsSetPagination
 from apps.core.permissions import IsOwnerOrReadOnly
+from apps.records.models import MedicationRecord
 
 from .filters import ReminderFilter
 from .models import Reminder
 from .notifications import notification_service
 from .serializers import (
+    ReminderConfirmSerializer,
     ReminderCreateSerializer,
     ReminderListSerializer,
     ReminderSerializer,
@@ -27,6 +29,85 @@ from .serializers import (
 )
 
 logger = logging.getLogger(__name__)
+
+REMINDER_HISTORY_RESPONSE_MAP = {
+    "taken": "taken",
+    "missed": "skipped",
+    "delayed": "delayed",
+    "partial": "taken",
+}
+
+
+def build_reminder_confirm_payload(reminder, validated_data):
+    """
+    构造后续记录落库可复用的标准载荷
+    """
+    action = validated_data["action"]
+    scheduled_time = timezone.make_aware(
+        datetime.combine(timezone.localdate(), reminder.reminder_time)
+    )
+    taken_at = validated_data.get("taken_at")
+    delay_minutes = validated_data.get("delay_minutes")
+
+    if action == "delayed" and delay_minutes and not taken_at:
+        taken_at = scheduled_time + timedelta(minutes=delay_minutes)
+
+    if action == "taken" and not taken_at:
+        taken_at = timezone.now()
+
+    quantity_taken = validated_data.get("quantity_taken")
+    if quantity_taken is None:
+        if action == "partial":
+            quantity_taken = max(1, reminder.dosage - 1)
+        elif action == "missed":
+            quantity_taken = 0
+        else:
+            quantity_taken = reminder.dosage
+
+    return {
+        "reminder_id": reminder.id,
+        "medicine_id": reminder.medicine_id,
+        "action": action,
+        "record_status": action,
+        "scheduled_time": scheduled_time.isoformat(),
+        "taken_at": taken_at.isoformat() if taken_at else None,
+        "delay_minutes": delay_minutes,
+        "quantity_taken": quantity_taken,
+        "notes": validated_data.get("notes", ""),
+        "source": "reminder",
+        "administration_method": "oral",
+    }
+
+
+def sync_medication_record_from_payload(reminder, record_payload):
+    """
+    将提醒确认结果同步到正式用药记录
+    """
+    scheduled_time = datetime.fromisoformat(record_payload["scheduled_time"])
+    taken_at = (
+        datetime.fromisoformat(record_payload["taken_at"])
+        if record_payload.get("taken_at")
+        else scheduled_time
+    )
+
+    record_defaults = {
+        "medicine": reminder.medicine,
+        "taken_at": taken_at,
+        "quantity_taken": record_payload["quantity_taken"],
+        "administration_method": record_payload["administration_method"],
+        "status": record_payload["record_status"],
+        "notes": record_payload.get("notes", ""),
+        "delay_minutes": record_payload.get("delay_minutes"),
+        "source": record_payload["source"],
+    }
+
+    record, created = MedicationRecord.objects.update_or_create(
+        user=reminder.user,
+        reminder=reminder,
+        scheduled_time=scheduled_time,
+        defaults=record_defaults,
+    )
+    return record, created
 
 
 class ReminderViewSet(viewsets.ModelViewSet):
@@ -62,6 +143,8 @@ class ReminderViewSet(viewsets.ModelViewSet):
             return ReminderCreateSerializer
         elif self.action in ["update", "partial_update"]:
             return ReminderUpdateSerializer
+        elif self.action == "confirm":
+            return ReminderConfirmSerializer
         elif self.action == "list":
             return ReminderListSerializer
         return ReminderSerializer
@@ -507,6 +590,81 @@ class ReminderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+    @action(detail=True, methods=["post"])
+    def confirm(self, request, pk=None):
+        """
+        记录提醒确认动作，并返回后续记录落库所需载荷
+        """
+        try:
+            reminder = self.get_object()
+            serializer = self.get_serializer(
+                data=request.data,
+                context={"request": request, "reminder": reminder},
+            )
+            serializer.is_valid(raise_exception=True)
+            validated_data = serializer.validated_data
+            action_type = validated_data["action"]
+
+            logger.info(
+                "用户 %s 提交提醒确认动作，reminder_id=%s，action=%s，payload=%s",
+                request.user.username,
+                reminder.id,
+                action_type,
+                validated_data,
+            )
+
+            history_recorded = False
+            record_created = False
+            record = None
+            record_payload = build_reminder_confirm_payload(reminder, validated_data)
+            with transaction.atomic():
+                reminder.increment_response_count()
+                history_recorded = self._record_confirm_action_history(
+                    reminder=reminder,
+                    action_type=action_type,
+                    notes=validated_data.get("notes", ""),
+                    delay_minutes=validated_data.get("delay_minutes"),
+                )
+                record, record_created = sync_medication_record_from_payload(
+                    reminder=reminder,
+                    record_payload=record_payload,
+                )
+
+            reminder.refresh_from_db()
+
+            return Response(
+                {
+                    "success": True,
+                    "message": "提醒确认成功",
+                    "data": {
+                        "reminder_id": reminder.id,
+                        "action": action_type,
+                        "response_recorded": True,
+                        "response_count": reminder.response_count,
+                        "history_recorded": history_recorded,
+                        "record_id": record.id if record else None,
+                        "record_created": record_created,
+                        "record_payload": record_payload,
+                    },
+                }
+            )
+        except Http404:
+            logger.warning(
+                "提醒确认失败：用户 %s 无权访问提醒 %s",
+                request.user.username,
+                pk,
+            )
+            return Response(
+                {"success": False, "message": "提醒不存在", "data": None},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            logger.error(f"提醒确认失败: {str(e)}")
+            return Response(
+                {"success": False, "message": f"提醒确认失败: {str(e)}", "data": None},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
     @action(detail=False, methods=["post"])
     def batch_toggle(self, request):
         """
@@ -739,3 +897,77 @@ class ReminderViewSet(viewsets.ModelViewSet):
                 {"success": False, "message": f"订阅响应处理失败: {str(e)}", "data": None},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+    def _record_confirm_action_history(
+        self, reminder, action_type, notes="", delay_minutes=None
+    ):
+        """
+        尽量将确认动作同步到最近一条未响应历史；若没有可匹配历史则最小化创建一条手动历史。
+        """
+        from .history_models import ReminderHistory
+
+        mapped_response_type = REMINDER_HISTORY_RESPONSE_MAP[action_type]
+        history = (
+            ReminderHistory.objects.filter(
+                reminder=reminder,
+                user=reminder.user,
+                response_type="no_response",
+            )
+            .order_by("-scheduled_time", "-created_at")
+            .first()
+        )
+
+        if history:
+            history.mark_responded(mapped_response_type, notes=notes)
+            logger.info(
+                "提醒确认动作已写回现有历史，reminder_id=%s，history_id=%s，action=%s",
+                reminder.id,
+                history.id,
+                action_type,
+            )
+        else:
+            scheduled_time = timezone.make_aware(
+                datetime.combine(timezone.localdate(), reminder.reminder_time)
+            )
+            history = ReminderHistory.objects.create(
+                user=reminder.user,
+                reminder=reminder,
+                title=reminder.title or f"用药提醒 - {reminder.medicine.name}",
+                message=reminder.get_default_message(),
+                notification_methods=["manual_confirm"],
+                scheduled_time=scheduled_time,
+                reminder_type="manual",
+                status="sent",
+                response_type=mapped_response_type,
+                responded_at=timezone.now(),
+                notes=notes or "由提醒确认动作接口生成",
+            )
+            if history.sent_at:
+                response_delay = history.responded_at - history.sent_at
+                history.response_delay_minutes = int(response_delay.total_seconds() / 60)
+                history.save(update_fields=["response_delay_minutes"])
+            logger.info(
+                "提醒确认动作已补建手动历史，reminder_id=%s，history_id=%s，action=%s",
+                reminder.id,
+                history.id,
+                action_type,
+            )
+
+        if action_type == "delayed" and delay_minutes:
+            ReminderHistory.objects.create(
+                user=reminder.user,
+                reminder=reminder,
+                title=history.title,
+                message=history.message,
+                notification_methods=["push"],
+                scheduled_time=timezone.now() + timedelta(minutes=delay_minutes),
+                reminder_type="repeat",
+                status="pending",
+            )
+            logger.info(
+                "提醒确认动作已创建延迟补发历史，reminder_id=%s，delay_minutes=%s",
+                reminder.id,
+                delay_minutes,
+            )
+
+        return True

@@ -80,6 +80,7 @@ LOCAL_APPS = [
     "apps.reminders",
     "apps.plans",
     "apps.medical_records",
+    "apps.mtm",
     "apps.core",
     "apps.audit",
 ]
