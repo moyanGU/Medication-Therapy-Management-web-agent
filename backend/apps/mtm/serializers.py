@@ -3,6 +3,25 @@ from rest_framework import serializers
 from .models import MTMAssessment, MTMFollowUp, MTMInterview, MTMPlan, MTMServiceCase
 
 
+def _has_meaningful_content(value):
+    """
+    递归判断字段中是否包含可视为已填写的有效内容
+    """
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return True
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict):
+        return any(_has_meaningful_content(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_has_meaningful_content(item) for item in value)
+    return bool(value)
+
+
 class MTMUserSummarySerializer(serializers.Serializer):
     """
     服务单参与者的最小用户摘要
@@ -33,6 +52,270 @@ class MTMInterviewSummarySerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+class MTMInterviewFormSerializer(serializers.Serializer):
+    """
+    问诊表单读取序列化器
+    """
+
+    id = serializers.IntegerField(read_only=True)
+    basic_info_snapshot = serializers.JSONField()
+    medication_history = serializers.JSONField()
+    allergy_history = serializers.JSONField()
+    lifestyle_info = serializers.JSONField()
+    economic_context = serializers.CharField(
+        allow_blank=True, allow_null=True, required=False
+    )
+    health_expectations = serializers.CharField(
+        allow_blank=True, allow_null=True, required=False
+    )
+    notes = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    completed_at = serializers.DateTimeField(allow_null=True, read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+
+
+class MTMInterviewDraftSerializer(serializers.Serializer):
+    """
+    问诊草稿保存序列化器
+    """
+
+    basic_info_snapshot = serializers.JSONField(required=False)
+    medication_history = serializers.JSONField(required=False)
+    allergy_history = serializers.JSONField(required=False)
+    lifestyle_info = serializers.JSONField(required=False)
+    economic_context = serializers.CharField(
+        allow_blank=True, allow_null=True, required=False
+    )
+    health_expectations = serializers.CharField(
+        allow_blank=True, allow_null=True, required=False
+    )
+    notes = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+
+    def validate_basic_info_snapshot(self, value):
+        """
+        约束基础信息必须是对象结构
+        """
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("基础信息必须是对象格式")
+        return value
+
+    def validate_medication_history(self, value):
+        """
+        约束用药史必须是列表结构
+        """
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError("用药史必须是列表格式")
+        return value
+
+    def validate_allergy_history(self, value):
+        """
+        约束过敏史必须是列表结构
+        """
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError("过敏史必须是列表格式")
+        return value
+
+    def validate_lifestyle_info(self, value):
+        """
+        约束生活方式信息必须是对象结构
+        """
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("生活方式信息必须是对象格式")
+        return value
+
+    def validate_economic_context(self, value):
+        """
+        清洗经济背景字段中的首尾空白
+        """
+        if value is None:
+            return value
+        return value.strip()
+
+    def validate_health_expectations(self, value):
+        """
+        清洗健康期望字段中的首尾空白
+        """
+        if value is None:
+            return value
+        return value.strip()
+
+    def validate_notes(self, value):
+        """
+        清洗备注字段中的首尾空白
+        """
+        if value is None:
+            return value
+        return value.strip()
+
+
+class MTMInterviewCompleteSerializer(MTMInterviewDraftSerializer):
+    """
+    问诊完成提交序列化器
+    """
+
+    def validate(self, attrs):
+        """
+        校验问诊完成所需的最小关键字段
+        """
+        attrs = super().validate(attrs)
+        basic_info = attrs.get("basic_info_snapshot") or {}
+        medication_history = attrs.get("medication_history") or []
+        health_expectations = attrs.get("health_expectations") or ""
+        notes = attrs.get("notes") or ""
+
+        if not _has_meaningful_content(basic_info):
+            raise serializers.ValidationError(
+                {"basic_info_snapshot": ["请至少补充一项基础信息后再完成问诊。"]}
+            )
+
+        if not _has_meaningful_content(medication_history):
+            raise serializers.ValidationError(
+                {"medication_history": ["请至少补充一项当前或既往用药信息后再完成问诊。"]}
+            )
+
+        if not health_expectations.strip() and not notes.strip():
+            raise serializers.ValidationError(
+                {
+                    "non_field_errors": [
+                        "请至少填写本次健康期望或补充说明中的一项后再完成问诊。"
+                    ]
+                }
+            )
+
+        return attrs
+
+
+class MTMAssessmentFormSerializer(serializers.Serializer):
+    """
+    评估表单读取序列化器
+    """
+
+    id = serializers.IntegerField(read_only=True)
+    appropriateness_score = serializers.IntegerField(
+        allow_null=True, required=False, min_value=0, max_value=100
+    )
+    effectiveness_score = serializers.IntegerField(
+        allow_null=True, required=False, min_value=0, max_value=100
+    )
+    safety_score = serializers.IntegerField(
+        allow_null=True, required=False, min_value=0, max_value=100
+    )
+    adherence_score = serializers.IntegerField(
+        allow_null=True, required=False, min_value=0, max_value=100
+    )
+    economic_score = serializers.IntegerField(
+        allow_null=True, required=False, min_value=0, max_value=100
+    )
+    problem_list = serializers.JSONField(required=False)
+    summary = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    risk_level = serializers.ChoiceField(
+        choices=MTMAssessment.RISK_LEVEL_CHOICES, required=False
+    )
+    completed_at = serializers.DateTimeField(allow_null=True, read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+
+
+class MTMAssessmentDraftSerializer(serializers.Serializer):
+    """
+    评估草稿保存序列化器
+    """
+
+    appropriateness_score = serializers.IntegerField(
+        allow_null=True, required=False, min_value=0, max_value=100
+    )
+    effectiveness_score = serializers.IntegerField(
+        allow_null=True, required=False, min_value=0, max_value=100
+    )
+    safety_score = serializers.IntegerField(
+        allow_null=True, required=False, min_value=0, max_value=100
+    )
+    adherence_score = serializers.IntegerField(
+        allow_null=True, required=False, min_value=0, max_value=100
+    )
+    economic_score = serializers.IntegerField(
+        allow_null=True, required=False, min_value=0, max_value=100
+    )
+    problem_list = serializers.JSONField(required=False)
+    summary = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    risk_level = serializers.ChoiceField(
+        choices=MTMAssessment.RISK_LEVEL_CHOICES, required=False
+    )
+
+    def validate_problem_list(self, value):
+        """
+        约束问题清单必须是列表结构
+        """
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError("问题清单必须是列表格式")
+        return value
+
+    def validate_summary(self, value):
+        """
+        清洗评估总结中的首尾空白
+        """
+        if value is None:
+            return value
+        return value.strip()
+
+
+class MTMAssessmentCompleteSerializer(MTMAssessmentDraftSerializer):
+    """
+    评估完成提交序列化器
+    """
+
+    def validate(self, attrs):
+        """
+        校验评估完成所需的最小关键字段
+        """
+        attrs = super().validate(attrs)
+        scores = [
+            attrs.get("appropriateness_score"),
+            attrs.get("effectiveness_score"),
+            attrs.get("safety_score"),
+            attrs.get("adherence_score"),
+            attrs.get("economic_score"),
+        ]
+        problem_list = attrs.get("problem_list") or []
+        summary = attrs.get("summary") or ""
+        risk_level = attrs.get("risk_level")
+
+        if not any(score is not None for score in scores):
+            raise serializers.ValidationError(
+                {
+                    "non_field_errors": [
+                        "请至少补充一项评估评分后再完成评估。"
+                    ]
+                }
+            )
+
+        if not risk_level:
+            raise serializers.ValidationError(
+                {"risk_level": ["请选择综合风险等级后再完成评估。"]}
+            )
+
+        if not _has_meaningful_content(problem_list) and not summary.strip():
+            raise serializers.ValidationError(
+                {
+                    "non_field_errors": [
+                        "请至少填写一项问题清单或评估总结后再完成评估。"
+                    ]
+                }
+            )
+
+        return attrs
 
 
 class MTMAssessmentSummarySerializer(serializers.ModelSerializer):

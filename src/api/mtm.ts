@@ -1,5 +1,9 @@
 import { api } from '@/utils/api'
 import type {
+  MtmAssessmentDraftPayload,
+  MtmAssessmentSummary,
+  MtmInterviewDraftPayload,
+  MtmInterviewSummary,
   MtmServiceCase,
   MtmServiceCaseCreatePayload,
   MtmServiceCaseListParams,
@@ -78,6 +82,106 @@ export const mtmApi = {
       payload
     )
     log('🟢 [mtmApi] transitionServiceCase response =', response.data)
+    return response.data
+  },
+
+  /**
+   * 读取单条 MTM 服务单的问诊草稿
+   */
+  async getInterview(serviceCaseId: number | string): Promise<MtmInterviewSummary> {
+    log('🔵 [mtmApi] getInterview id =', serviceCaseId)
+    const response = await api.get<MtmInterviewSummary>(
+      `/mtm/service-cases/${serviceCaseId}/interview/`
+    )
+    log('🟢 [mtmApi] getInterview response =', response.data)
+    return response.data
+  },
+
+  /**
+   * 手动保存单条 MTM 服务单的问诊草稿
+   */
+  async saveInterviewDraft(
+    serviceCaseId: number | string,
+    payload: MtmInterviewDraftPayload
+  ): Promise<MtmInterviewSummary> {
+    log('🔵 [mtmApi] saveInterviewDraft payload =', {
+      serviceCaseId,
+      ...payload,
+    })
+    const response = await api.put<MtmInterviewSummary>(
+      `/mtm/service-cases/${serviceCaseId}/interview/`,
+      payload
+    )
+    log('🟢 [mtmApi] saveInterviewDraft response =', response.data)
+    return response.data
+  },
+
+  /**
+   * 完成单条 MTM 服务单的问诊填写
+   */
+  async completeInterview(
+    serviceCaseId: number | string,
+    payload: MtmInterviewDraftPayload
+  ): Promise<MtmInterviewSummary> {
+    log('🔵 [mtmApi] completeInterview payload =', {
+      serviceCaseId,
+      ...payload,
+    })
+    const response = await api.post<MtmInterviewSummary>(
+      `/mtm/service-cases/${serviceCaseId}/interview/complete/`,
+      payload
+    )
+    log('🟢 [mtmApi] completeInterview response =', response.data)
+    return response.data
+  },
+
+  /**
+   * 读取单条 MTM 服务单的评估草稿
+   */
+  async getAssessment(serviceCaseId: number | string): Promise<MtmAssessmentSummary> {
+    log('🔵 [mtmApi] getAssessment id =', serviceCaseId)
+    const response = await api.get<MtmAssessmentSummary>(
+      `/mtm/service-cases/${serviceCaseId}/assessment/`
+    )
+    log('🟢 [mtmApi] getAssessment response =', response.data)
+    return response.data
+  },
+
+  /**
+   * 手动保存单条 MTM 服务单的评估草稿
+   */
+  async saveAssessmentDraft(
+    serviceCaseId: number | string,
+    payload: MtmAssessmentDraftPayload
+  ): Promise<MtmAssessmentSummary> {
+    log('🔵 [mtmApi] saveAssessmentDraft payload =', {
+      serviceCaseId,
+      ...payload,
+    })
+    const response = await api.put<MtmAssessmentSummary>(
+      `/mtm/service-cases/${serviceCaseId}/assessment/`,
+      payload
+    )
+    log('🟢 [mtmApi] saveAssessmentDraft response =', response.data)
+    return response.data
+  },
+
+  /**
+   * 完成单条 MTM 服务单的评估填写
+   */
+  async completeAssessment(
+    serviceCaseId: number | string,
+    payload: MtmAssessmentDraftPayload
+  ): Promise<MtmAssessmentSummary> {
+    log('🔵 [mtmApi] completeAssessment payload =', {
+      serviceCaseId,
+      ...payload,
+    })
+    const response = await api.post<MtmAssessmentSummary>(
+      `/mtm/service-cases/${serviceCaseId}/assessment/complete/`,
+      payload
+    )
+    log('🟢 [mtmApi] completeAssessment response =', response.data)
     return response.data
   },
 }

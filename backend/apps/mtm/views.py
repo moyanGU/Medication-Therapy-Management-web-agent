@@ -2,6 +2,7 @@ import logging
 
 from django.core.exceptions import ValidationError
 from django.db.models import Q
+from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action
@@ -10,8 +11,14 @@ from rest_framework.permissions import IsAuthenticated
 from apps.core.pagination import StandardResultsSetPagination
 from apps.core.response import error_response, success_response
 
-from .models import MTMServiceCase
+from .models import MTMAssessment, MTMInterview, MTMServiceCase
 from .serializers import (
+    MTMAssessmentCompleteSerializer,
+    MTMAssessmentDraftSerializer,
+    MTMAssessmentFormSerializer,
+    MTMInterviewCompleteSerializer,
+    MTMInterviewDraftSerializer,
+    MTMInterviewFormSerializer,
     MTMServiceCaseCreateSerializer,
     MTMServiceCaseDetailSerializer,
     MTMServiceCaseListSerializer,
@@ -47,6 +54,142 @@ class MTMServiceCaseViewSet(
     ordering_fields = ["created_at", "started_at", "completed_at"]
     ordering = ["-created_at"]
 
+    def _build_initial_interview_payload(self, service_case):
+        """
+        为首次进入问诊页的服务单生成最小草稿内容
+        """
+        patient = service_case.patient
+        return {
+            "service_case": service_case,
+            "basic_info_snapshot": {
+                "patient_name": patient.get_full_name() or patient.username,
+                "age": patient.age,
+                "gender": patient.get_gender_display() if patient.gender else "",
+                "contact_phone": patient.phone,
+                "main_diagnosis": service_case.service_goal,
+            },
+            "medication_history": [],
+            "allergy_history": [],
+            "lifestyle_info": {
+                "smoking": "",
+                "drinking": "",
+                "exercise": "",
+                "sleep": "",
+            },
+            "economic_context": "",
+            "health_expectations": service_case.service_goal or "",
+            "notes": "",
+        }
+
+    def _get_or_create_interview(self, service_case):
+        """
+        获取当前服务单问诊记录；若不存在则生成最小草稿
+        """
+        interview, created = MTMInterview.objects.get_or_create(
+            service_case=service_case,
+            defaults=self._build_initial_interview_payload(service_case),
+        )
+        if created:
+            logger.info(
+                "🟢 [MTM] interview draft initialized - case=%s interview=%s",
+                service_case.id,
+                interview.id,
+            )
+        return interview
+
+    def _build_initial_assessment_payload(self, service_case):
+        """
+        为首次进入评估页的服务单生成最小草稿内容
+        """
+        return {
+            "service_case": service_case,
+            "appropriateness_score": None,
+            "effectiveness_score": None,
+            "safety_score": None,
+            "adherence_score": None,
+            "economic_score": None,
+            "problem_list": [],
+            "summary": "",
+            "risk_level": "medium",
+        }
+
+    def _get_or_create_assessment(self, service_case):
+        """
+        获取当前服务单评估记录；若不存在则生成最小草稿
+        """
+        assessment, created = MTMAssessment.objects.get_or_create(
+            service_case=service_case,
+            defaults=self._build_initial_assessment_payload(service_case),
+        )
+        if created:
+            logger.info(
+                "🟢 [MTM] assessment draft initialized - case=%s assessment=%s",
+                service_case.id,
+                assessment.id,
+            )
+        return assessment
+
+    def _save_interview_payload(self, interview, validated_data, *, mark_completed=False):
+        """
+        将校验后的问诊数据写入模型，并根据需要标记完成时间
+        """
+        fields_to_update = []
+        for field in [
+            "basic_info_snapshot",
+            "medication_history",
+            "allergy_history",
+            "lifestyle_info",
+            "economic_context",
+            "health_expectations",
+            "notes",
+        ]:
+            if field in validated_data:
+                setattr(interview, field, validated_data[field])
+                fields_to_update.append(field)
+
+        if mark_completed:
+            interview.completed_at = timezone.now()
+            fields_to_update.append("completed_at")
+
+        if not fields_to_update:
+            interview.save(update_fields=["updated_at"])
+        else:
+            fields_to_update.append("updated_at")
+            interview.save(update_fields=fields_to_update)
+
+        return interview
+
+    def _save_assessment_payload(self, assessment, validated_data, *, mark_completed=False):
+        """
+        将校验后的评估数据写入模型，并根据需要标记完成时间
+        """
+        fields_to_update = []
+        for field in [
+            "appropriateness_score",
+            "effectiveness_score",
+            "safety_score",
+            "adherence_score",
+            "economic_score",
+            "problem_list",
+            "summary",
+            "risk_level",
+        ]:
+            if field in validated_data:
+                setattr(assessment, field, validated_data[field])
+                fields_to_update.append(field)
+
+        if mark_completed:
+            assessment.completed_at = timezone.now()
+            fields_to_update.append("completed_at")
+
+        if not fields_to_update:
+            assessment.save(update_fields=["updated_at"])
+        else:
+            fields_to_update.append("updated_at")
+            assessment.save(update_fields=fields_to_update)
+
+        return assessment
+
     def get_queryset(self):
         """
         仅返回当前用户参与的服务单
@@ -72,6 +215,18 @@ class MTMServiceCaseViewSet(
             return MTMServiceCaseListSerializer
         if self.action == "transition":
             return MTMServiceCaseTransitionSerializer
+        if self.action == "interview":
+            if self.request.method == "PUT":
+                return MTMInterviewDraftSerializer
+            return MTMInterviewFormSerializer
+        if self.action == "complete_interview":
+            return MTMInterviewCompleteSerializer
+        if self.action == "assessment":
+            if self.request.method == "PUT":
+                return MTMAssessmentDraftSerializer
+            return MTMAssessmentFormSerializer
+        if self.action == "complete_assessment":
+            return MTMAssessmentCompleteSerializer
         return MTMServiceCaseDetailSerializer
 
     def create(self, request, *args, **kwargs):
@@ -163,3 +318,161 @@ class MTMServiceCaseViewSet(
                 exc,
             )
             return error_response(message="状态流转校验失败", errors=exc.messages)
+
+    @action(detail=True, methods=["get", "put"])
+    def interview(self, request, pk=None):
+        """
+        读取或保存当前服务单的问诊草稿
+        """
+        service_case = self.get_object()
+        interview = self._get_or_create_interview(service_case)
+
+        if request.method == "GET":
+            logger.info(
+                "🔵 [MTM] interview fetch - case=%s interview=%s",
+                service_case.id,
+                interview.id,
+            )
+            return success_response(
+                data=MTMInterviewFormSerializer(interview).data,
+                message="获取问诊表单成功",
+            )
+
+        logger.info(
+            "🔵 [MTM] interview draft save start - case=%s interview=%s",
+            service_case.id,
+            interview.id,
+        )
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            logger.warning(
+                "🟡 [MTM] interview draft invalid - case=%s errors=%s",
+                service_case.id,
+                serializer.errors,
+            )
+            return error_response(message="问诊草稿校验失败", errors=serializer.errors)
+
+        interview = self._save_interview_payload(interview, serializer.validated_data)
+        logger.info(
+            "🟢 [MTM] interview draft saved - case=%s interview=%s",
+            service_case.id,
+            interview.id,
+        )
+        return success_response(
+            data=MTMInterviewFormSerializer(interview).data,
+            message="问诊草稿保存成功",
+        )
+
+    @action(detail=True, methods=["post"], url_path="interview/complete")
+    def complete_interview(self, request, pk=None):
+        """
+        完成当前服务单的问诊填写
+        """
+        service_case = self.get_object()
+        interview = self._get_or_create_interview(service_case)
+        logger.info(
+            "🔵 [MTM] interview complete start - case=%s interview=%s",
+            service_case.id,
+            interview.id,
+        )
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            logger.warning(
+                "🟡 [MTM] interview complete invalid - case=%s errors=%s",
+                service_case.id,
+                serializer.errors,
+            )
+            return error_response(message="问诊完成校验失败", errors=serializer.errors)
+
+        interview = self._save_interview_payload(
+            interview, serializer.validated_data, mark_completed=True
+        )
+        logger.info(
+            "🟢 [MTM] interview completed - case=%s interview=%s completed_at=%s",
+            service_case.id,
+            interview.id,
+            interview.completed_at,
+        )
+        return success_response(
+            data=MTMInterviewFormSerializer(interview).data,
+            message="问诊已完成",
+        )
+
+    @action(detail=True, methods=["get", "put"])
+    def assessment(self, request, pk=None):
+        """
+        读取或保存当前服务单的评估草稿
+        """
+        service_case = self.get_object()
+        assessment = self._get_or_create_assessment(service_case)
+
+        if request.method == "GET":
+            logger.info(
+                "🔵 [MTM] assessment fetch - case=%s assessment=%s",
+                service_case.id,
+                assessment.id,
+            )
+            return success_response(
+                data=MTMAssessmentFormSerializer(assessment).data,
+                message="获取评估表单成功",
+            )
+
+        logger.info(
+            "🔵 [MTM] assessment draft save start - case=%s assessment=%s",
+            service_case.id,
+            assessment.id,
+        )
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            logger.warning(
+                "🟡 [MTM] assessment draft invalid - case=%s errors=%s",
+                service_case.id,
+                serializer.errors,
+            )
+            return error_response(message="评估草稿校验失败", errors=serializer.errors)
+
+        assessment = self._save_assessment_payload(assessment, serializer.validated_data)
+        logger.info(
+            "🟢 [MTM] assessment draft saved - case=%s assessment=%s",
+            service_case.id,
+            assessment.id,
+        )
+        return success_response(
+            data=MTMAssessmentFormSerializer(assessment).data,
+            message="评估草稿保存成功",
+        )
+
+    @action(detail=True, methods=["post"], url_path="assessment/complete")
+    def complete_assessment(self, request, pk=None):
+        """
+        完成当前服务单的评估填写
+        """
+        service_case = self.get_object()
+        assessment = self._get_or_create_assessment(service_case)
+        logger.info(
+            "🔵 [MTM] assessment complete start - case=%s assessment=%s",
+            service_case.id,
+            assessment.id,
+        )
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            logger.warning(
+                "🟡 [MTM] assessment complete invalid - case=%s errors=%s",
+                service_case.id,
+                serializer.errors,
+            )
+            return error_response(message="评估完成校验失败", errors=serializer.errors)
+
+        assessment = self._save_assessment_payload(
+            assessment, serializer.validated_data, mark_completed=True
+        )
+        logger.info(
+            "🟢 [MTM] assessment completed - case=%s assessment=%s completed_at=%s",
+            service_case.id,
+            assessment.id,
+            assessment.completed_at,
+        )
+        return success_response(
+            data=MTMAssessmentFormSerializer(assessment).data,
+            message="评估已完成",
+        )

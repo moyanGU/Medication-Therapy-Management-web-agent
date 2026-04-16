@@ -116,9 +116,9 @@
                 </span>
               </div>
 
-              <div v-if="transitionActions.length" class="mt-4 flex flex-wrap gap-3">
+              <div v-if="visibleTransitionActions.length" class="mt-4 flex flex-wrap gap-3">
                 <button
-                  v-for="action in transitionActions"
+                  v-for="action in visibleTransitionActions"
                   :key="action.targetStatus"
                   type="button"
                   class="rounded-xl px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60"
@@ -134,9 +134,9 @@
                 </button>
               </div>
 
-              <ul v-if="transitionActions.length" class="mt-4 space-y-2 text-sm text-slate-600">
+              <ul v-if="visibleTransitionActions.length" class="mt-4 space-y-2 text-sm text-slate-600">
                 <li
-                  v-for="action in transitionActions"
+                  v-for="action in visibleTransitionActions"
                   :key="`hint-${action.targetStatus}`"
                   class="flex items-start gap-2"
                 >
@@ -214,12 +214,49 @@
 
         <section class="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
           <article class="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-            <div class="flex items-center gap-2">
-              <ClipboardList class="h-5 w-5 text-sky-600" />
-              <h2 class="text-lg font-semibold text-slate-900">问诊摘要</h2>
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div class="flex items-center gap-2">
+                <ClipboardList class="h-5 w-5 text-sky-600" />
+                <h2 class="text-lg font-semibold text-slate-900">问诊摘要</h2>
+              </div>
+              <span
+                class="inline-flex items-center self-start rounded-full px-3 py-1 text-xs font-medium"
+                :class="interviewEntryMeta.badgeClass"
+              >
+                {{ interviewEntryMeta.badgeText }}
+              </span>
+            </div>
+
+            <div class="mt-5 rounded-2xl border border-sky-100 bg-sky-50 p-4">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p class="text-sm font-medium text-slate-900">问诊填写入口</p>
+                  <p class="mt-2 text-sm leading-6 text-slate-600">
+                    {{ interviewEntryMeta.description }}
+                  </p>
+                  <p class="mt-2 text-xs leading-5 text-slate-500">
+                    问诊完成后只会记录完成时间，不会自动推进当前服务状态。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-2 self-start rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-sky-300"
+                  :disabled="loading || transitioning"
+                  @click="goToInterviewForm"
+                >
+                  <ArrowRight class="h-4 w-4" />
+                  {{ interviewEntryMeta.buttonText }}
+                </button>
+              </div>
             </div>
 
             <template v-if="serviceCase.interview">
+              <p
+                v-if="serviceCase.interview.completed_at"
+                class="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+              >
+                问诊已于 {{ formatDateTime(serviceCase.interview.completed_at) }} 标记完成。
+              </p>
               <div v-if="interviewBasicInfoLines.length" class="mt-5 space-y-3">
                 <div
                   v-for="item in interviewBasicInfoLines"
@@ -271,12 +308,49 @@
           </article>
 
           <article class="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-            <div class="flex items-center gap-2">
-              <HeartPulse class="h-5 w-5 text-rose-600" />
-              <h2 class="text-lg font-semibold text-slate-900">评估摘要</h2>
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div class="flex items-center gap-2">
+                <HeartPulse class="h-5 w-5 text-rose-600" />
+                <h2 class="text-lg font-semibold text-slate-900">评估摘要</h2>
+              </div>
+              <span
+                class="inline-flex items-center self-start rounded-full px-3 py-1 text-xs font-medium"
+                :class="assessmentEntryMeta.badgeClass"
+              >
+                {{ assessmentEntryMeta.badgeText }}
+              </span>
+            </div>
+
+            <div class="mt-5 rounded-2xl border border-rose-100 bg-rose-50 p-4">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p class="text-sm font-medium text-slate-900">评估填写入口</p>
+                  <p class="mt-2 text-sm leading-6 text-slate-600">
+                    {{ assessmentEntryMeta.description }}
+                  </p>
+                  <p class="mt-2 text-xs leading-5 text-slate-500">
+                    评估完成后只会记录完成时间，不会自动推进当前服务状态。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-2 self-start rounded-xl bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-rose-300"
+                  :disabled="loading || transitioning || assessmentEntryMeta.disabled"
+                  @click="goToAssessmentForm"
+                >
+                  <ArrowRight class="h-4 w-4" />
+                  {{ assessmentEntryMeta.buttonText }}
+                </button>
+              </div>
             </div>
 
             <template v-if="serviceCase.assessment">
+              <p
+                v-if="serviceCase.assessment.completed_at"
+                class="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+              >
+                评估已于 {{ formatDateTime(serviceCase.assessment.completed_at) }} 标记完成。
+              </p>
               <div class="mt-5 flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
                 <div>
                   <p class="text-sm text-slate-500">综合风险等级</p>
@@ -428,6 +502,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
 import {
   AlertTriangle,
+  ArrowRight,
   ArrowLeft,
   CalendarClock,
   ClipboardList,
@@ -525,12 +600,62 @@ const transitionActions = computed(() => {
   return getMtmTransitionActions(serviceCase.value.status)
 })
 
+const visibleTransitionActions = computed(() => {
+  if (!serviceCase.value) {
+    return []
+  }
+
+  if (serviceCase.value.status === 'pending') {
+    if (!serviceCase.value.interview) {
+      return []
+    }
+
+    return transitionActions.value.map(action => {
+      if (action.targetStatus !== 'interviewing') {
+        return action
+      }
+
+      return {
+        ...action,
+        label: '标记为问诊中',
+        description: '问诊已经开始后，再把当前服务状态同步为问诊中。',
+      }
+    })
+  }
+
+  if (serviceCase.value.status === 'interviewing') {
+    if (!serviceCase.value.assessment) {
+      return []
+    }
+
+    return transitionActions.value.map(action => {
+      if (action.targetStatus !== 'assessing') {
+        return action
+      }
+
+      return {
+        ...action,
+        label: '标记为评估中',
+        description: '评估已经开始后，再把当前服务状态同步为评估中。',
+      }
+    })
+  }
+
+  return transitionActions.value
+})
+
 const transitionHintText = computed(() => {
   if (!serviceCase.value) {
     return '正在读取当前阶段可执行动作。'
   }
 
-  if (!transitionActions.value.length) {
+  if (!visibleTransitionActions.value.length) {
+    if (serviceCase.value.status === 'pending' && !serviceCase.value.interview) {
+      return '先从下方问诊入口开始填写，等问诊真正开始后再同步服务状态。'
+    }
+    if (serviceCase.value.status === 'interviewing' && !serviceCase.value.assessment) {
+      return '先从下方评估入口开始填写，等评估真正开始后再同步服务状态。'
+    }
     return '当前服务已经处于最终阶段，不需要继续推进。'
   }
 
@@ -551,6 +676,35 @@ const interviewMedicationLines = computed(() => {
   return buildUnknownListLines(serviceCase.value.interview.medication_history)
 })
 
+const interviewEntryMeta = computed(() => {
+  const currentInterview = serviceCase.value?.interview
+
+  if (!currentInterview) {
+    return {
+      badgeText: '未开始',
+      badgeClass: 'bg-slate-100 text-slate-700',
+      buttonText: '开始问诊',
+      description: '当前还没有问诊内容，可以先进入问诊页补充基础情况、当前用药和本次目标。',
+    }
+  }
+
+  if (currentInterview.completed_at) {
+    return {
+      badgeText: '已完成',
+      badgeClass: 'bg-emerald-100 text-emerald-700',
+      buttonText: '查看已填问诊',
+      description: '当前问诊已经填写完成；如果需要回看或继续补充，可以直接从这里进入。',
+    }
+  }
+
+  return {
+    badgeText: '草稿中',
+    badgeClass: 'bg-amber-100 text-amber-700',
+    buttonText: '继续问诊',
+    description: '上次填写的问诊草稿已经保留，可以继续补充后再手动标记完成。',
+  }
+})
+
 const interviewLifestyleLines = computed(() => {
   if (!serviceCase.value?.interview) {
     return []
@@ -568,6 +722,49 @@ const interviewLifestyleLines = computed(() => {
       ? [`经济情况：${serviceCase.value.interview.economic_context}`]
       : []),
   ]
+})
+
+const assessmentEntryMeta = computed(() => {
+  const currentInterview = serviceCase.value?.interview
+  const currentAssessment = serviceCase.value?.assessment
+
+  if (!currentInterview?.completed_at) {
+    return {
+      badgeText: '待问诊完成',
+      badgeClass: 'bg-slate-100 text-slate-700',
+      buttonText: '暂不能评估',
+      description: '建议先完成问诊，再进入评估页整理风险等级、问题清单和综合判断。',
+      disabled: true,
+    }
+  }
+
+  if (!currentAssessment) {
+    return {
+      badgeText: '未开始',
+      badgeClass: 'bg-slate-100 text-slate-700',
+      buttonText: '开始评估',
+      description: '问诊已经完成，可以继续进入评估页补充五维评分、问题清单和评估总结。',
+      disabled: false,
+    }
+  }
+
+  if (currentAssessment.completed_at) {
+    return {
+      badgeText: '已完成',
+      badgeClass: 'bg-emerald-100 text-emerald-700',
+      buttonText: '查看已填评估',
+      description: '当前评估已经填写完成；如果需要回看或继续补充，可以直接从这里进入。',
+      disabled: false,
+    }
+  }
+
+  return {
+    badgeText: '草稿中',
+    badgeClass: 'bg-amber-100 text-amber-700',
+    buttonText: '继续评估',
+    description: '上次填写的评估草稿已经保留，可以继续补充后再手动标记完成。',
+    disabled: false,
+  }
 })
 
 const assessmentScoreCards = computed(() => {
@@ -704,6 +901,34 @@ const goBack = () => {
 }
 
 /**
+ * 进入问诊表单页，并尽量保留当前详情页上下文。
+ */
+const goToInterviewForm = () => {
+  if (!serviceCaseId.value) {
+    return
+  }
+
+  router.push({
+    path: `/mtm/service-cases/${serviceCaseId.value}/interview`,
+    query: { ...route.query },
+  })
+}
+
+/**
+ * 进入评估表单页，并尽量保留当前详情页上下文。
+ */
+const goToAssessmentForm = () => {
+  if (!serviceCaseId.value || assessmentEntryMeta.value.disabled) {
+    return
+  }
+
+  router.push({
+    path: `/mtm/service-cases/${serviceCaseId.value}/assessment`,
+    query: { ...route.query },
+  })
+}
+
+/**
  * 读取详情页 query 中的单个字符串值。
  */
 const getRouteQueryValue = (key: string) => {
@@ -815,7 +1040,7 @@ const formatUnknownValue = (value: unknown): string => {
 
   if (typeof value === 'object') {
     const record = value as Record<string, unknown>
-    const preferredKeys = ['title', 'name', 'summary', 'type', 'label']
+    const preferredKeys = ['title', 'name', 'item', 'drug_name', 'summary', 'type', 'label']
 
     for (const key of preferredKeys) {
       const candidate = record[key]
@@ -844,13 +1069,20 @@ const formatUnknownValue = (value: unknown): string => {
  */
 const formatFieldLabel = (field: string) => {
   const mapping: Record<string, string> = {
+    patient_name: '患者姓名',
     age: '年龄',
     gender: '性别',
+    contact_phone: '联系电话',
+    main_diagnosis: '主要问题',
     weight: '体重',
     height: '身高',
     diagnosis: '诊断',
     blood_pressure: '血压',
     blood_sugar: '血糖',
+    smoking: '吸烟情况',
+    drinking: '饮酒情况',
+    exercise: '运动情况',
+    sleep: '睡眠情况',
   }
   return mapping[field] || field.replace(/_/g, ' ')
 }

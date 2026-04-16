@@ -61,6 +61,33 @@ export interface MtmInterviewSummary {
 }
 
 /**
+ * MTM 问诊草稿提交参数
+ */
+export interface MtmInterviewDraftPayload {
+  basic_info_snapshot: Record<string, unknown>
+  medication_history: Array<Record<string, unknown>>
+  allergy_history: Array<Record<string, unknown>>
+  lifestyle_info: Record<string, unknown>
+  economic_context?: string | null
+  health_expectations?: string | null
+  notes?: string | null
+}
+
+/**
+ * MTM 评估草稿提交参数
+ */
+export interface MtmAssessmentDraftPayload {
+  appropriateness_score?: number | null
+  effectiveness_score?: number | null
+  safety_score?: number | null
+  adherence_score?: number | null
+  economic_score?: number | null
+  problem_list: Array<Record<string, unknown>>
+  summary?: string | null
+  risk_level?: 'low' | 'medium' | 'high'
+}
+
+/**
  * MTM 评估摘要
  */
 export interface MtmAssessmentSummary {

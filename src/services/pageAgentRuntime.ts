@@ -5,12 +5,20 @@ import {
   type PageAgentCoreConfig,
   tool,
 } from '@page-agent/core'
-import { PageController } from '@page-agent/page-controller'
+import type { PageController } from '@page-agent/page-controller'
 import { z } from 'zod/v4'
 import {
   buildMedicineDraftPayload,
   buildReminderDraftPayload,
 } from '@/services/pageAgentDraftParser'
+import {
+  buildCommonPageSnapshot,
+  buildDashboardSnapshot,
+  buildMedicineSnapshot,
+  buildReminderSnapshot,
+  normalizeText,
+  RestrictedPageController,
+} from '@/services/restrictedPageController'
 import {
   canUsePageAgentOnCurrentPage,
   getCurrentPageAgentScopeDescription,
@@ -55,6 +63,15 @@ const CONTROLLED_NAVIGATION_TARGETS = [
 const NAVIGATION_TRIGGER = /(打开|进入|跳转|前往|去|带我去|切换到|导航到|查看)/
 
 let pageAgentInstance: PageAgentCore | null = null
+
+/**
+ * 将本地受限控制器收口为 PageAgentCore 期望的控制器契约类型。
+ */
+function asPageControllerContract(
+  controller: RestrictedPageController
+): PageController {
+  return controller as unknown as PageController
+}
 
 /**
  * 解析 Page Agent 使用的后端代理地址。
@@ -127,210 +144,6 @@ function getPageInstructions(url: string): string {
     `当前页面范围：${scope}`,
     `页面专项要求：${routeSpecificInstructions[pageKey]}`,
   ].join('\n')
-}
-
-/**
- * 判断元素是否对用户可见。
- */
-function isElementVisible(element: Element | null): element is HTMLElement {
-  if (!(element instanceof HTMLElement)) {
-    return false
-  }
-  const style = window.getComputedStyle(element)
-  if (style.display === 'none' || style.visibility === 'hidden') {
-    return false
-  }
-  return Boolean(element.offsetWidth || element.offsetHeight || element.getClientRects().length)
-}
-
-/**
- * 清洗节点文本，避免输出过长噪音。
- */
-function normalizeText(text: string, maxLength = 120): string {
-  const normalized = text.replace(/\s+/g, ' ').trim()
-  if (!normalized) {
-    return ''
-  }
-  return normalized.length > maxLength
-    ? `${normalized.slice(0, maxLength).trim()}...`
-    : normalized
-}
-
-/**
- * 采集页面中符合条件的可见文本。
- */
-function collectVisibleTexts(selector: string, limit = 6, maxLength = 120): string[] {
-  const values = Array.from(document.querySelectorAll(selector))
-    .filter(isElementVisible)
-    .map((element) => normalizeText(element.textContent || '', maxLength))
-    .filter(Boolean)
-
-  return Array.from(new Set(values)).slice(0, limit)
-}
-
-/**
- * 从常见卡片布局中提取标签和值。
- */
-function collectMetricPairs(limit = 8): Array<{ label: string; value: string }> {
-  const pairs: Array<{ label: string; value: string }> = []
-  const candidates = Array.from(document.querySelectorAll('div, section, article'))
-
-  for (const candidate of candidates) {
-    if (!isElementVisible(candidate)) {
-      continue
-    }
-
-    const children = Array.from(candidate.children).filter(isElementVisible)
-    if (children.length < 2 || children.length > 6) {
-      continue
-    }
-
-    const texts = children
-      .map((child) => normalizeText(child.textContent || '', 80))
-      .filter(Boolean)
-
-    if (texts.length < 2) {
-      continue
-    }
-
-    const maybeValue = texts[0]
-    const maybeLabel = texts[1]
-
-    const valueLooksNumeric = /[\d%]+/.test(maybeValue)
-    const labelLooksShort = maybeLabel.length <= 24
-
-    if (valueLooksNumeric && labelLooksShort) {
-      pairs.push({ label: maybeLabel, value: maybeValue })
-    }
-
-    if (pairs.length >= limit) {
-      break
-    }
-  }
-
-  return pairs
-}
-
-/**
- * 提取可见表格前几行，便于页面助手判断列表信息。
- */
-function collectTablePreview(rowLimit = 4, columnLimit = 4): string[] {
-  const rows = Array.from(document.querySelectorAll('table tr'))
-    .filter(isElementVisible)
-    .slice(0, rowLimit)
-
-  return rows
-    .map((row) => {
-      const cells = Array.from(row.querySelectorAll('th, td'))
-        .filter(isElementVisible)
-        .slice(0, columnLimit)
-        .map((cell) => normalizeText(cell.textContent || '', 48))
-        .filter(Boolean)
-      return cells.join(' | ')
-    })
-    .filter(Boolean)
-}
-
-/**
- * 提取卡片、列表项等可见块文本，用于快速理解页面主体内容。
- */
-function collectBlockPreview(limit = 6): string[] {
-  const selectors = [
-    '[class*="rounded"]',
-    '[class*="card"]',
-    '[class*="item"]',
-    'li',
-    '[role="listitem"]',
-  ]
-
-  const blocks = selectors.flatMap((selector) =>
-    collectVisibleTexts(selector, limit, 140)
-  )
-
-  return Array.from(new Set(blocks)).slice(0, limit)
-}
-
-/**
- * 提取页面中的风险信号关键词，帮助模型优先关注异常。
- */
-function collectAttentionSignals(limit = 10): string[] {
-  const keywords = [
-    '待确认',
-    '未响应',
-    '待发送',
-    '已过期',
-    '即将过期',
-    '库存不足',
-    '停用',
-    '失败',
-    '响应率',
-    '延迟',
-  ]
-
-  const pageText = normalizeText(document.body?.innerText || '', 20000)
-  return keywords.filter((keyword) => pageText.includes(keyword)).slice(0, limit)
-}
-
-/**
- * 生成通用页面结构摘要。
- */
-function buildCommonPageSnapshot() {
-  return {
-    page_key: getCurrentPageKey(),
-    title: document.title,
-    pathname: window.location.pathname,
-    scope: getCurrentPageAgentScopeDescription(),
-    headings: collectVisibleTexts('h1, h2, h3', 8, 80),
-    metrics: collectMetricPairs(),
-    table_preview: collectTablePreview(),
-    block_preview: collectBlockPreview(),
-    attention_signals: collectAttentionSignals(),
-  }
-}
-
-/**
- * 生成提醒页业务摘要。
- */
-function buildReminderSnapshot() {
-  return {
-    ...buildCommonPageSnapshot(),
-    sections: collectVisibleTexts('button, .text-sm, .text-lg, .text-xs', 16, 80).filter(
-      (text) =>
-        /(今日提醒|待确认|活跃提醒|停用提醒|响应率|总记录|已发送|待发送|平均延迟|提醒时间|状态)/.test(
-          text
-        )
-    ),
-    actions: collectVisibleTexts('button', 12, 40),
-  }
-}
-
-/**
- * 生成药品页业务摘要。
- */
-function buildMedicineSnapshot() {
-  return {
-    ...buildCommonPageSnapshot(),
-    sections: collectVisibleTexts('label, th, td, .text-sm, .text-lg', 20, 80).filter(
-      (text) =>
-        /(药品管理|总药品数|已过期|即将过期|库存不足|搜索药品|生产厂商|药品类型|当前库存|批号|有效期|药品描述)/.test(
-          text
-        )
-    ),
-    actions: collectVisibleTexts('button', 10, 40),
-  }
-}
-
-/**
- * 生成仪表板业务摘要。
- */
-function buildDashboardSnapshot() {
-  return {
-    ...buildCommonPageSnapshot(),
-    sections: collectVisibleTexts('p, a, h1, h2, h3', 18, 80).filter((text) =>
-      /(药品总数|今日提醒|库存预警|用药计划|药品管理|提醒管理|就医记录|统计分析)/.test(text)
-    ),
-    navigation: collectVisibleTexts('a', 12, 80),
-  }
 }
 
 function isReminderFormPath(pathname: string) {
@@ -415,7 +228,9 @@ function parseMedicalRecordDraftPayload(task: string, today: string) {
   const normalized = task.replace(/\s+/g, ' ').trim()
   if (
     !/(病历|就诊|看病|复诊|门诊|急诊|住院|体检|医院)/.test(normalized) ||
-    !/(创建|新建|新增|记录|填写|填好|整理|准备|帮我填|帮我写|代填)/.test(normalized)
+    !/(创建|新建|新增|生成|记录|填写|填好|整理|准备|帮我填|帮我写|代填)/.test(
+      normalized
+    )
   ) {
     return null
   }
@@ -705,11 +520,7 @@ function buildActionProposalAnswer(proposal: PageAgentActionProposal): string {
  * 构造 Page Agent 的共享配置。
  */
 function buildPageAgentConfig(): PageAgentCoreConfig {
-  const pageController = new PageController({
-    enableMask: false,
-    viewportExpansion: -1,
-    includeAttributes: ['data-*', 'aria-*', 'placeholder', 'title'],
-  })
+  const pageController = asPageControllerContract(new RestrictedPageController())
 
   return {
     pageController,

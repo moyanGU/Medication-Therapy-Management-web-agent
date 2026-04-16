@@ -486,8 +486,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, nextTick, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   executePageAgentTask,
   getCurrentPageAgentScopeDescription,
@@ -516,6 +516,7 @@ const showGreeting = ref(false)
 const inputText = ref('')
 const isLoading = ref(false)
 const currentMode = ref<PageAgentMode>('medication')
+const route = useRoute()
 const router = useRouter()
 const { success: showSuccess, error: showError } = useToast()
 const modeMessages = reactive<Record<PageAgentMode, ChatMessage[]>>({
@@ -566,6 +567,7 @@ const isIdle = ref(false)
 const snapSide = ref<'left' | 'right'>('right')
 let idleTimer: number | null = null
 let dragOffset = { x: 0, y: 0 }
+const lastQaQueryKey = ref('')
 
 // 初始化
 onMounted(() => {
@@ -573,12 +575,20 @@ onMounted(() => {
   window.addEventListener('resize', handleResize)
   // 初始位置吸附
   snapToEdge()
+  void runQaScenarioFromRoute()
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   if (idleTimer) clearTimeout(idleTimer)
 })
+
+watch(
+  () => route.fullPath,
+  () => {
+    void runQaScenarioFromRoute()
+  }
+)
 
 const bubbleStyle = computed(() => {
   if (isDragging.value) {
@@ -708,6 +718,61 @@ const closeChat = () => {
 const switchMode = (mode: PageAgentMode) => {
   currentMode.value = mode
   scrollToBottom()
+}
+
+/**
+ * 解析开发模式下的页面助手 QA 查询参数。
+ */
+function getQaScenarioFromRoute() {
+  if (!import.meta.env.DEV) {
+    return null
+  }
+
+  const openFlag = route.query.assistant === 'open'
+  const task =
+    typeof route.query.assistantTask === 'string'
+      ? route.query.assistantTask.trim()
+      : ''
+  const requestedMode =
+    route.query.assistantMode === 'page-agent' ? 'page-agent' : null
+  const mode: PageAgentMode | null =
+    requestedMode || (task ? 'page-agent' : null)
+
+  if (!openFlag && !mode && !task) {
+    return null
+  }
+
+  return {
+    key: `${route.fullPath}::${mode || 'default'}::${task}`,
+    mode,
+    task,
+  }
+}
+
+/**
+ * 在开发模式下按 URL 参数自动打开助手并执行一次测试任务。
+ */
+async function runQaScenarioFromRoute() {
+  const scenario = getQaScenarioFromRoute()
+  if (!scenario || scenario.key === lastQaQueryKey.value) {
+    return
+  }
+
+  lastQaQueryKey.value = scenario.key
+
+  if (scenario.mode) {
+    currentMode.value = scenario.mode
+  }
+
+  openChat()
+  await nextTick()
+
+  if (!scenario.task || isLoading.value) {
+    return
+  }
+
+  inputText.value = scenario.task
+  await sendMessage()
 }
 
 const quickAsk = (text: string) => {

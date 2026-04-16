@@ -279,7 +279,7 @@ class MedicalRecordViewSet(viewsets.ModelViewSet):
 
             # 费用统计
             cost_stats = queryset.aggregate(
-                total_cost=Sum("total_cost"), avg_cost=Avg("total_cost")
+                total_cost_sum=Sum("total_cost"), average_cost_value=Avg("total_cost")
             )
 
             # 满意度统计
@@ -299,8 +299,8 @@ class MedicalRecordViewSet(viewsets.ModelViewSet):
                 "departments": departments,
                 "visit_types": visit_types,
                 "monthly_visits": monthly_visits,
-                "total_cost": cost_stats["total_cost"] or 0,
-                "average_cost": cost_stats["avg_cost"] or 0,
+                "total_cost": cost_stats["total_cost_sum"] or 0,
+                "average_cost": cost_stats["average_cost_value"] or 0,
                 "average_satisfaction": satisfaction_stats["avg_satisfaction"] or 0,
                 "follow_up_due": follow_up_due_count,  # 修正字段名，与序列化器一致
             }

@@ -171,3 +171,194 @@ class MTMServiceCaseApiTest(TestCase):
         response = self.client.get(f"/api/mtm/service-cases/{service_case.id}/")
 
         self.assertEqual(response.status_code, 404)
+
+    def test_get_interview_initializes_minimum_draft(self):
+        """
+        验证读取问诊接口时会为当前服务单生成最小草稿
+        """
+        service_case = MTMServiceCase.objects.create(
+            patient=self.patient,
+            assigned_pharmacist=self.pharmacist,
+            service_goal="梳理当前高血压与糖尿病联合用药",
+        )
+
+        response = self.client.get(f"/api/mtm/service-cases/{service_case.id}/interview/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        data = response.json()["data"]
+        self.assertEqual(data["basic_info_snapshot"]["patient_name"], self.patient.username)
+        self.assertEqual(data["basic_info_snapshot"]["contact_phone"], self.patient.phone)
+        self.assertEqual(data["health_expectations"], service_case.service_goal)
+        self.assertTrue(MTMInterview.objects.filter(service_case=service_case).exists())
+
+    def test_put_interview_saves_draft_without_completing(self):
+        """
+        验证问诊草稿可以保存且不会自动标记完成
+        """
+        service_case = MTMServiceCase.objects.create(
+            patient=self.patient,
+            assigned_pharmacist=self.pharmacist,
+            status="interviewing",
+        )
+
+        response = self.client.put(
+            f"/api/mtm/service-cases/{service_case.id}/interview/",
+            {
+                "basic_info_snapshot": {
+                    "age": 71,
+                    "gender": "女",
+                    "main_diagnosis": "高血压复诊",
+                },
+                "medication_history": [{"name": "缬沙坦"}],
+                "allergy_history": [{"item": "青霉素"}],
+                "lifestyle_info": {"exercise": "每周散步三次"},
+                "economic_context": "希望控制长期药费",
+                "health_expectations": "先把当前药物方案梳理清楚",
+                "notes": "最近头晕次数增加",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        interview = MTMInterview.objects.get(service_case=service_case)
+        self.assertEqual(interview.basic_info_snapshot["main_diagnosis"], "高血压复诊")
+        self.assertIsNone(interview.completed_at)
+
+    def test_complete_interview_requires_key_fields_and_sets_completed_at(self):
+        """
+        验证完成问诊时会执行最小字段校验，并在通过后写入完成时间
+        """
+        service_case = MTMServiceCase.objects.create(
+            patient=self.patient,
+            assigned_pharmacist=self.pharmacist,
+            status="interviewing",
+        )
+
+        invalid_response = self.client.post(
+            f"/api/mtm/service-cases/{service_case.id}/interview/complete/",
+            {
+                "basic_info_snapshot": {},
+                "medication_history": [],
+                "health_expectations": "",
+                "notes": "",
+            },
+            format="json",
+        )
+        self.assertEqual(invalid_response.status_code, 400)
+        self.assertFalse(invalid_response.json()["success"])
+
+        valid_response = self.client.post(
+            f"/api/mtm/service-cases/{service_case.id}/interview/complete/",
+            {
+                "basic_info_snapshot": {"age": 71, "main_diagnosis": "高血压"},
+                "medication_history": [{"name": "缬沙坦"}],
+                "allergy_history": [],
+                "lifestyle_info": {"sleep": "一般"},
+                "economic_context": "",
+                "health_expectations": "希望减少头晕并稳定血压",
+                "notes": "",
+            },
+            format="json",
+        )
+        self.assertEqual(valid_response.status_code, 200)
+        self.assertTrue(valid_response.json()["success"])
+        interview = MTMInterview.objects.get(service_case=service_case)
+        self.assertIsNotNone(interview.completed_at)
+
+    def test_get_assessment_initializes_minimum_draft(self):
+        """
+        验证读取评估接口时会为当前服务单生成最小草稿
+        """
+        service_case = MTMServiceCase.objects.create(
+            patient=self.patient,
+            assigned_pharmacist=self.pharmacist,
+            status="interviewing",
+            service_goal="复核当前多重用药的综合风险",
+        )
+
+        response = self.client.get(f"/api/mtm/service-cases/{service_case.id}/assessment/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        data = response.json()["data"]
+        self.assertEqual(data["risk_level"], "medium")
+        self.assertEqual(data["problem_list"], [])
+        self.assertTrue(MTMAssessment.objects.filter(service_case=service_case).exists())
+
+    def test_put_assessment_saves_draft_without_completing(self):
+        """
+        验证评估草稿可以保存且不会自动标记完成
+        """
+        service_case = MTMServiceCase.objects.create(
+            patient=self.patient,
+            assigned_pharmacist=self.pharmacist,
+            status="assessing",
+        )
+
+        response = self.client.put(
+            f"/api/mtm/service-cases/{service_case.id}/assessment/",
+            {
+                "appropriateness_score": 78,
+                "effectiveness_score": 72,
+                "safety_score": 65,
+                "risk_level": "medium",
+                "problem_list": [{"item": "存在重复用药风险"}],
+                "summary": "当前方案基本可用，但需要继续梳理重复用药问题。",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        assessment = MTMAssessment.objects.get(service_case=service_case)
+        self.assertEqual(assessment.appropriateness_score, 78)
+        self.assertEqual(assessment.problem_list[0]["item"], "存在重复用药风险")
+        self.assertIsNone(assessment.completed_at)
+
+    def test_complete_assessment_requires_key_fields_and_sets_completed_at(self):
+        """
+        验证完成评估时会执行最小字段校验，并在通过后写入完成时间
+        """
+        service_case = MTMServiceCase.objects.create(
+            patient=self.patient,
+            assigned_pharmacist=self.pharmacist,
+            status="assessing",
+        )
+
+        invalid_response = self.client.post(
+            f"/api/mtm/service-cases/{service_case.id}/assessment/complete/",
+            {
+                "appropriateness_score": None,
+                "effectiveness_score": None,
+                "safety_score": None,
+                "adherence_score": None,
+                "economic_score": None,
+                "risk_level": "",
+                "problem_list": [],
+                "summary": "",
+            },
+            format="json",
+        )
+        self.assertEqual(invalid_response.status_code, 400)
+        self.assertFalse(invalid_response.json()["success"])
+
+        valid_response = self.client.post(
+            f"/api/mtm/service-cases/{service_case.id}/assessment/complete/",
+            {
+                "appropriateness_score": 82,
+                "effectiveness_score": 70,
+                "safety_score": 61,
+                "adherence_score": 58,
+                "economic_score": 76,
+                "risk_level": "high",
+                "problem_list": [{"item": "当前依从性偏低"}],
+                "summary": "需要优先处理依从性和安全性风险。",
+            },
+            format="json",
+        )
+        self.assertEqual(valid_response.status_code, 200)
+        self.assertTrue(valid_response.json()["success"])
+        assessment = MTMAssessment.objects.get(service_case=service_case)
+        self.assertIsNotNone(assessment.completed_at)

@@ -21,6 +21,7 @@ from django.views.decorators.http import require_http_methods
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from apps.records.adherence import build_dashboard_adherence_summary
 
 from .utils import error_response, success_response
 
@@ -491,41 +492,10 @@ def _build_dashboard_adherence_summary(request):
     """
     复用 records 中的依从性聚合逻辑，生成首页摘要
     """
-    from apps.records.views import MedicationRecordViewSet
-
-    today = timezone.now().date()
-    viewset = MedicationRecordViewSet()
-    viewset.request = request
-
-    summary_7d_start = today - timedelta(days=6)
-    summary_30d_start = today - timedelta(days=29)
-
-    summary_7d = viewset._build_adherence_summary(
-        viewset._get_adherence_records_queryset(
-            start_date=summary_7d_start,
-            end_date=today,
-        ),
-        viewset._get_reminder_history_queryset(
-            start_date=summary_7d_start,
-            end_date=today,
-        ),
+    return build_dashboard_adherence_summary(
+        user=request.user,
+        today=timezone.now().date(),
     )
-    summary_30d = viewset._build_adherence_summary(
-        viewset._get_adherence_records_queryset(
-            start_date=summary_30d_start,
-            end_date=today,
-        ),
-        viewset._get_reminder_history_queryset(
-            start_date=summary_30d_start,
-            end_date=today,
-        ),
-    )
-
-    return {
-        "summary_7d": summary_7d,
-        "summary_30d": summary_30d,
-        "current_period": summary_7d,
-    }
 
 
 def _build_dashboard_today_tasks(reminders, processed_records, today):
