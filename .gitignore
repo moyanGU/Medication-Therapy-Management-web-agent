@@ -46,6 +46,7 @@ backend/!.env.example
 # Database and dumps
 *.rdb
 *.sql
+*.tar
 backend/db.sqlite3
 
 # Certificates/keys (if present)
