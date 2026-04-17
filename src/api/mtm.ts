@@ -184,4 +184,14 @@ export const mtmApi = {
     log('🟢 [mtmApi] completeAssessment response =', response.data)
     return response.data
   },
+
+  /**
+   * 认领服务单 (仅药师)
+   */
+  async claimServiceCase(id: number | string): Promise<MtmServiceCase> {
+    log('🔵 [mtmApi] claimServiceCase called with id =', id)
+    const response = await api.post<MtmServiceCase>(`/mtm/service-cases/${id}/claim/`)
+    log('🟢 [mtmApi] claimServiceCase response =', response.data)
+    return response.data
+  },
 }

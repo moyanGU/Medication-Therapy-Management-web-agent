@@ -12,10 +12,37 @@
                 历史服务承接
               </span>
             </div>
-            <h1 class="mt-3 text-2xl font-bold text-slate-900">我的专业服务</h1>
+            <h1 class="mt-3 text-2xl font-bold text-slate-900">专业服务工作台</h1>
             <p class="mt-2 max-w-2xl text-sm text-slate-600">
               在这里集中查看全部专业服务进度、历史记录和当前可继续跟进的服务单。
             </p>
+            
+            <div v-if="isPharmacist" class="mt-5 inline-flex rounded-xl bg-slate-100 p-1">
+              <button
+                type="button"
+                class="rounded-lg px-4 py-2 text-sm font-medium transition"
+                :class="filters.pharmacistScope === 'me' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+                @click="setPharmacistScope('me')"
+              >
+                指派给我
+              </button>
+              <button
+                type="button"
+                class="rounded-lg px-4 py-2 text-sm font-medium transition"
+                :class="filters.pharmacistScope === 'unassigned' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+                @click="setPharmacistScope('unassigned')"
+              >
+                待认领单
+              </button>
+              <button
+                type="button"
+                class="rounded-lg px-4 py-2 text-sm font-medium transition"
+                :class="filters.pharmacistScope === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+                @click="setPharmacistScope('all')"
+              >
+                全部服务单
+              </button>
+            </div>
           </div>
 
           <div
@@ -422,6 +449,16 @@
               </div>
 
               <div class="flex flex-col items-start gap-3 xl:items-end">
+                <button
+                  v-if="isPharmacist && !item.assigned_pharmacist"
+                  type="button"
+                  class="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-600 disabled:opacity-50"
+                  :disabled="claimingId === item.id"
+                  @click="handleClaim(item.id)"
+                >
+                  <span v-if="claimingId === item.id" class="h-4 w-4 animate-spin rounded-full border-b-2 border-white"></span>
+                  认领服务
+                </button>
                 <router-link
                   :to="buildDetailRoute(item.id)"
                   class="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
@@ -487,6 +524,7 @@ import {
 } from 'lucide-vue-next'
 import { mtmApi } from '@/api/mtm'
 import { useToast } from '@/composables/useToast'
+import { useAuthStore } from '@/stores/auth'
 import type { Pagination } from '@/types/plan'
 import type {
   MtmServiceCase,
@@ -523,7 +561,10 @@ const log = (...args: unknown[]) => {
 
 const route = useRoute()
 const router = useRouter()
-const { error: showError } = useToast()
+const { success: showSuccess, error: showError } = useToast()
+const authStore = useAuthStore()
+
+const isPharmacist = computed(() => authStore.user?.role === 'pharmacist')
 const defaultOrdering: MtmServiceCaseOrdering = '-created_at'
 
 const searchInput = ref('')
@@ -531,14 +572,17 @@ const filters = reactive<{
   status: MtmServiceStatus | ''
   triggerSource: MtmTriggerSource | ''
   ordering: MtmServiceCaseOrdering
+  pharmacistScope: 'all' | 'me' | 'unassigned'
 }>({
   status: '',
   triggerSource: '',
   ordering: defaultOrdering,
+  pharmacistScope: 'me',
 })
 const presetSource = ref<MtmListPresetSource | ''>('')
 const loading = ref(false)
 const summaryLoading = ref(false)
+const claimingId = ref<number | null>(null)
 const loadError = ref('')
 const page = ref(1)
 const pageSize = ref(10)
@@ -1123,7 +1167,7 @@ const syncRouteQuery = async () => {
  * 构造列表查询参数，保证筛选和分页统一从这里输出。
  */
 const buildListParams = (): MtmServiceCaseListParams => {
-  return {
+  const params: MtmServiceCaseListParams = {
     page: page.value,
     page_size: pageSize.value,
     search: searchInput.value || undefined,
@@ -1131,6 +1175,16 @@ const buildListParams = (): MtmServiceCaseListParams => {
     trigger_source: filters.triggerSource || undefined,
     ordering: filters.ordering !== defaultOrdering ? filters.ordering : undefined,
   }
+  
+  if (isPharmacist.value) {
+    if (filters.pharmacistScope === 'me' && authStore.user?.id) {
+      params.assigned_pharmacist = authStore.user.id
+    } else if (filters.pharmacistScope === 'unassigned') {
+      params.assigned_pharmacist__isnull = true
+    }
+  }
+  
+  return params
 }
 
 /**
@@ -1236,6 +1290,26 @@ const applyOrdering = async () => {
   if (!changed) {
     await fetchServiceCases()
   }
+}
+
+const handleClaim = async (caseId: number) => {
+  if (claimingId.value) return
+  try {
+    claimingId.value = caseId
+    await mtmApi.claimServiceCase(caseId)
+    showSuccess('认领成功，已加入您的服务单')
+    await fetchServiceCases()
+  } catch (error: any) {
+    showError(error.message || '认领失败，请稍后重试')
+  } finally {
+    claimingId.value = null
+  }
+}
+
+const setPharmacistScope = async (scope: 'all' | 'me' | 'unassigned') => {
+  filters.pharmacistScope = scope
+  page.value = 1
+  await fetchServiceCases()
 }
 
 /**

@@ -49,6 +49,7 @@ class MTMServiceCaseViewSet(
         "status": ["exact", "in"],
         "trigger_source": ["exact", "in"],
         "created_at": ["gte", "lte"],
+        "assigned_pharmacist": ["exact", "isnull"],
     }
     search_fields = ["case_number", "service_goal", "notes", "patient__username"]
     ordering_fields = ["created_at", "started_at", "completed_at"]
@@ -192,14 +193,25 @@ class MTMServiceCaseViewSet(
 
     def get_queryset(self):
         """
-        仅返回当前用户参与的服务单
+        仅返回当前用户参与的服务单。
+        如果是药师（is_staff=True 或 is_admin=True），除了返回指派给自己的，
+        也可以返回没有 assigned_pharmacist 的待认领单（如果业务需要）。
+        目前为了数据隔离，默认返回患者为本人，或指派给自己的服务单。
         """
         user = self.request.user
-        queryset = (
-            MTMServiceCase.objects.filter(
-                Q(patient=user) | Q(assigned_pharmacist=user)
+        if getattr(user, "is_staff", False) or getattr(user, "is_admin", False):
+            # 药师：能看到指派给自己的，以及还未指派药师的（可以认领）
+            queryset = MTMServiceCase.objects.filter(
+                Q(assigned_pharmacist=user) | Q(assigned_pharmacist__isnull=True)
             )
-            .select_related("patient", "assigned_pharmacist", "interview", "assessment", "plan")
+        else:
+            # 患者：只能看到自己的
+            queryset = MTMServiceCase.objects.filter(patient=user)
+            
+        queryset = (
+            queryset.select_related(
+                "patient", "assigned_pharmacist", "interview", "assessment", "plan"
+            )
             .prefetch_related("follow_ups")
             .distinct()
         )
@@ -271,6 +283,35 @@ class MTMServiceCaseViewSet(
         service_case = self.get_object()
         serializer = self.get_serializer(service_case)
         return success_response(data=serializer.data, message="获取MTM服务单详情成功")
+
+    @action(detail=True, methods=["post"], url_path="claim")
+    def claim(self, request, pk=None):
+        """
+        药师认领服务单
+        """
+        service_case = self.get_object()
+        
+        # 必须是药师
+        if not (getattr(request.user, "is_staff", False) or getattr(request.user, "is_admin", False)):
+            return error_response(message="只有药师可以认领服务单", status_code=403)
+            
+        if service_case.assigned_pharmacist is not None:
+            if service_case.assigned_pharmacist == request.user:
+                return success_response(message="您已经认领了该服务单")
+            return error_response(message="该服务单已被其他药师认领", status_code=400)
+            
+        service_case.assigned_pharmacist = request.user
+        service_case.save(update_fields=["assigned_pharmacist", "updated_at"])
+        
+        logger.info(
+            "🟢 [MTM] service case claimed - case=%s pharmacist=%s",
+            service_case.id,
+            request.user.id,
+        )
+        return success_response(
+            data=MTMServiceCaseDetailSerializer(service_case).data,
+            message="认领成功"
+        )
 
     @action(detail=True, methods=["post"])
     def transition(self, request, pk=None):
