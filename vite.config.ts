@@ -44,6 +44,12 @@ export default defineConfig({
       output: {
         manualChunks: createManualChunks,
       },
+      onwarn(warning, warn) {
+        if (warning.code === 'MODULE_LEVEL_DIRECTIVE' && warning.message.includes('"use client"')) {
+          return
+        }
+        warn(warning)
+      },
     },
   },
   // 明确声明 public 目录，确保 Vite 在不同环境下行为一致
