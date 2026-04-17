@@ -255,4 +255,5 @@ python manage.py loaddata initial_data.json
 - 初始版本发布
 - 完成核心功能开发
 - 支持Docker部署
+- I'm currently the only developer working on this. The MTM professional section is a work in progress, and I'd love for interested contributors to join the development!
 # Medication-Therapy-Management-web-agent
