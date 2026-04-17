@@ -73,8 +73,8 @@
         </article>
       </section>
 
-      <section class="mb-6 rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-        <div class="grid grid-cols-1 gap-4 lg:grid-cols-4">
+      <section class="mb-6">
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-4 rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
           <div class="lg:col-span-2">
             <label class="mb-2 block text-sm font-medium text-slate-700">搜索服务</label>
             <input
@@ -274,25 +274,25 @@
           </div>
         </div>
 
-        <div v-if="loading" class="px-8 py-7 text-center">
+        <div v-if="loading" class="mt-6 rounded-3xl border border-slate-100 bg-white px-8 py-16 text-center shadow-sm">
           <div class="mx-auto max-w-2xl">
             <div class="inline-block h-8 w-8 animate-spin rounded-full border-b-2 border-violet-600"></div>
-            <p class="mt-3 text-sm text-slate-500">正在加载专业服务列表...</p>
+            <p class="mt-3 text-sm font-medium text-slate-500">正在加载专业服务列表...</p>
           </div>
         </div>
 
-        <div v-else-if="loadError" class="px-8 py-7 text-center">
+        <div v-else-if="loadError" class="mt-6 rounded-3xl border border-slate-100 bg-white px-8 py-16 text-center shadow-sm">
           <div class="mx-auto max-w-2xl">
-            <div class="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-red-50">
-              <AlertTriangle class="h-5 w-5 text-red-500" />
+            <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
+              <AlertTriangle class="h-6 w-6 text-red-500" />
             </div>
-            <div class="mt-3 space-y-1">
+            <div class="mt-4 space-y-1">
               <h3 class="text-lg font-semibold text-slate-900">列表暂时没加载成功</h3>
               <p class="text-sm text-slate-600">{{ loadError }}</p>
             </div>
             <button
               type="button"
-              class="mt-4 rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
+              class="mt-6 rounded-xl bg-violet-600 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-violet-700"
               @click="refreshPage"
             >
               重新加载
@@ -300,141 +300,115 @@
           </div>
         </div>
 
-        <div v-else-if="!serviceCases.length" class="px-8 py-7 text-center">
+        <div v-else-if="!serviceCases.length" class="mt-6 rounded-3xl border border-slate-100 bg-white px-8 py-16 text-center shadow-sm">
           <div class="mx-auto max-w-2xl">
-            <div class="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-slate-100">
-              <ClipboardList class="h-6 w-6 text-slate-500" />
+            <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-50">
+              <ClipboardList class="h-8 w-8 text-slate-400" />
             </div>
-            <div class="mt-3 space-y-3">
-              <div>
-                <h3 class="text-lg font-semibold text-slate-900">
-                  {{ emptyStateHeaderCopy.title }}
-                </h3>
-                <p class="mt-1.5 text-sm text-slate-600">
-                  {{ emptyStateHeaderCopy.description }}
-                </p>
-              </div>
-              <div
-                v-if="emptyStateRecommendationBlock"
-                class="rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-2 text-left"
+            <h3 class="mt-6 text-lg font-semibold text-slate-900">
+              没有找到相关服务记录
+            </h3>
+            <p class="mt-2 text-sm text-slate-500">
+              您可以尝试更换筛选条件，或者前往患者详情发起新的专业服务。
+            </p>
+            <div class="mt-8 flex justify-center gap-4">
+              <button
+                v-if="hasActiveFilters"
+                type="button"
+                class="rounded-xl border border-slate-200 bg-white px-6 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+                @click="clearFilters"
               >
-                <p class="text-xs font-medium uppercase tracking-wide text-violet-600">
-                  {{ emptyStateRecommendationBlock.title }}
-                </p>
-                <p class="mt-1 text-sm text-violet-700">
-                  {{ emptyStateRecommendationBlock.description }}
-                </p>
-              </div>
-            </div>
-          </div>
-          <div class="mx-auto mt-4 max-w-2xl">
-            <div class="space-y-1 text-left">
-              <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
-                {{ emptyStateActionsSectionCopy.title }}
-              </p>
-              <p class="mt-1 text-sm text-slate-500">
-                {{ emptyStateActionsSectionCopy.description }}
-              </p>
-            </div>
-            <div class="mt-3 grid gap-3">
-              <div
-                v-for="group in emptyStateActionGroups"
-                :key="group.key"
-                class="rounded-2xl border border-slate-200 bg-white/80 p-3 text-left"
+                清空筛选条件
+              </button>
+              <router-link
+                to="/patients"
+                class="rounded-xl bg-violet-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
               >
-                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
-                  {{ group.title }}
-                </p>
-                <p class="mt-1 text-sm text-slate-500">
-                  {{ group.description }}
-                </p>
-                <div class="mt-3 flex flex-wrap gap-3">
-                  <template v-for="item in group.items" :key="`empty-${item.key}`">
-                    <button
-                      v-if="item.action"
-                      type="button"
-                      class="rounded-xl px-4 py-2 text-sm font-medium transition"
-                      :class="
-                        item.variant === 'secondary'
-                          ? 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                          : 'bg-violet-600 text-white hover:bg-violet-700'
-                      "
-                      :disabled="loading"
-                      @click="handleQuickAction(item.action)"
-                    >
-                      {{ item.label }}
-                    </button>
-                    <router-link
-                      v-else-if="item.to"
-                      :to="item.to"
-                      class="rounded-xl px-4 py-2 text-sm font-medium transition"
-                      :class="
-                        item.variant === 'secondary'
-                          ? 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                          : 'bg-violet-600 text-white hover:bg-violet-700'
-                      "
-                    >
-                      {{ item.label }}
-                    </router-link>
-                  </template>
-                </div>
-              </div>
+                前往患者库
+              </router-link>
             </div>
           </div>
         </div>
 
-        <div v-else class="divide-y divide-slate-100">
+        <div v-else class="grid grid-cols-1 gap-4">
           <article
             v-for="item in serviceCases"
             :key="item.id"
-            class="px-6 py-5 transition hover:bg-slate-50/80"
+            class="rounded-3xl border border-slate-100 bg-white px-6 py-5 shadow-sm transition hover:border-violet-200 hover:shadow-md"
           >
             <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div class="min-w-0 flex-1">
-                <div class="flex flex-wrap items-center gap-2">
-                  <h3 class="text-base font-semibold text-slate-900">
+                <div class="flex flex-wrap items-center gap-3">
+                  <h3 class="flex items-center gap-2 text-base font-bold text-slate-900">
+                    <ClipboardList class="h-4 w-4 text-violet-500" />
                     {{ item.case_number }}
                   </h3>
                   <span
-                    class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium"
+                    class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
                     :class="getMtmStatusBadgeClass(item.status)"
                   >
                     {{ getMtmStatusText(item.status) }}
                   </span>
-                  <span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                  <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
+                    <Activity class="mr-1 h-3 w-3 text-slate-400" />
                     {{ getMtmTriggerText(item.trigger_source) }}
                   </span>
                 </div>
 
-                <p class="mt-3 text-sm text-slate-700">
+                <p class="mt-3 text-sm font-medium text-slate-700">
                   {{ item.service_goal || `${getMtmTriggerText(item.trigger_source)}发起的专业服务` }}
                 </p>
 
-                <div class="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-500">
-                  <span>创建于 {{ formatDateTime(item.created_at) }}</span>
-                  <span>患者：{{ item.patient.username }}</span>
-                  <span>药师：{{ item.assigned_pharmacist?.username || '暂未分配' }}</span>
+                <div class="mt-4 flex flex-wrap gap-x-6 gap-y-3 text-sm text-slate-500">
+                  <div class="flex items-center gap-1.5">
+                    <CalendarClock class="h-4 w-4 text-slate-400" />
+                    <span>创建于 {{ formatDateTime(item.created_at) }}</span>
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <User class="h-4 w-4 text-slate-400" />
+                    <span>患者：<span class="font-medium text-slate-700">{{ item.patient.username }}</span></span>
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <Stethoscope class="h-4 w-4 text-slate-400" />
+                    <span>药师：<span class="font-medium text-slate-700">{{ item.assigned_pharmacist?.username || '暂未分配' }}</span></span>
+                  </div>
                 </div>
 
-                <p class="mt-3 text-sm text-slate-600">
-                  {{ getProgressText(item) }}
-                </p>
+                <div class="mt-4 flex items-center gap-3">
+                  <div class="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      class="h-full rounded-full bg-violet-500 transition-all duration-500"
+                      :style="{ width: getProgressPercentage(item.status) + '%' }"
+                    ></div>
+                  </div>
+                  <p class="text-xs text-slate-500">
+                    {{ getProgressText(item) }}
+                  </p>
+                </div>
               </div>
 
-              <div class="flex flex-col items-start gap-3 xl:items-end">
+              <div class="flex flex-col items-start gap-3 xl:h-full xl:items-end xl:justify-between">
+                <span
+                  class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium"
+                  :class="
+                    isMtmCaseActive(item.status)
+                      ? 'border-violet-100 bg-violet-50 text-violet-600'
+                      : 'border-emerald-100 bg-emerald-50 text-emerald-600'
+                  "
+                >
+                  <span
+                    class="mr-1.5 h-1.5 w-1.5 rounded-full"
+                    :class="isMtmCaseActive(item.status) ? 'animate-pulse bg-violet-500' : 'bg-emerald-500'"
+                  ></span>
+                  {{ isMtmCaseActive(item.status) ? '仍可继续跟进' : '已归档可回看' }}
+                </span>
                 <router-link
                   :to="buildDetailRoute(item.id)"
-                  class="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
+                  class="mt-auto inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-violet-600 shadow-sm ring-1 ring-inset ring-violet-200 transition hover:bg-violet-50"
                 >
                   查看详情
                   <ChevronRight class="h-4 w-4" />
                 </router-link>
-                <span
-                  class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium"
-                  :class="isMtmCaseActive(item.status) ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'"
-                >
-                  {{ isMtmCaseActive(item.status) ? '仍可继续跟进' : '已归档可回看' }}
-                </span>
               </div>
             </div>
           </article>
@@ -442,7 +416,7 @@
 
         <div
           v-if="pagination.total_pages > 1 && serviceCases.length"
-          class="flex items-center justify-between border-t border-slate-100 px-6 py-4"
+          class="mt-6 flex items-center justify-between rounded-3xl border border-slate-100 bg-white px-6 py-4 shadow-sm"
         >
           <button
             type="button"
@@ -481,9 +455,13 @@ import {
   type LocationQueryRaw,
 } from 'vue-router'
 import {
+  Activity,
   AlertTriangle,
+  CalendarClock,
   ChevronRight,
   ClipboardList,
+  Stethoscope,
+  User,
 } from 'lucide-vue-next'
 import { mtmApi } from '@/api/mtm'
 import { useToast } from '@/composables/useToast'
@@ -540,6 +518,18 @@ const presetSource = ref<MtmListPresetSource | ''>('')
 const loading = ref(false)
 const summaryLoading = ref(false)
 const loadError = ref('')
+
+const hasActiveFilters = computed(() => {
+  return !!(searchInput.value || filters.status || filters.triggerSource)
+})
+
+const clearFilters = () => {
+  searchInput.value = ''
+  filters.status = ''
+  filters.triggerSource = ''
+  page.value = 1
+  void fetchServiceCases()
+}
 const page = ref(1)
 const pageSize = ref(10)
 const serviceCases = ref<MtmServiceCase[]>([])
@@ -1295,6 +1285,18 @@ const getProgressText = (serviceCase: MtmServiceCase) => {
     return `本次服务已于 ${formatDateTime(serviceCase.completed_at)} 完成，可继续回看详情。`
   }
   return `当前处于 ${getMtmStatusText(serviceCase.status)} 阶段，可进入详情继续查看或推进。`
+}
+
+const getProgressPercentage = (status: MtmServiceStatus) => {
+  const mapping: Record<MtmServiceStatus, number> = {
+    pending: 0,
+    interviewing: 20,
+    assessing: 40,
+    intervening: 60,
+    following_up: 80,
+    completed: 100,
+  }
+  return mapping[status] || 0
 }
 
 /**
