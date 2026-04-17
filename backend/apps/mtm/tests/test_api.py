@@ -362,3 +362,85 @@ class MTMServiceCaseApiTest(TestCase):
         self.assertTrue(valid_response.json()["success"])
         assessment = MTMAssessment.objects.get(service_case=service_case)
         self.assertIsNotNone(assessment.completed_at)
+
+    def test_get_plan_initializes_minimum_draft(self):
+        """
+        验证读取干预计划接口时会为当前服务单生成最小草稿
+        """
+        service_case = MTMServiceCase.objects.create(
+            patient=self.patient,
+            assigned_pharmacist=self.pharmacist,
+            status="intervening",
+        )
+
+        response = self.client.get(f"/api/mtm/service-cases/{service_case.id}/plan/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        data = response.json()["data"]
+        self.assertEqual(data["priority"], "medium")
+        self.assertEqual(data["interventions"], [])
+        self.assertTrue(MTMPlan.objects.filter(service_case=service_case).exists())
+
+    def test_put_plan_saves_draft_without_completing(self):
+        """
+        验证干预计划草稿可以保存且不会自动标记完成
+        """
+        service_case = MTMServiceCase.objects.create(
+            patient=self.patient,
+            assigned_pharmacist=self.pharmacist,
+            status="intervening",
+        )
+
+        response = self.client.put(
+            f"/api/mtm/service-cases/{service_case.id}/plan/",
+            {
+                "interventions": [{"item": "停用其中一种降压药"}],
+                "priority": "high",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        
+        plan = MTMPlan.objects.get(service_case=service_case)
+        self.assertIsNone(plan.completed_at)
+        self.assertEqual(plan.priority, "high")
+        self.assertEqual(len(plan.interventions), 1)
+
+    def test_complete_plan_requires_key_fields_and_sets_completed_at(self):
+        """
+        验证完成干预计划时会执行最小字段校验，并在通过后写入完成时间
+        """
+        service_case = MTMServiceCase.objects.create(
+            patient=self.patient,
+            assigned_pharmacist=self.pharmacist,
+            status="intervening",
+        )
+
+        invalid_response = self.client.post(
+            f"/api/mtm/service-cases/{service_case.id}/plan/complete/",
+            {
+                "interventions": [],
+                "priority": "",
+            },
+            format="json",
+        )
+        self.assertEqual(invalid_response.status_code, 400)
+        self.assertFalse(invalid_response.json()["success"])
+
+        valid_response = self.client.post(
+            f"/api/mtm/service-cases/{service_case.id}/plan/complete/",
+            {
+                "interventions": [{"item": "调整用药时间"}],
+                "priority": "medium",
+            },
+            format="json",
+        )
+        self.assertEqual(valid_response.status_code, 200)
+        self.assertTrue(valid_response.json()["success"])
+
+        plan = MTMPlan.objects.get(service_case=service_case)
+        self.assertIsNotNone(plan.completed_at)
+        self.assertEqual(plan.priority, "medium")

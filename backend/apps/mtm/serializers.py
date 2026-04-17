@@ -341,6 +341,46 @@ class MTMAssessmentSummarySerializer(serializers.ModelSerializer):
         ]
 
 
+class MTMPlanDraftSerializer(serializers.Serializer):
+    """
+    干预计划草稿保存序列化器
+    """
+
+    interventions = serializers.JSONField(required=False)
+    priority = serializers.ChoiceField(
+        choices=MTMPlan.PRIORITY_CHOICES, required=False, allow_blank=True, allow_null=True
+    )
+
+
+class MTMPlanCompleteSerializer(MTMPlanDraftSerializer):
+    """
+    干预计划完成提交序列化器
+    """
+
+    def validate(self, attrs):
+        """
+        校验计划完成所需的最小关键字段
+        """
+        attrs = super().validate(attrs)
+        interventions = attrs.get("interventions") or []
+        priority = attrs.get("priority")
+
+        if not _has_meaningful_content(interventions):
+            raise serializers.ValidationError(
+                {
+                    "non_field_errors": [
+                        "至少需要填写一项干预措施"
+                    ]
+                }
+            )
+        if not priority:
+            raise serializers.ValidationError(
+                {"priority": ["优先级不能为空"]}
+            )
+
+        return attrs
+
+
 class MTMPlanSummarySerializer(serializers.ModelSerializer):
     """
     干预计划摘要序列化器
@@ -355,9 +395,27 @@ class MTMPlanSummarySerializer(serializers.ModelSerializer):
             "patient_confirmation_status",
             "patient_confirmation_notes",
             "confirmed_at",
+            "completed_at",
             "created_at",
             "updated_at",
         ]
+
+
+class MTMPlanFormSerializer(serializers.ModelSerializer):
+    """
+    干预计划起草/草稿序列化器
+    """
+
+    class Meta:
+        model = MTMPlan
+        fields = [
+            "id",
+            "interventions",
+            "priority",
+            "patient_confirmation_status",
+            "completed_at",
+        ]
+        read_only_fields = ["id", "patient_confirmation_status", "completed_at"]
 
 
 class MTMFollowUpSummarySerializer(serializers.ModelSerializer):

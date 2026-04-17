@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from apps.core.pagination import StandardResultsSetPagination
 from apps.core.response import error_response, success_response
 
-from .models import MTMAssessment, MTMInterview, MTMServiceCase
+from .models import MTMAssessment, MTMInterview, MTMServiceCase, MTMPlan
 from .serializers import (
     MTMAssessmentCompleteSerializer,
     MTMAssessmentDraftSerializer,
@@ -19,6 +19,9 @@ from .serializers import (
     MTMInterviewCompleteSerializer,
     MTMInterviewDraftSerializer,
     MTMInterviewFormSerializer,
+    MTMPlanCompleteSerializer,
+    MTMPlanDraftSerializer,
+    MTMPlanFormSerializer,
     MTMServiceCaseCreateSerializer,
     MTMServiceCaseDetailSerializer,
     MTMServiceCaseListSerializer,
@@ -113,6 +116,16 @@ class MTMServiceCaseViewSet(
             "risk_level": "medium",
         }
 
+    def _build_initial_plan_payload(self, service_case):
+        """
+        为首次进入干预计划页的服务单生成最小草稿内容
+        """
+        return {
+            "service_case": service_case,
+            "interventions": [],
+            "priority": "medium",
+        }
+
     def _get_or_create_assessment(self, service_case):
         """
         获取当前服务单评估记录；若不存在则生成最小草稿
@@ -128,6 +141,22 @@ class MTMServiceCaseViewSet(
                 assessment.id,
             )
         return assessment
+
+    def _get_or_create_plan(self, service_case):
+        """
+        获取当前服务单干预计划记录；若不存在则生成最小草稿
+        """
+        plan, created = MTMPlan.objects.get_or_create(
+            service_case=service_case,
+            defaults=self._build_initial_plan_payload(service_case),
+        )
+        if created:
+            logger.info(
+                "🟢 [MTM] plan draft initialized - case=%s plan=%s",
+                service_case.id,
+                plan.id,
+            )
+        return plan
 
     def _save_interview_payload(self, interview, validated_data, *, mark_completed=False):
         """
@@ -190,6 +219,29 @@ class MTMServiceCaseViewSet(
 
         return assessment
 
+    def _save_plan_payload(self, plan, validated_data, *, mark_completed=False):
+        """
+        将校验后的干预计划数据写入模型，并根据需要标记完成时间
+        """
+        fields_to_update = []
+        for field in [
+            "interventions",
+            "priority",
+        ]:
+            if field in validated_data:
+                setattr(plan, field, validated_data[field])
+                fields_to_update.append(field)
+
+        if mark_completed:
+            plan.completed_at = timezone.now()
+            fields_to_update.append("completed_at")
+
+        if fields_to_update:
+            fields_to_update.append("updated_at")
+            plan.save(update_fields=fields_to_update)
+
+        return plan
+
     def get_queryset(self):
         """
         仅返回当前用户参与的服务单
@@ -227,6 +279,12 @@ class MTMServiceCaseViewSet(
             return MTMAssessmentFormSerializer
         if self.action == "complete_assessment":
             return MTMAssessmentCompleteSerializer
+        if self.action == "plan":
+            if self.request.method == "PUT":
+                return MTMPlanDraftSerializer
+            return MTMPlanFormSerializer
+        if self.action == "complete_plan":
+            return MTMPlanCompleteSerializer
         return MTMServiceCaseDetailSerializer
 
     def create(self, request, *args, **kwargs):
@@ -475,4 +533,85 @@ class MTMServiceCaseViewSet(
         return success_response(
             data=MTMAssessmentFormSerializer(assessment).data,
             message="评估已完成",
+        )
+
+    @action(detail=True, methods=["get", "put"])
+    def plan(self, request, pk=None):
+        """
+        读取或保存当前服务单的干预计划草稿
+        """
+        service_case = self.get_object()
+        plan_obj = self._get_or_create_plan(service_case)
+
+        if request.method == "GET":
+            logger.info(
+                "🔵 [MTM] plan fetch - case=%s plan=%s",
+                service_case.id,
+                plan_obj.id,
+            )
+            return success_response(
+                data=MTMPlanFormSerializer(plan_obj).data,
+                message="获取干预计划表单成功",
+            )
+
+        logger.info(
+            "🔵 [MTM] plan draft save start - case=%s plan=%s",
+            service_case.id,
+            plan_obj.id,
+        )
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            logger.warning(
+                "🟡 [MTM] plan draft invalid - case=%s errors=%s",
+                service_case.id,
+                serializer.errors,
+            )
+            return error_response(message="草稿数据验证失败", errors=serializer.errors)
+
+        plan_obj = self._save_plan_payload(
+            plan_obj, serializer.validated_data, mark_completed=False
+        )
+        logger.info(
+            "🟢 [MTM] plan draft saved - case=%s plan=%s",
+            service_case.id,
+            plan_obj.id,
+        )
+        return success_response(
+            data=MTMPlanFormSerializer(plan_obj).data,
+            message="草稿保存成功",
+        )
+
+    @action(detail=True, methods=["post"], url_path="plan/complete")
+    def complete_plan(self, request, pk=None):
+        """
+        完成当前服务单的干预计划填写
+        """
+        service_case = self.get_object()
+        plan_obj = self._get_or_create_plan(service_case)
+        logger.info(
+            "🔵 [MTM] plan complete start - case=%s plan=%s",
+            service_case.id,
+            plan_obj.id,
+        )
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            logger.warning(
+                "🟡 [MTM] plan complete invalid - case=%s errors=%s",
+                service_case.id,
+                serializer.errors,
+            )
+            return error_response(message="计划完成校验失败", errors=serializer.errors)
+
+        plan_obj = self._save_plan_payload(
+            plan_obj, serializer.validated_data, mark_completed=True
+        )
+        logger.info(
+            "🟢 [MTM] plan completed - case=%s plan=%s completed_at=%s",
+            service_case.id,
+            plan_obj.id,
+            plan_obj.completed_at,
+        )
+        return success_response(
+            data=MTMPlanFormSerializer(plan_obj).data,
+            message="干预计划已完成",
         )

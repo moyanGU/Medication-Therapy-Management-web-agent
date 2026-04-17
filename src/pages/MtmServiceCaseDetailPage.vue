@@ -404,12 +404,49 @@
           </article>
 
           <article class="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-            <div class="flex items-center gap-2">
-              <Stethoscope class="h-5 w-5 text-emerald-600" />
-              <h2 class="text-lg font-semibold text-slate-900">干预计划</h2>
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div class="flex items-center gap-2">
+                <Stethoscope class="h-5 w-5 text-emerald-600" />
+                <h2 class="text-lg font-semibold text-slate-900">干预计划</h2>
+              </div>
+              <span
+                class="inline-flex items-center self-start rounded-full px-3 py-1 text-xs font-medium"
+                :class="planEntryMeta.badgeClass"
+              >
+                {{ planEntryMeta.badgeText }}
+              </span>
+            </div>
+
+            <div class="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p class="text-sm font-medium text-slate-900">计划起草入口</p>
+                  <p class="mt-2 text-sm leading-6 text-slate-600">
+                    {{ planEntryMeta.description }}
+                  </p>
+                  <p class="mt-2 text-xs leading-5 text-slate-500">
+                    计划起草完成后只会记录完成时间，不会自动推进当前服务状态。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-2 self-start rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                  :disabled="loading || transitioning || planEntryMeta.disabled"
+                  @click="goToPlanForm"
+                >
+                  <ArrowRight class="h-4 w-4" />
+                  {{ planEntryMeta.buttonText }}
+                </button>
+              </div>
             </div>
 
             <template v-if="serviceCase.plan">
+              <p
+                v-if="serviceCase.plan.completed_at"
+                class="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+              >
+                干预计划已于 {{ formatDateTime(serviceCase.plan.completed_at) }} 起草完成。
+              </p>
               <div class="mt-5 space-y-3">
                 <div class="rounded-2xl bg-slate-50 p-4">
                   <p class="text-sm text-slate-500">优先级</p>
@@ -803,6 +840,49 @@ const assessmentProblemLines = computed(() => {
   return buildUnknownListLines(serviceCase.value.assessment.problem_list)
 })
 
+const planEntryMeta = computed(() => {
+  const currentAssessment = serviceCase.value?.assessment
+  const currentPlan = serviceCase.value?.plan
+
+  if (!currentAssessment?.completed_at) {
+    return {
+      badgeText: '待评估完成',
+      badgeClass: 'bg-slate-100 text-slate-700',
+      buttonText: '暂不能起草计划',
+      description: '建议先完成用药评估，再进入干预计划页制定具体的行动指南。',
+      disabled: true,
+    }
+  }
+
+  if (!currentPlan) {
+    return {
+      badgeText: '未开始',
+      badgeClass: 'bg-slate-100 text-slate-700',
+      buttonText: '起草干预计划',
+      description: '评估已经完成，可以继续进入计划页为患者制定详细的干预措施。',
+      disabled: false,
+    }
+  }
+
+  if (currentPlan.completed_at) {
+    return {
+      badgeText: '已完成',
+      badgeClass: 'bg-emerald-100 text-emerald-700',
+      buttonText: '查看已填计划',
+      description: '当前干预计划已经填写完成；如果需要回看或继续修改，可以直接从这里进入。',
+      disabled: false,
+    }
+  }
+
+  return {
+    badgeText: '草稿中',
+    badgeClass: 'bg-amber-100 text-amber-700',
+    buttonText: '继续干预计划',
+    description: '上次起草的干预计划草稿已经保留，可以继续补充后再手动标记完成。',
+    disabled: false,
+  }
+})
+
 const planInterventionLines = computed(() => {
   if (!serviceCase.value?.plan) {
     return []
@@ -924,6 +1004,20 @@ const goToAssessmentForm = () => {
 
   router.push({
     path: `/mtm/service-cases/${serviceCaseId.value}/assessment`,
+    query: { ...route.query },
+  })
+}
+
+/**
+ * 进入干预计划表单页，并尽量保留当前详情页上下文。
+ */
+const goToPlanForm = () => {
+  if (!serviceCaseId.value || planEntryMeta.value.disabled) {
+    return
+  }
+
+  router.push({
+    path: `/mtm/service-cases/${serviceCaseId.value}/plan`,
     query: { ...route.query },
   })
 }

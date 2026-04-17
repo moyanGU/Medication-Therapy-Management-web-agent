@@ -390,6 +390,12 @@ class MTMPlan(models.Model):
         verbose_name="确认时间",
         help_text="患者确认时间",
     )
+    completed_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name="完成时间",
+        help_text="干预计划完成起草的时间",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 

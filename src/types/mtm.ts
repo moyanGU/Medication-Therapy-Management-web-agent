@@ -106,6 +106,14 @@ export interface MtmAssessmentSummary {
 }
 
 /**
+ * MTM 干预计划草稿负载
+ */
+export interface MtmPlanDraftPayload {
+  interventions: Array<Record<string, unknown>>
+  priority?: 'low' | 'medium' | 'high' | 'urgent'
+}
+
+/**
  * MTM 干预计划摘要
  */
 export interface MtmPlanSummary {
@@ -115,6 +123,7 @@ export interface MtmPlanSummary {
   patient_confirmation_status: 'pending' | 'confirmed' | 'declined'
   patient_confirmation_notes: string | null
   confirmed_at: string | null
+  completed_at: string | null
   created_at: string
   updated_at: string
 }

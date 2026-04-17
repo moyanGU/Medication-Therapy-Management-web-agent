@@ -105,6 +105,13 @@ const routes: RouteRecordRaw[] = [
     props: true,
   },
   {
+    path: '/mtm/service-cases/:id/plan',
+    name: 'MtmPlanForm',
+    component: () => import('@/pages/MtmPlanFormPage.vue'),
+    meta: { requiresAuth: true },
+    props: true,
+  },
+  {
     path: '/medicines',
     name: 'Medicines',
     component: MedicinesPage,

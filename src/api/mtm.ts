@@ -4,6 +4,8 @@ import type {
   MtmAssessmentSummary,
   MtmInterviewDraftPayload,
   MtmInterviewSummary,
+  MtmPlanDraftPayload,
+  MtmPlanSummary,
   MtmServiceCase,
   MtmServiceCaseCreatePayload,
   MtmServiceCaseListParams,
@@ -173,15 +175,58 @@ export const mtmApi = {
     serviceCaseId: number | string,
     payload: MtmAssessmentDraftPayload
   ): Promise<MtmAssessmentSummary> {
-    log('🔵 [mtmApi] completeAssessment payload =', {
-      serviceCaseId,
-      ...payload,
-    })
+    log('🔵 [mtmApi] completeAssessment called with caseId =', serviceCaseId)
     const response = await api.post<MtmAssessmentSummary>(
       `/mtm/service-cases/${serviceCaseId}/assessment/complete/`,
       payload
     )
     log('🟢 [mtmApi] completeAssessment response =', response.data)
+    return response.data
+  },
+
+  /**
+   * 获取单条 MTM 服务单的干预计划草稿或初始化最小草稿
+   */
+  async getPlan(
+    serviceCaseId: number | string
+  ): Promise<MtmPlanSummary> {
+    log('🔵 [mtmApi] getPlan called with caseId =', serviceCaseId)
+    const response = await api.get<MtmPlanSummary>(
+      `/mtm/service-cases/${serviceCaseId}/plan/`
+    )
+    log('🟢 [mtmApi] getPlan response =', response.data)
+    return response.data
+  },
+
+  /**
+   * 手动保存单条 MTM 服务单的干预计划草稿
+   */
+  async savePlanDraft(
+    serviceCaseId: number | string,
+    payload: MtmPlanDraftPayload
+  ): Promise<MtmPlanSummary> {
+    log('🔵 [mtmApi] savePlanDraft called with caseId =', serviceCaseId)
+    const response = await api.put<MtmPlanSummary>(
+      `/mtm/service-cases/${serviceCaseId}/plan/`,
+      payload
+    )
+    log('🟢 [mtmApi] savePlanDraft response =', response.data)
+    return response.data
+  },
+
+  /**
+   * 完成单条 MTM 服务单的干预计划填写
+   */
+  async completePlan(
+    serviceCaseId: number | string,
+    payload: MtmPlanDraftPayload
+  ): Promise<MtmPlanSummary> {
+    log('🔵 [mtmApi] completePlan called with caseId =', serviceCaseId)
+    const response = await api.post<MtmPlanSummary>(
+      `/mtm/service-cases/${serviceCaseId}/plan/complete/`,
+      payload
+    )
+    log('🟢 [mtmApi] completePlan response =', response.data)
     return response.data
   },
 }
