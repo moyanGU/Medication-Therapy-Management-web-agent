@@ -4,6 +4,7 @@ import os
 # # from apps.core.utils import generate_verification_code, send_sms
 import re
 
+from datetime import datetime, timezone as dt_timezone
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.core.cache import cache
@@ -15,10 +16,19 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from apps.core.sms import send_sms
 from apps.core.utils import generate_verification_code
 from apps.users.models import User
 
 logger = logging.getLogger(__name__)
+
+def _get_client_ip(request):
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip or "unknown"
 
 
 @api_view(["POST"])
@@ -387,9 +397,10 @@ def send_verification_code(request):
                 )
             if added is None:
                 logger.warning(
-                    "验证码限流降级: cache.add 返回 None，跳过本次限流判断",
+                    "验证码限流降级: cache.add 返回 None，将使用Session回退",
                     extra={"rate_key": rate_key},
                 )
+                raise ValueError("Cache fallback triggered")
         except Exception as ce:
             logger.warning(f"频率限制缓存写入失败，使用Session回退: {str(ce)}")
             try:
@@ -404,6 +415,57 @@ def send_verification_code(request):
             except Exception as se:
                 logger.warning(f"Session 限流写入失败，忽略: {str(se)}")
 
+        # L2 & L3 防刷：自然日单手机号与单 IP 上限
+        today_str = datetime.now(dt_timezone.utc).astimezone().strftime("%Y%m%d")
+        daily_phone_key = f"sms:daily:phone:{phone}:{today_str}"
+        ip = _get_client_ip(request)
+        daily_ip_key = f"sms:daily:ip:{ip}:{today_str}"
+        
+        limit_phone = getattr(settings, "SMS_DAILY_PHONE_LIMIT", 5)
+        limit_ip = getattr(settings, "SMS_DAILY_IP_LIMIT", 20)
+        
+        try:
+            # 单手机号限制
+            count_phone = cache.get(daily_phone_key)
+            if count_phone and int(count_phone) >= limit_phone:
+                logger.warning(f"短信防刷拦截: 手机号 {phone} 今日已发送 {count_phone} 次")
+                return Response(
+                    {"success": False, "message": "该手机号今日发送次数已达上限", "data": None},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+                
+            # 单 IP 限制
+            count_ip = cache.get(daily_ip_key)
+            if count_ip and int(count_ip) >= limit_ip:
+                logger.warning(f"短信防刷拦截: IP {ip} 今日已发送 {count_ip} 次")
+                return Response(
+                    {"success": False, "message": "该设备今日发送次数过多", "data": None},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+                
+            # 累加计数
+            try:
+                cache.incr(daily_phone_key)
+            except ValueError:
+                cache.set(daily_phone_key, 1, 86400)
+                
+            try:
+                cache.incr(daily_ip_key)
+            except ValueError:
+                cache.set(daily_ip_key, 1, 86400)
+                
+        except Exception as e:
+            logger.warning(f"Redis 每日限流检查失败，回退 Session 检查: {str(e)}")
+            # Session fallback for daily limit
+            session_phone_key = f"session_sms_daily_{phone}"
+            session_count = request.session.get(session_phone_key, 0)
+            if session_count >= limit_phone:
+                return Response(
+                    {"success": False, "message": "该手机号今日发送次数已达上限", "data": None},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+            request.session[session_phone_key] = session_count + 1
+
         # 生成验证码
         verification_code = generate_verification_code(6)
         cache_key = f"sms:code:{phone}"
@@ -413,103 +475,44 @@ def send_verification_code(request):
         try:
             cache.set(cache_key, verification_code, ttl)
         except Exception as ce:
-            logger.error(f"写入验证码/限流缓存失败，将回退到Session: {str(ce)}")
-            # Session 回退：验证码与限流标记同时写入
+            logger.error(f"写入验证码缓存失败，将回退到Session: {str(ce)}")
             request.session[cache_key] = verification_code
-            # 使用 Session 有效期，避免长时间保留（取验证码TTL、限流TTL与上限的最小值）
             try:
                 fallback_expiry = min(ttl, 300)
                 request.session.set_expiry(fallback_expiry)
             except Exception:
                 pass
 
-        # 模板化短信内容
+        # 模板化短信内容 (网关内封装模板ID调用)
+        template_id = getattr(settings, "SPUG_TEMPLATE_ID_VERIFICATION", "") or getattr(settings, "SPUG_TEMPLATE_ID", "")
+        
         try:
             minutes = max(1, int(round(ttl / 60)))
         except Exception:
             minutes = 5
-        sms_text = (
-            getattr(settings, "SMS_TEMPLATES", {})
-            .get("verification", "【MTM用药助手】您的验证码是 {code}，{ttl} 分钟内有效。")
-            .format(code=verification_code, ttl=minutes)
-        )
 
-        # 集成 Spug 推送平台
-        spug_enabled = getattr(
-            settings,
-            "SPUG_PUSH_ENABLED",
-            os.getenv("SPUG_PUSH_ENABLED", "false").lower() == "true",
+        # 调用短信网关发送
+        is_success, msg = send_sms(
+            phone=phone,
+            template_code=template_id,
+            template_params={"code": verification_code, "ttl": minutes}
         )
-        logger.info(f"Spug推送启用: {spug_enabled}")
-        if spug_enabled:
+        
+        if not is_success:
+            logger.error(f"短信网关发送失败: {msg}")
+            # 回退缓存防刷计数
             try:
-                import requests
-
-                base_url = getattr(
-                    settings,
-                    "SPUG_PUSH_URL",
-                    os.getenv("SPUG_PUSH_URL", "https://push.spug.cc"),
-                )
-                template_id = (
-                    getattr(settings, "SPUG_TEMPLATE_ID_VERIFICATION", "")
-                    or getattr(
-                        settings, "SPUG_TEMPLATE_ID", os.getenv("SPUG_TEMPLATE_ID", "")
-                    )
-                ).strip()
-                app_name = getattr(
-                    settings, "SPUG_APP_NAME", os.getenv("SPUG_APP_NAME", "MTM用药助手")
-                )
-                if not template_id:
-                    logger.error("SPUG_TEMPLATE_ID 未配置")
-                    return Response(
-                        {"success": False, "message": "短信通道异常，请稍后重试", "data": None},
-                        status=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    )
-                url = f"{base_url.rstrip('/')}/send/{template_id}"
-                payload = {
-                    "name": app_name,
-                    "code": verification_code,
-                    "targets": phone,  # 即时传入的注册手机号
-                }
-                timeout = int(getattr(settings, "SPUG_PUSH_TIMEOUT_SECONDS", 3))
-                token = getattr(settings, "SPUG_PUSH_TOKEN", "")
-                headers = {"Content-Type": "application/x-www-form-urlencoded"}
-                if token:
-                    headers["Authorization"] = f"Bearer {token}"
-                # 避免在日志中泄露敏感信息（手机号与验证码做脱敏）
-                masked_phone = (
-                    (phone[:3] + "****" + phone[-4:])
-                    if isinstance(phone, str) and len(phone) == 11
-                    else "[masked]"
-                )
-                masked_payload = {**payload, "code": "****", "targets": masked_phone}
-                logger.info(
-                    f"调用Spug发送验证码: url={url}, payload={masked_payload}, timeout={timeout}, auth={'yes' if token else 'no'}"
-                )
-                r = requests.post(url, data=payload, headers=headers, timeout=timeout)
-                # 记录响应但不泄露敏感信息
-                logger.info(f"Spug响应: status={r.status_code}, text={r.text[:200]}")
-                r.raise_for_status()
-            except Exception as se:
-                logger.error(f"Spug 短信发送失败: {str(se)}")
-                return Response(
-                    {"success": False, "message": "短信通道异常，请稍后重试", "data": None},
-                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
-                )
-        else:
-            # 未启用Spug时，按原逻辑打印（仅开发环境允许回显）
-            if getattr(settings, "DEBUG", False) or getattr(
-                settings, "SMS_DEV_ECHO", False
-            ):
-                logger.info(f"模拟发送短信验证码: phone={phone}, content={sms_text}")
-            else:
-                logger.info(f"模拟发送短信验证码: phone={phone}, content=[masked]")
+                cache.decr(daily_phone_key)
+                cache.decr(daily_ip_key)
+            except Exception:
+                pass
+            return Response(
+                {"success": False, "message": "短信通道异常，请稍后重试", "data": None},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         resp_data = {"phone": phone}
-        # 开发环境可回显验证码，生产环境不返回
-        sms_dev_echo = getattr(
-            settings, "SMS_DEV_ECHO", bool(getattr(settings, "DEBUG", False))
-        )
+        sms_dev_echo = getattr(settings, "SMS_DEV_ECHO", bool(getattr(settings, "DEBUG", False)))
         if sms_dev_echo:
             resp_data["code"] = verification_code
 
