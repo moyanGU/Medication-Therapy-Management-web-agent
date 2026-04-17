@@ -20,7 +20,7 @@ MTM-用药助手是一款专为老年人设计的智能药品管理系统，旨�
 - **就医记录**：就诊信息记录、诊断治疗方案管理
 - **AI智能搜索**：基于大模型的药品智能搜索
 - **管理后台**：用户管理、系统配置、数据统计
-
+- **智能体管家**：引导用户操作，代替填写表单
 ## 技术架构
 
 ### 前端技术栈
@@ -245,8 +245,8 @@ python manage.py loaddata initial_data.json
 
 ## 联系方式
 
-- 项目维护者：MTM-用药助手 Team
-- 邮箱：support@mtm-helper.com
+- 项目维护者：Gu moyan
+- 邮箱：285605428@qq.com
 - 项目地址：https://github.com/mtm-helper/mtm-helper
 
 ## 更新日志
