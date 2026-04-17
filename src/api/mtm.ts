@@ -8,6 +8,7 @@ import type {
   MtmInterviewSummary,
   MtmPlanDraftPayload,
   MtmPlanSummary,
+  MtmPlanConfirmPayload,
   MtmServiceCase,
   MtmServiceCaseCreatePayload,
   MtmServiceCaseListParams,
@@ -229,6 +230,22 @@ export const mtmApi = {
       payload
     )
     log('🟢 [mtmApi] completePlan response =', response.data)
+    return response.data
+  },
+
+  /**
+   * 患者端确认干预计划
+   */
+  async confirmPlan(
+    serviceCaseId: number | string,
+    payload: MtmPlanConfirmPayload
+  ): Promise<MtmPlanSummary> {
+    log('🔵 [mtmApi] confirmPlan called with caseId =', serviceCaseId)
+    const response = await api.post<MtmPlanSummary>(
+      `/mtm/service-cases/${serviceCaseId}/plan/confirm/`,
+      payload
+    )
+    log('🟢 [mtmApi] confirmPlan response =', response.data)
     return response.data
   },
 

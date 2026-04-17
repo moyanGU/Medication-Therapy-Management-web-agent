@@ -381,6 +381,20 @@ class MTMPlanCompleteSerializer(MTMPlanDraftSerializer):
         return attrs
 
 
+class MTMPlanConfirmSerializer(serializers.Serializer):
+    """
+    患者确认干预计划序列化器
+    """
+
+    status = serializers.ChoiceField(
+        choices=[("confirmed", "已确认"), ("declined", "已拒绝")],
+        error_messages={"invalid_choice": "请选择同意执行或暂不执行"},
+    )
+    notes = serializers.CharField(
+        required=False, allow_blank=True, max_length=1000
+    )
+
+
 class MTMPlanSummarySerializer(serializers.ModelSerializer):
     """
     干预计划摘要序列化器

@@ -112,6 +112,13 @@ const routes: RouteRecordRaw[] = [
     props: true,
   },
   {
+    path: '/mtm/service-cases/:id/plan/confirm',
+    name: 'MtmPlanConfirmation',
+    component: () => import('@/pages/MtmPlanConfirmationPage.vue'),
+    meta: { requiresAuth: true },
+    props: true,
+  },
+  {
     path: '/mtm/service-cases/:caseId/follow-ups/:followUpId',
     name: 'MtmFollowUpForm',
     component: () => import('@/pages/MtmFollowUpFormPage.vue'),

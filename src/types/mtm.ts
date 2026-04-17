@@ -211,6 +211,14 @@ export interface MtmServiceCaseTransitionAction {
 }
 
 /**
+ * MTM 干预计划患者确认负载
+ */
+export interface MtmPlanConfirmPayload {
+  status: 'confirmed' | 'declined'
+  notes?: string
+}
+
+/**
  * MTM 服务单列表查询参数
  */
 export interface MtmServiceCaseListParams {

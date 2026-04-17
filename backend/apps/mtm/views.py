@@ -21,6 +21,7 @@ from .serializers import (
     MTMInterviewDraftSerializer,
     MTMInterviewFormSerializer,
     MTMPlanCompleteSerializer,
+    MTMPlanConfirmSerializer,
     MTMPlanDraftSerializer,
     MTMPlanFormSerializer,
     MTMServiceCaseCreateSerializer,
@@ -363,6 +364,8 @@ class MTMServiceCaseViewSet(
             return MTMPlanFormSerializer
         if self.action == "complete_plan":
             return MTMPlanCompleteSerializer
+        if self.action == "confirm_plan":
+            return MTMPlanConfirmSerializer
         return MTMServiceCaseDetailSerializer
 
     def create(self, request, *args, **kwargs):
@@ -659,6 +662,67 @@ class MTMServiceCaseViewSet(
             message="草稿保存成功",
         )
 
+    @action(detail=True, methods=["post"], url_path="plan/confirm")
+    def confirm_plan(self, request, pk=None):
+        """
+        患者确认当前服务单的干预计划
+        """
+        service_case = self.get_object()
+
+        if service_case.patient != request.user:
+            logger.warning(
+                "🔴 [MTM] plan confirm forbidden - case=%s user=%s patient=%s",
+                service_case.id,
+                request.user.id,
+                service_case.patient.id,
+            )
+            return error_response(message="只有患者本人可以确认干预计划", status_code=403)
+
+        try:
+            plan_obj = service_case.plan
+            if not plan_obj.completed_at:
+                raise MTMPlan.DoesNotExist
+        except MTMPlan.DoesNotExist:
+            return error_response(message="干预计划尚未完成，无法确认", status_code=400)
+
+        logger.info(
+            "🔵 [MTM] plan confirm start - case=%s plan=%s user=%s",
+            service_case.id,
+            plan_obj.id,
+            request.user.id,
+        )
+
+        serializer = MTMPlanConfirmSerializer(data=request.data)
+        if not serializer.is_valid():
+            logger.warning(
+                "🟡 [MTM] plan confirm invalid - case=%s errors=%s",
+                service_case.id,
+                serializer.errors,
+            )
+            return error_response(message="确认信息校验失败", errors=serializer.errors)
+
+        plan_obj.patient_confirmation_status = serializer.validated_data["status"]
+        plan_obj.patient_confirmation_notes = serializer.validated_data.get("notes", "")
+        plan_obj.confirmed_at = timezone.now()
+        plan_obj.save(
+            update_fields=[
+                "patient_confirmation_status",
+                "patient_confirmation_notes",
+                "confirmed_at",
+                "updated_at",
+            ]
+        )
+
+        logger.info(
+            "🟢 [MTM] plan confirmed - case=%s plan=%s status=%s",
+            service_case.id,
+            plan_obj.id,
+            plan_obj.patient_confirmation_status,
+        )
+        return success_response(
+            data=MTMPlanFormSerializer(plan_obj).data,
+            message="干预计划确认已提交",
+        )
     @action(detail=True, methods=["post"], url_path="plan/complete")
     def complete_plan(self, request, pk=None):
         """

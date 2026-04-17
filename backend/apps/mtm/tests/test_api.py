@@ -445,6 +445,68 @@ class MTMServiceCaseApiTest(TestCase):
         self.assertIsNotNone(plan.completed_at)
         self.assertEqual(plan.priority, "medium")
 
+    def test_confirm_plan_updates_status(self):
+        """
+        验证患者本人可以确认干预计划
+        """
+        service_case = MTMServiceCase.objects.create(
+            patient=self.patient,
+            assigned_pharmacist=self.pharmacist,
+            status="following_up",
+        )
+        plan = MTMPlan.objects.create(
+            service_case=service_case,
+            priority="medium",
+            interventions=[{"item": "干预一"}],
+            completed_at=timezone.now(),
+            patient_confirmation_status="pending",
+        )
+
+        response = self.client.post(
+            f"/api/mtm/service-cases/{service_case.id}/plan/confirm/",
+            {
+                "status": "confirmed",
+                "notes": "同意医生的建议",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        
+        plan.refresh_from_db()
+        self.assertEqual(plan.patient_confirmation_status, "confirmed")
+        self.assertEqual(plan.patient_confirmation_notes, "同意医生的建议")
+        self.assertIsNotNone(plan.confirmed_at)
+
+    def test_confirm_plan_forbidden_for_other_user(self):
+        """
+        验证非患者本人无法确认干预计划
+        """
+        service_case = MTMServiceCase.objects.create(
+            patient=self.other_user,
+            assigned_pharmacist=self.pharmacist,
+            status="following_up",
+        )
+        MTMPlan.objects.create(
+            service_case=service_case,
+            priority="medium",
+            interventions=[{"item": "干预一"}],
+            completed_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.pharmacist)
+        response = self.client.post(
+            f"/api/mtm/service-cases/{service_case.id}/plan/confirm/",
+            {
+                "status": "confirmed",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.json()["success"])
+
     def test_create_follow_up_creates_new_record(self):
         """
         验证新增随访记录接口正常工作

@@ -424,13 +424,16 @@
                   <p class="mt-2 text-sm leading-6 text-slate-600">
                     {{ planEntryMeta.description }}
                   </p>
-                  <p class="mt-2 text-xs leading-5 text-slate-500">
+                  <p v-if="planEntryMeta.showDraftBtn" class="mt-2 text-xs leading-5 text-slate-500">
                     计划起草完成后只会记录完成时间，不会自动推进当前服务状态。
                   </p>
                 </div>
                 <button
                   type="button"
-                  class="inline-flex items-center gap-2 self-start rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                  class="inline-flex items-center gap-2 self-start rounded-xl px-4 py-2 text-sm font-medium text-white transition disabled:cursor-not-allowed"
+                  :class="[
+                    planEntryMeta.isConfirmAction ? 'bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300' : 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300'
+                  ]"
                   :disabled="loading || transitioning || planEntryMeta.disabled"
                   @click="goToPlanForm"
                 >
@@ -570,6 +573,7 @@ import {
 } from 'lucide-vue-next'
 import { mtmApi } from '@/api/mtm'
 import { useToast } from '@/composables/useToast'
+import { useAuthStore } from '@/stores/auth'
 import type {
   MtmFollowUpSummary,
   MtmServiceCase,
@@ -602,6 +606,7 @@ const props = defineProps<{
 const route = useRoute()
 const router = useRouter()
 const { success: showSuccess, error: showError } = useToast()
+const authStore = useAuthStore()
 
 const serviceCase = ref<MtmServiceCase | null>(null)
 const loading = ref(false)
@@ -860,6 +865,11 @@ const assessmentProblemLines = computed(() => {
   return buildUnknownListLines(serviceCase.value.assessment.problem_list)
 })
 
+const isPatientUser = computed(() => {
+  if (!serviceCase.value || !authStore.user) return false
+  return serviceCase.value.patient.id === authStore.user.id
+})
+
 const planEntryMeta = computed(() => {
   const currentAssessment = serviceCase.value?.assessment
   const currentPlan = serviceCase.value?.plan
@@ -871,6 +881,7 @@ const planEntryMeta = computed(() => {
       buttonText: '暂不能起草计划',
       description: '建议先完成用药评估，再进入干预计划页制定具体的行动指南。',
       disabled: true,
+      showDraftBtn: true,
     }
   }
 
@@ -881,16 +892,29 @@ const planEntryMeta = computed(() => {
       buttonText: '起草干预计划',
       description: '评估已经完成，可以继续进入计划页为患者制定详细的干预措施。',
       disabled: false,
+      showDraftBtn: true,
     }
   }
 
   if (currentPlan.completed_at) {
+    if (isPatientUser.value && currentPlan.patient_confirmation_status === 'pending') {
+      return {
+        badgeText: '待您确认',
+        badgeClass: 'bg-amber-100 text-amber-700',
+        buttonText: '前往确认',
+        description: '药师已起草完毕，请仔细阅读并选择是否同意执行该干预计划。',
+        disabled: false,
+        showDraftBtn: false,
+        isConfirmAction: true,
+      }
+    }
     return {
       badgeText: '已完成',
       badgeClass: 'bg-emerald-100 text-emerald-700',
       buttonText: '查看已填计划',
       description: '当前干预计划已经填写完成；如果需要回看或继续修改，可以直接从这里进入。',
       disabled: false,
+      showDraftBtn: true,
     }
   }
 
@@ -900,6 +924,7 @@ const planEntryMeta = computed(() => {
     buttonText: '继续干预计划',
     description: '上次起草的干预计划草稿已经保留，可以继续补充后再手动标记完成。',
     disabled: false,
+    showDraftBtn: true,
   }
 })
 
@@ -1033,6 +1058,14 @@ const goToAssessmentForm = () => {
  */
 const goToPlanForm = () => {
   if (!serviceCaseId.value || planEntryMeta.value.disabled) {
+    return
+  }
+  
+  if (planEntryMeta.value.isConfirmAction) {
+    router.push({
+      path: `/mtm/service-cases/${serviceCaseId.value}/plan/confirm`,
+      query: { ...route.query },
+    })
     return
   }
 
