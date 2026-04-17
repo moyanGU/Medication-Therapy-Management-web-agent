@@ -438,6 +438,31 @@ class MTMFollowUpSummarySerializer(serializers.ModelSerializer):
         ]
 
 
+class MTMFollowUpSerializer(serializers.ModelSerializer):
+    """
+    单条随访记录的创建和编辑序列化器
+    """
+
+    class Meta:
+        model = MTMFollowUp
+        fields = [
+            "id",
+            "service_case",
+            "follow_up_time",
+            "follow_up_method",
+            "execution_status",
+            "risk_change",
+            "summary",
+            "next_follow_up_time",
+        ]
+        read_only_fields = ["id"]
+
+    def validate(self, attrs):
+        if not attrs.get("follow_up_time") and not self.instance:
+            raise serializers.ValidationError({"follow_up_time": "必须提供随访时间"})
+        return attrs
+
+
 class MTMServiceCaseCreateSerializer(serializers.ModelSerializer):
     """
     服务单创建序列化器

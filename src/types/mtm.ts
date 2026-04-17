@@ -144,6 +144,19 @@ export interface MtmFollowUpSummary {
 }
 
 /**
+ * MTM 随访记录提交负载
+ */
+export interface MtmFollowUpPayload {
+  service_case?: number | string
+  follow_up_time: string
+  follow_up_method: string
+  execution_status: string
+  risk_change: string
+  summary?: string
+  next_follow_up_time?: string | null
+}
+
+/**
  * MTM 服务单详情
  */
 export interface MtmServiceCase {

@@ -444,3 +444,67 @@ class MTMServiceCaseApiTest(TestCase):
         plan = MTMPlan.objects.get(service_case=service_case)
         self.assertIsNotNone(plan.completed_at)
         self.assertEqual(plan.priority, "medium")
+
+    def test_create_follow_up_creates_new_record(self):
+        """
+        验证新增随访记录接口正常工作
+        """
+        service_case = MTMServiceCase.objects.create(
+            patient=self.patient,
+            assigned_pharmacist=self.pharmacist,
+            status="following_up",
+        )
+
+        response = self.client.post(
+            "/api/mtm/follow-ups/",
+            {
+                "service_case": service_case.id,
+                "follow_up_time": "2026-04-18T10:00:00Z",
+                "follow_up_method": "phone",
+                "execution_status": "completed",
+                "risk_change": "improved",
+                "summary": "血压控制良好",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.json()["success"])
+        data = response.json()["data"]
+        self.assertEqual(data["risk_change"], "improved")
+        self.assertEqual(data["summary"], "血压控制良好")
+        self.assertEqual(MTMFollowUp.objects.filter(service_case=service_case).count(), 1)
+
+    def test_update_follow_up_modifies_existing_record(self):
+        """
+        验证修改随访记录接口正常工作
+        """
+        service_case = MTMServiceCase.objects.create(
+            patient=self.patient,
+            assigned_pharmacist=self.pharmacist,
+            status="following_up",
+        )
+        follow_up = MTMFollowUp.objects.create(
+            service_case=service_case,
+            follow_up_time="2026-04-17T10:00:00Z",
+            execution_status="pending",
+        )
+
+        response = self.client.put(
+            f"/api/mtm/follow-ups/{follow_up.id}/",
+            {
+                "service_case": service_case.id,
+                "follow_up_time": "2026-04-17T10:00:00Z",
+                "execution_status": "completed",
+                "risk_change": "stable",
+                "summary": "已联系患者，情况稳定",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        follow_up.refresh_from_db()
+        self.assertEqual(follow_up.execution_status, "completed")
+        self.assertEqual(follow_up.risk_change, "stable")
+        self.assertEqual(follow_up.summary, "已联系患者，情况稳定")

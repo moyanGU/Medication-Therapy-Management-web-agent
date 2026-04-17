@@ -2,6 +2,8 @@ import { api } from '@/utils/api'
 import type {
   MtmAssessmentDraftPayload,
   MtmAssessmentSummary,
+  MtmFollowUpPayload,
+  MtmFollowUpSummary,
   MtmInterviewDraftPayload,
   MtmInterviewSummary,
   MtmPlanDraftPayload,
@@ -227,6 +229,51 @@ export const mtmApi = {
       payload
     )
     log('🟢 [mtmApi] completePlan response =', response.data)
+    return response.data
+  },
+
+  /**
+   * 创建单条随访记录
+   */
+  async createFollowUp(
+    payload: MtmFollowUpPayload
+  ): Promise<MtmFollowUpSummary> {
+    log('🔵 [mtmApi] createFollowUp called')
+    const response = await api.post<MtmFollowUpSummary>(
+      '/mtm/follow-ups/',
+      payload
+    )
+    log('🟢 [mtmApi] createFollowUp response =', response.data)
+    return response.data
+  },
+
+  /**
+   * 更新单条随访记录
+   */
+  async updateFollowUp(
+    followUpId: number | string,
+    payload: MtmFollowUpPayload
+  ): Promise<MtmFollowUpSummary> {
+    log('🔵 [mtmApi] updateFollowUp called with id =', followUpId)
+    const response = await api.put<MtmFollowUpSummary>(
+      `/mtm/follow-ups/${followUpId}/`,
+      payload
+    )
+    log('🟢 [mtmApi] updateFollowUp response =', response.data)
+    return response.data
+  },
+
+  /**
+   * 获取单条随访记录详情
+   */
+  async getFollowUp(
+    followUpId: number | string
+  ): Promise<MtmFollowUpSummary> {
+    log('🔵 [mtmApi] getFollowUp called with id =', followUpId)
+    const response = await api.get<MtmFollowUpSummary>(
+      `/mtm/follow-ups/${followUpId}/`
+    )
+    log('🟢 [mtmApi] getFollowUp response =', response.data)
     return response.data
   },
 }

@@ -11,11 +11,12 @@ from rest_framework.permissions import IsAuthenticated
 from apps.core.pagination import StandardResultsSetPagination
 from apps.core.response import error_response, success_response
 
-from .models import MTMAssessment, MTMInterview, MTMServiceCase, MTMPlan
+from .models import MTMAssessment, MTMFollowUp, MTMInterview, MTMServiceCase, MTMPlan
 from .serializers import (
     MTMAssessmentCompleteSerializer,
     MTMAssessmentDraftSerializer,
     MTMAssessmentFormSerializer,
+    MTMFollowUpSerializer,
     MTMInterviewCompleteSerializer,
     MTMInterviewDraftSerializer,
     MTMInterviewFormSerializer,
@@ -29,6 +30,83 @@ from .serializers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class MTMFollowUpViewSet(
+    mixins.CreateModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    """
+    MTM 随访记录视图集
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = MTMFollowUpSerializer
+    queryset = MTMFollowUp.objects.all()
+
+    def create(self, request, *args, **kwargs):
+        logger.info(
+            "🔵 [MTM] follow-up create start - data=%s",
+            request.data,
+        )
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            logger.warning(
+                "🟡 [MTM] follow-up create invalid - errors=%s",
+                serializer.errors,
+            )
+            return error_response(message="随访记录数据验证失败", errors=serializer.errors)
+
+        follow_up = serializer.save()
+        logger.info(
+            "🟢 [MTM] follow-up created - id=%s case=%s",
+            follow_up.id,
+            follow_up.service_case.id,
+        )
+        return success_response(
+            data=serializer.data,
+            message="随访记录创建成功",
+            status_code=201,
+        )
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        logger.info(
+            "🔵 [MTM] follow-up update start - id=%s case=%s data=%s",
+            instance.id,
+            instance.service_case.id,
+            request.data,
+        )
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        if not serializer.is_valid():
+            logger.warning(
+                "🟡 [MTM] follow-up update invalid - id=%s errors=%s",
+                instance.id,
+                serializer.errors,
+            )
+            return error_response(message="随访记录更新验证失败", errors=serializer.errors)
+
+        follow_up = serializer.save()
+        logger.info(
+            "🟢 [MTM] follow-up updated - id=%s case=%s",
+            follow_up.id,
+            follow_up.service_case.id,
+        )
+        return success_response(
+            data=serializer.data,
+            message="随访记录更新成功",
+        )
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return success_response(
+            data=serializer.data,
+            message="获取随访记录成功",
+        )
 
 
 class MTMServiceCaseViewSet(
