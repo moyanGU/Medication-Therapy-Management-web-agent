@@ -723,6 +723,7 @@ class MTMServiceCaseViewSet(
             data=MTMPlanFormSerializer(plan_obj).data,
             message="干预计划确认已提交",
         )
+
     @action(detail=True, methods=["post"], url_path="plan/complete")
     def complete_plan(self, request, pk=None):
         """

@@ -702,7 +702,6 @@ import { dashboardApi } from '@/api/dashboard'
 import { mtmApi } from '@/api/mtm'
 import { useToast } from '@/composables/useToast'
 import type {
-  DashboardRiskAlert,
   DashboardRiskLevel,
   DashboardRiskType,
   DashboardSummaryData,

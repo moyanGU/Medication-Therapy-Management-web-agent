@@ -517,6 +517,15 @@ class MTMServiceCaseApiTest(TestCase):
             status="following_up",
         )
 
+        invalid_response = self.client.post(
+            "/api/mtm/follow-ups/",
+            {
+                "service_case": service_case.id,
+            },
+            format="json",
+        )
+        self.assertEqual(invalid_response.status_code, 400)
+
         response = self.client.post(
             "/api/mtm/follow-ups/",
             {
@@ -570,3 +579,22 @@ class MTMServiceCaseApiTest(TestCase):
         self.assertEqual(follow_up.execution_status, "completed")
         self.assertEqual(follow_up.risk_change, "stable")
         self.assertEqual(follow_up.summary, "已联系患者，情况稳定")
+
+    def test_retrieve_follow_up(self):
+        """
+        验证获取单条随访记录接口正常工作
+        """
+        service_case = MTMServiceCase.objects.create(
+            patient=self.patient,
+            assigned_pharmacist=self.pharmacist,
+            status="following_up",
+        )
+        follow_up = MTMFollowUp.objects.create(
+            service_case=service_case,
+            follow_up_time="2026-04-17T10:00:00Z",
+            execution_status="pending",
+        )
+        response = self.client.get(f"/api/mtm/follow-ups/{follow_up.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        self.assertEqual(response.json()["data"]["id"], follow_up.id)

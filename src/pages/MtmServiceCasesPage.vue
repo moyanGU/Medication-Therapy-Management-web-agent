@@ -478,7 +478,6 @@ import { isRequestCancelledError } from '@/utils/api'
 import {
   buildMtmListQuickActions,
   buildMtmListFilterSummary,
-  getMtmListEmptyStateCopy,
   getMtmListPresetSourceBadge,
   getMtmServiceCaseOrderingText,
   getMtmListPresetSourceDescription,
@@ -635,57 +634,7 @@ const quickActions = computed(() =>
 const recommendedAction = computed(() => quickActions.value[0] || null)
 const summaryActions = computed(() => quickActions.value.slice(1))
 
-const emptyStateCopy = computed(() =>
-  getMtmListEmptyStateCopy({
-    presetSource: presetSource.value,
-    search: searchInput.value,
-    status: filters.status,
-    triggerSource: filters.triggerSource,
-    ordering: filters.ordering,
-  })
-)
-
-/**
- * 输出空态头部标题与原因说明，避免和推荐下一步块重复承接动作建议。
- */
-const emptyStateHeaderCopy = computed(() => {
-  if (presetSource.value === 'active_status') {
-    return {
-      title: emptyStateCopy.value.title,
-      description: filters.status
-        ? `当前还没有匹配到${getMtmStatusText(filters.status)}阶段的专业服务记录。`
-        : '当前首页推荐阶段下还没有匹配到专业服务记录。',
-    }
-  }
-
-  if (presetSource.value === 'suggested_trigger') {
-    return {
-      title: emptyStateCopy.value.title,
-      description: filters.triggerSource
-        ? `当前还没有匹配到与“${getMtmTriggerText(filters.triggerSource)}”相关的专业服务记录。`
-        : '当前首页推荐来源下还没有匹配到专业服务记录。',
-    }
-  }
-
-  if (searchInput.value.trim()) {
-    return {
-      title: emptyStateCopy.value.title,
-      description: '当前搜索词和筛选条件下还没有匹配结果。',
-    }
-  }
-
-  if (filters.status || filters.triggerSource) {
-    return {
-      title: emptyStateCopy.value.title,
-      description: '当前筛选条件下还没有匹配到专业服务记录。',
-    }
-  }
-
-  return {
-    title: emptyStateCopy.value.title,
-    description: '这里暂时还没有可展示的专业服务历史记录。',
-  }
-})
+// Removed unused emptyState vars
 
 /**
  * 输出当前结果视图的统一语义，供顶部标签和底部说明共用。
@@ -883,71 +832,7 @@ const summaryActionGroups = computed(() => {
   return groups
 })
 
-/**
- * 输出空态中的推荐下一步块，保持“推荐说明在前”的主路径表达。
- */
-const emptyStateRecommendationBlock = computed(() => {
-  if (!recommendedAction.value) {
-    return null
-  }
 
-  return {
-    title: '推荐下一步',
-    description: recommendedAction.value.description,
-  }
-})
-
-/**
- * 输出空态动作区的轻量标题和说明，明确它位于推荐说明之后。
- */
-const emptyStateActionsSectionCopy = computed(() => {
-  if (emptyStateRecommendationBlock.value) {
-    return {
-      title: '还可以这样继续',
-      description: '如果当前推荐路径不完全适合，也可以直接从下面这些操作开始。',
-    }
-  }
-
-  return {
-    title: '接下来可做的事',
-    description: '当前没有单独强调的推荐路径时，可以直接从下面这些操作里选择下一步。',
-  }
-})
-
-/**
- * 输出空态动作区的按钮分组，继续复用现有 variant 语义，不改变 quickActions 集合和顺序。
- */
-const emptyStateActionGroups = computed(() => {
-  const groups: Array<{
-    key: 'primary' | 'secondary'
-    title: string
-    description: string
-    items: typeof quickActions.value
-  }> = []
-
-  const primaryItems = quickActions.value.filter(item => item.variant === 'primary')
-  const secondaryItems = quickActions.value.filter(item => item.variant !== 'primary')
-
-  if (primaryItems.length) {
-    groups.push({
-      key: 'primary',
-      title: '可直接开始',
-      description: '这些操作更适合作为空态下的直接下一步，帮助你尽快回到可继续处理的路径。',
-      items: primaryItems,
-    })
-  }
-
-  if (secondaryItems.length) {
-    groups.push({
-      key: 'secondary',
-      title: '辅助选择',
-      description: '这些操作更适合用来回看、切换入口或做补充处理，不会替代当前推荐方向。',
-      items: secondaryItems,
-    })
-  }
-
-  return groups
-})
 
 /**
  * 输出结果区首屏唯一分页状态，避免摘要卡内重复展示相同页码。
