@@ -348,8 +348,10 @@ class MTMPlanDraftSerializer(serializers.Serializer):
 
     interventions = serializers.JSONField(required=False)
     priority = serializers.ChoiceField(
-        choices=MTMPlan.PRIORITY_CHOICES, required=False, allow_blank=True, allow_null=True
-    )
+        choices=MTMPlan.PRIORITY_CHOICES,
+        required=False,
+        allow_blank=True,
+        allow_null=True)
 
 
 class MTMPlanCompleteSerializer(MTMPlanDraftSerializer):

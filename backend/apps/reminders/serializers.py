@@ -236,7 +236,8 @@ class ReminderConfirmSerializer(serializers.Serializer):
 
     action = serializers.ChoiceField(choices=ACTION_CHOICES, required=True)
     taken_at = serializers.DateTimeField(required=False)
-    delay_minutes = serializers.IntegerField(required=False, min_value=1, max_value=1440)
+    delay_minutes = serializers.IntegerField(
+        required=False, min_value=1, max_value=1440)
     quantity_taken = serializers.IntegerField(required=False, min_value=1)
     notes = serializers.CharField(required=False, allow_blank=True, max_length=500)
 

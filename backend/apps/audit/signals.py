@@ -55,7 +55,7 @@ def audit_log_save(sender, instance, created, **kwargs):
 
     # 忽略非登录用户的操作（或者是系统后台任务，视需求而定）
     # 但通常我们也想记录系统操作，这里暂时只记录有 request 上下文的操作
-    
+
     user = getattr(request, 'user', None)
     if not user or not user.is_authenticated:
         # 匿名操作或系统操作，user 设为 None
@@ -64,22 +64,35 @@ def audit_log_save(sender, instance, created, **kwargs):
     action = 'CREATE' if created else 'UPDATE'
     resource_type = str(sender._meta.verbose_name)
     resource_id = str(instance.pk)
-    
+
     # 构建详情
     details = {
         'model': sender.__name__,
         'pk': instance.pk,
     }
 
-    AuditLog.objects.create(
-        user=user,
-        action=action,
-        resource_type=resource_type,
-        resource_id=resource_id,
-        details=details,
-        ip_address=_get_client_ip(request),
-        user_agent=request.META.get('HTTP_USER_AGENT', '')[:500]
-    )
+    try:
+        AuditLog.objects.create(
+            user=user,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            details=details,
+            ip_address=_get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:500]
+        )
+
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(
+            f"AUDIT-SENSITIVE | Model: {sender.__name__} | ID: {instance.pk} | Action: {action}"
+        )
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(
+            f"Failed to record audit log for {action} of {sender.__name__} id {instance.pk}: {str(e)}",
+            exc_info=True)
 
 
 @receiver(post_delete)
@@ -92,7 +105,7 @@ def audit_log_delete(sender, instance, **kwargs):
         return
 
     user = getattr(request, 'user', None)
-    
+
     # 检查操作用户是否有效
     audit_user = None
     if user and user.is_authenticated:
@@ -109,10 +122,14 @@ def audit_log_delete(sender, instance, **kwargs):
 
     # 如果此时 audit_user 为 None，但 request.user 是存在的（说明是已登录用户操作，但用户可能刚被删，或者是删除自己的操作）
     # 我们可以选择记录 user_id=None 的审计日志，或者记录在 details 中
-    
-    details = {'model': sender.__name__, 'pk': instance.pk}
+
+    details = {
+        'model': sender.__name__,
+        'pk': instance.pk,
+        'deleted_data': _serialize_instance(instance)
+    }
     if user and not audit_user:
-         details['operator_username'] = getattr(user, 'username', 'unknown')
+        details['operator_username'] = getattr(user, 'username', 'unknown')
 
     try:
         # 当删除操作发生时，如果外键约束导致无法保存 user，我们尝试将 user 置为 None
@@ -126,20 +143,36 @@ def audit_log_delete(sender, instance, **kwargs):
             ip_address=_get_client_ip(request),
             user_agent=request.META.get('HTTP_USER_AGENT', '')[:500]
         )
+
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(
+            f"AUDIT-SENSITIVE | Model: {sender.__name__} | ID: {instance.pk} | Action: DELETE"
+        )
     except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
         # 如果是因为外键约束失败（例如 audit_user 刚被删），尝试以 user=None 再次记录
         if "foreign key constraint" in str(e).lower():
-             AuditLog.objects.create(
-                user=None,
-                action='DELETE',
-                resource_type=str(sender._meta.verbose_name),
-                resource_id=str(instance.pk),
-                details=details,
-                ip_address=_get_client_ip(request),
-                user_agent=request.META.get('HTTP_USER_AGENT', '')[:500]
-            )
+            try:
+                AuditLog.objects.create(
+                    user=None,
+                    action='DELETE',
+                    resource_type=str(sender._meta.verbose_name),
+                    resource_id=str(instance.pk),
+                    details=details,
+                    ip_address=_get_client_ip(request),
+                    user_agent=request.META.get('HTTP_USER_AGENT', '')[:500]
+                )
+                logger.info(
+                    f"AUDIT-SENSITIVE | Model: {sender.__name__} | ID: {instance.pk} | Action: DELETE"
+                )
+            except Exception as inner_e:
+                logger.error(
+                    f"Failed to record audit log for deletion of {sender.__name__} id {instance.pk}: {str(inner_e)}",
+                    exc_info=True)
         else:
             # 其他错误则记录日志
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Failed to create audit log for DELETE: {e}")
+            logger.error(
+                f"Failed to record audit log for deletion of {sender.__name__} id {instance.pk}: {str(e)}",
+                exc_info=True)

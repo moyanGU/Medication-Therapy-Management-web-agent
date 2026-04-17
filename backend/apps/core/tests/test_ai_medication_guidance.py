@@ -186,7 +186,8 @@ class MedicationGuidanceTest(TestCase):
         def _mock_post(*args, **kwargs):
             calls["n"] += 1
             if calls["n"] == 1:
-                return _MockResponse(200, {"choices": [{"message": {"content": "not-json"}}]})
+                return _MockResponse(
+                    200, {"choices": [{"message": {"content": "not-json"}}]})
             return _MockResponse(
                 200,
                 {"choices": [{"message": {"content": "阿司匹林通常建议餐后服用。"}}]},

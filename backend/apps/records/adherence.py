@@ -47,7 +47,9 @@ def build_response_summary(history_queryset):
     scheduled_count = history_queryset.count()
     responded_count = history_queryset.exclude(response_type="no_response").count()
     unresponded_count = max(scheduled_count - responded_count, 0)
-    response_rate = round((responded_count / scheduled_count) * 100, 2) if scheduled_count else 0.0
+    response_rate = round(
+        (responded_count / scheduled_count) * 100,
+        2) if scheduled_count else 0.0
 
     return {
         "scheduled_count": scheduled_count,
@@ -100,8 +102,12 @@ def build_adherence_summary(queryset, history_queryset):
     delayed_count = aggregated["delayed_count"] or 0
     partial_count = aggregated["partial_count"] or 0
     completed_count = taken_count + delayed_count + partial_count
-    adherence_rate = round((completed_count / total_records) * 100, 2) if total_records else 0.0
-    on_time_rate = round((taken_count / total_records) * 100, 2) if total_records else 0.0
+    adherence_rate = round(
+        (completed_count / total_records) * 100,
+        2) if total_records else 0.0
+    on_time_rate = round(
+        (taken_count / total_records) * 100,
+        2) if total_records else 0.0
     avg_delay_minutes = round(aggregated["avg_delay_minutes"] or 0, 2)
 
     response_summary = build_response_summary(history_queryset)

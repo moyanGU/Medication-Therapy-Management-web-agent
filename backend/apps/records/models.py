@@ -258,7 +258,8 @@ class MedicationRecord(models.Model):
 
             if new_quantity:
                 current_medicine = Medicine.objects.get(pk=self.medicine_id)
-                current_medicine.quantity = max(0, current_medicine.quantity - new_quantity)
+                current_medicine.quantity = max(
+                    0, current_medicine.quantity - new_quantity)
                 current_medicine.save(update_fields=["quantity"])
             return
 

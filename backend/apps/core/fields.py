@@ -64,11 +64,11 @@ class EncryptedTextField(models.TextField):
         value = super().get_prep_value(value)
         if value is None or value == "":
             return value
-        
+
         # 如果已经是 bytes，先解码为字符串（虽然通常这里是 str）
         if isinstance(value, bytes):
             value = value.decode('utf-8')
-            
+
         encrypted_value = self._get_cipher().encrypt(value.encode("utf-8"))
         return encrypted_value.decode("utf-8")
 

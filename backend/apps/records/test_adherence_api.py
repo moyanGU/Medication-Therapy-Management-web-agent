@@ -163,7 +163,8 @@ class MedicationRecordAdherenceApiTest(TestCase):
         self.assertEqual(data["summary_30d"]["total_records"], 6)
         self.assertEqual(data["summary_30d"]["response_summary"]["scheduled_count"], 5)
         self.assertEqual(data["summary_30d"]["response_summary"]["responded_count"], 3)
-        self.assertEqual(data["summary_30d"]["response_summary"]["unresponded_count"], 2)
+        self.assertEqual(data["summary_30d"]["response_summary"]
+                         ["unresponded_count"], 2)
         self.assertEqual(data["summary_30d"]["response_summary"]["response_rate"], 60.0)
 
         self.assertEqual(len(data["trend"]), 7)

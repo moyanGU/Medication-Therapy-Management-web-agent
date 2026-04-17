@@ -237,7 +237,12 @@ class MTMServiceCaseViewSet(
             )
         return plan
 
-    def _save_interview_payload(self, interview, validated_data, *, mark_completed=False):
+    def _save_interview_payload(
+            self,
+            interview,
+            validated_data,
+            *,
+            mark_completed=False):
         """
         将校验后的问诊数据写入模型，并根据需要标记完成时间
         """
@@ -267,7 +272,12 @@ class MTMServiceCaseViewSet(
 
         return interview
 
-    def _save_assessment_payload(self, assessment, validated_data, *, mark_completed=False):
+    def _save_assessment_payload(
+            self,
+            assessment,
+            validated_data,
+            *,
+            mark_completed=False):
         """
         将校验后的评估数据写入模型，并根据需要标记完成时间
         """
@@ -328,12 +338,14 @@ class MTMServiceCaseViewSet(
         user = self.request.user
         queryset = (
             MTMServiceCase.objects.filter(
-                Q(patient=user) | Q(assigned_pharmacist=user)
-            )
-            .select_related("patient", "assigned_pharmacist", "interview", "assessment", "plan")
-            .prefetch_related("follow_ups")
-            .distinct()
-        )
+                Q(
+                    patient=user) | Q(
+                    assigned_pharmacist=user)) .select_related(
+                "patient",
+                "assigned_pharmacist",
+                "interview",
+                "assessment",
+                "plan") .prefetch_related("follow_ups") .distinct())
         return queryset
 
     def get_serializer_class(self):
@@ -570,7 +582,8 @@ class MTMServiceCaseViewSet(
             )
             return error_response(message="评估草稿校验失败", errors=serializer.errors)
 
-        assessment = self._save_assessment_payload(assessment, serializer.validated_data)
+        assessment = self._save_assessment_payload(
+            assessment, serializer.validated_data)
         logger.info(
             "🟢 [MTM] assessment draft saved - case=%s assessment=%s",
             service_case.id,

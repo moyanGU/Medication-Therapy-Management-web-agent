@@ -5,8 +5,11 @@ from rest_framework.test import APIClient
 
 class _MockResponse:
     def __init__(
-        self, status_code: int, json_data=None, raises_json: bool = False, text: str = ""
-    ):
+            self,
+            status_code: int,
+            json_data=None,
+            raises_json: bool = False,
+            text: str = ""):
         self.status_code = status_code
         self._json_data = json_data
         self._raises_json = raises_json
@@ -82,7 +85,8 @@ class PageAgentProxyTest(TestCase):
         BAICHUAN_M3_TIMEOUT_SECONDS=5,
         BAICHUAN_M3_MAX_OUTPUT_TOKENS=256,
     )
-    def test_page_agent_proxy_retries_without_v1_when_primary_returns_unexpected_shape(self):
+    def test_page_agent_proxy_retries_without_v1_when_primary_returns_unexpected_shape(
+            self):
         from apps.core import views
 
         captured_urls = []
@@ -190,7 +194,8 @@ class PageAgentProxyTest(TestCase):
         self.assertEqual(captured["max_tokens"], 128)
         self.assertEqual(captured["messages"][0]["role"], "system")
         self.assertIn("你是页面助手。", captured["messages"][0]["content"])
-        self.assertEqual(len([m for m in captured["messages"] if m["role"] == "system"]), 1)
+        self.assertEqual(
+            len([m for m in captured["messages"] if m["role"] == "system"]), 1)
         self.assertEqual(captured["messages"][1]["content"], "总结当前页面")
         body = resp.json()
         tool_call = body["choices"][0]["message"]["tool_calls"][0]

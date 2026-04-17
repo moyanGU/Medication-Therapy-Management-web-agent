@@ -182,13 +182,18 @@ class MTMServiceCaseApiTest(TestCase):
             service_goal="梳理当前高血压与糖尿病联合用药",
         )
 
-        response = self.client.get(f"/api/mtm/service-cases/{service_case.id}/interview/")
+        response = self.client.get(
+            f"/api/mtm/service-cases/{service_case.id}/interview/")
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["success"])
         data = response.json()["data"]
-        self.assertEqual(data["basic_info_snapshot"]["patient_name"], self.patient.username)
-        self.assertEqual(data["basic_info_snapshot"]["contact_phone"], self.patient.phone)
+        self.assertEqual(
+            data["basic_info_snapshot"]["patient_name"],
+            self.patient.username)
+        self.assertEqual(
+            data["basic_info_snapshot"]["contact_phone"],
+            self.patient.phone)
         self.assertEqual(data["health_expectations"], service_case.service_goal)
         self.assertTrue(MTMInterview.objects.filter(service_case=service_case).exists())
 
@@ -278,14 +283,17 @@ class MTMServiceCaseApiTest(TestCase):
             service_goal="复核当前多重用药的综合风险",
         )
 
-        response = self.client.get(f"/api/mtm/service-cases/{service_case.id}/assessment/")
+        response = self.client.get(
+            f"/api/mtm/service-cases/{service_case.id}/assessment/")
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["success"])
         data = response.json()["data"]
         self.assertEqual(data["risk_level"], "medium")
         self.assertEqual(data["problem_list"], [])
-        self.assertTrue(MTMAssessment.objects.filter(service_case=service_case).exists())
+        self.assertTrue(
+            MTMAssessment.objects.filter(
+                service_case=service_case).exists())
 
     def test_put_assessment_saves_draft_without_completing(self):
         """
@@ -403,7 +411,7 @@ class MTMServiceCaseApiTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["success"])
-        
+
         plan = MTMPlan.objects.get(service_case=service_case)
         self.assertIsNone(plan.completed_at)
         self.assertEqual(plan.priority, "high")
@@ -473,7 +481,7 @@ class MTMServiceCaseApiTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["success"])
-        
+
         plan.refresh_from_db()
         self.assertEqual(plan.patient_confirmation_status, "confirmed")
         self.assertEqual(plan.patient_confirmation_notes, "同意医生的建议")
@@ -544,7 +552,9 @@ class MTMServiceCaseApiTest(TestCase):
         data = response.json()["data"]
         self.assertEqual(data["risk_change"], "improved")
         self.assertEqual(data["summary"], "血压控制良好")
-        self.assertEqual(MTMFollowUp.objects.filter(service_case=service_case).count(), 1)
+        self.assertEqual(
+            MTMFollowUp.objects.filter(
+                service_case=service_case).count(), 1)
 
     def test_update_follow_up_modifies_existing_record(self):
         """

@@ -84,8 +84,7 @@ class NotificationService:
             logger.info(
                 f"[notify:{trace_id}] start user_id={getattr(user, 'id', None)} "
                 f"reminder_id={getattr(reminder, 'id', None)} history_id={getattr(history, 'id', None)} "
-                f"from_history={from_history} preferred={preferred} title_len={len(title or '')} message_len={len(message or '')}"
-            )
+                f"from_history={from_history} preferred={preferred} title_len={len(title or '')} message_len={len(message or '')}")
 
             sent = False
             attempts = []
@@ -124,8 +123,7 @@ class NotificationService:
                         logger.error(
                             f"[notify:{trace_id}] channel_error type={notification_type} "
                             f"user_id={getattr(user, 'id', None)} reminder_id={getattr(reminder, 'id', None)} "
-                            f"history_id={getattr(history, 'id', None)} err={type(e).__name__}: {e}"
-                        )
+                            f"history_id={getattr(history, 'id', None)} err={type(e).__name__}: {e}")
 
             if not sent and reminder is not None and not from_history:
                 try:
@@ -158,8 +156,7 @@ class NotificationService:
                         if exists:
                             logger.warning(
                                 f"[notify:{trace_id}] fallback_pending_exists "
-                                f"reminder={getattr(reminder, 'id', None)} methods={methods}"
-                            )
+                                f"reminder={getattr(reminder, 'id', None)} methods={methods}")
                         else:
                             ReminderHistory.objects.create(
                                 user=user,
@@ -173,8 +170,7 @@ class NotificationService:
                             )
                             logger.warning(
                                 f"[notify:{trace_id}] fallback_pending_created "
-                                f"reminder={getattr(reminder, 'id', None)} methods={methods} scheduled_time={fallback_time}"
-                            )
+                                f"reminder={getattr(reminder, 'id', None)} methods={methods} scheduled_time={fallback_time}")
                     else:
                         logger.warning(
                             f"[notify:{trace_id}] fallback_pending_skipped_no_channel "
@@ -187,8 +183,7 @@ class NotificationService:
 
             logger.info(
                 f"[notify:{trace_id}] done sent={sent} attempts={json.dumps(attempts, ensure_ascii=False)} "
-                f"user_id={getattr(user, 'id', None)} reminder_id={getattr(reminder, 'id', None)} history_id={getattr(history, 'id', None)}"
-            )
+                f"user_id={getattr(user, 'id', None)} reminder_id={getattr(reminder, 'id', None)} history_id={getattr(history, 'id', None)}")
 
             return sent
         except Exception as e:
@@ -315,8 +310,7 @@ class NotificationService:
                 status_code = getattr(getattr(e, "response", None), "status_code", None)
                 logger.warning(
                     f"[notify:{trace_id}] push_exception user_id={user.id} endpoint={sub.endpoint[:32]}... "
-                    f"status={status_code} error={e}"
-                )
+                    f"status={status_code} error={e}")
                 if status_code in (404, 410):
                     sub.mark_inactive()
             except Exception as e:
@@ -743,8 +737,7 @@ class NotificationService:
             logger.info(
                 f"[notify:{trace_id}] logged user_id={getattr(user, 'id', None)} "
                 f"reminder_id={getattr(reminder, 'id', None)} types={notification_types} "
-                f"title_len={len(title or '')} message_len={len(message or '')}"
-            )
+                f"title_len={len(title or '')} message_len={len(message or '')}")
 
         except Exception as e:
             logger.error(f"记录通知历史失败: {str(e)}")

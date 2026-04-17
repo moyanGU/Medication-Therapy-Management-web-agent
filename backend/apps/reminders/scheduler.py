@@ -71,8 +71,7 @@ class ReminderScheduler:
                     f"[candidate:{reminder.id}] user={reminder.user_id} time={reminder.reminder_time} "
                     f"advance={reminder.advance_minutes} freq={reminder.frequency} weekdays={getattr(reminder, 'weekdays', None)} "
                     f"start={reminder.start_date} end={reminder.end_date} last={last_local} "
-                    f"types={getattr(reminder, 'notification_types', None)} active={reminder.is_active}"
-                )
+                    f"types={getattr(reminder, 'notification_types', None)} active={reminder.is_active}")
                 if self._should_send_reminder(reminder, now):
                     self._send_reminder(reminder)
                     sent_count += 1
@@ -108,8 +107,7 @@ class ReminderScheduler:
                         h.save(update_fields=["status"])
                         logger.warning(
                             f"[notify:{trace_id}] pending_send_failed history_id={h.id} "
-                            f"prev_methods={list(h.notification_methods or [])} reminder_id={getattr(h.reminder, 'id', None)}"
-                        )
+                            f"prev_methods={list(h.notification_methods or [])} reminder_id={getattr(h.reminder, 'id', None)}")
                         # 升级备用通道：根据历史记录的通道与用户设置，创建5分钟后重试的待发送记录
                         try:
                             prev = list(h.notification_methods or [])
@@ -158,8 +156,7 @@ class ReminderScheduler:
                                 if exists:
                                     logger.info(
                                         f"[notify:{trace_id}] escalation_pending_exists history_id={h.id} "
-                                        f"methods={next_methods} retry_time={retry_time}"
-                                    )
+                                        f"methods={next_methods} retry_time={retry_time}")
                                 else:
                                     ReminderHistory.objects.create(
                                         user=h.user,
@@ -173,8 +170,7 @@ class ReminderScheduler:
                                     )
                                     logger.info(
                                         f"[notify:{trace_id}] escalation_pending_created history_id={h.id} "
-                                        f"methods={next_methods} retry_time={retry_time}"
-                                    )
+                                        f"methods={next_methods} retry_time={retry_time}")
                         except Exception as ie:
                             logger.error(
                                 f"[notify:{trace_id}] escalation_error history_id={h.id}: {ie}"

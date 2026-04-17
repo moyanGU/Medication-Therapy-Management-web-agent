@@ -6,7 +6,7 @@ import re
 import socket
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import timedelta
 from urllib.parse import urlparse
 
 import requests
@@ -582,7 +582,8 @@ def _build_dashboard_risk_alerts(
         )
 
     summary_7d = adherence_summary["summary_7d"]
-    if summary_7d["total_records"] > 0 and summary_7d["risk_level"] in ["medium", "high"]:
+    if summary_7d["total_records"] > 0 and summary_7d["risk_level"] in [
+            "medium", "high"]:
         alerts.append(
             {
                 "type": "adherence_risk",
@@ -688,7 +689,8 @@ def dashboard_summary(request):
             .filter(Q(end_date__isnull=True) | Q(end_date__gte=today))
             .select_related("medicine")
         )
-        today_reminders = [item for item in reminders_queryset if item.should_remind_today()]
+        today_reminders = [
+            item for item in reminders_queryset if item.should_remind_today()]
         today_records = list(
             MedicationRecord.objects.filter(
                 user=request.user,
@@ -870,7 +872,11 @@ def _openai_chat_completion(
     last_error: str | None = None
     for index, url in enumerate(urls):
         try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=timeout_seconds)
+            resp = requests.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=timeout_seconds)
         except Exception as exc:
             last_error = f"llm_request_exception:{type(exc).__name__}:{str(exc)[:120]}"
             continue
@@ -888,7 +894,10 @@ def _openai_chat_completion(
 
         choices = data.get("choices") if isinstance(data, dict) else None
         if not isinstance(choices, list) or not choices:
-            fallback_hint = json.dumps(data, ensure_ascii=False)[:300] if isinstance(data, dict) else ""
+            fallback_hint = json.dumps(
+                data, ensure_ascii=False)[
+                :300] if isinstance(
+                data, dict) else ""
             if index < len(urls) - 1:
                 logger.warning(
                     "[LLMProxy] empty choices on primary endpoint, retrying fallback",
@@ -957,7 +966,9 @@ def _looks_unhelpful_answer(text: str) -> bool:
     return False
 
 
-def _is_probably_medication_question(question: str, medicine_context: dict | None) -> bool:
+def _is_probably_medication_question(
+        question: str,
+        medicine_context: dict | None) -> bool:
     q = (question or "").strip()
     if not q:
         return False
@@ -1097,7 +1108,9 @@ def _select_page_agent_tool(payload: dict) -> dict | None:
     return first_tool if isinstance(first_tool, dict) else None
 
 
-def _build_page_agent_fallback_messages(messages: list[dict], tool_spec: dict) -> list[dict]:
+def _build_page_agent_fallback_messages(
+        messages: list[dict],
+        tool_spec: dict) -> list[dict]:
     function = tool_spec.get("function") if isinstance(tool_spec, dict) else {}
     tool_name = str(function.get("name") or "AgentOutput").strip() or "AgentOutput"
     description = str(function.get("description") or "").strip()
@@ -1126,10 +1139,8 @@ def _build_page_agent_fallback_messages(messages: list[dict], tool_spec: dict) -
                 system_parts.append(str(content))
             continue
         normalized_messages.append(message)
-    return [
-        {"role": "system", "content": "\n\n".join(part for part in system_parts if part)},
-        *normalized_messages,
-    ]
+    return [{"role": "system", "content": "\n\n".join(
+        part for part in system_parts if part)}, *normalized_messages, ]
 
 
 def _build_page_agent_fallback_response(
@@ -1181,7 +1192,8 @@ def _execute_page_agent_fallback(
 
     function = tool_spec.get("function") if isinstance(tool_spec, dict) else {}
     tool_name = str(function.get("name") or "AgentOutput").strip() or "AgentOutput"
-    fallback_messages = _build_page_agent_fallback_messages(payload["messages"], tool_spec)
+    fallback_messages = _build_page_agent_fallback_messages(
+        payload["messages"], tool_spec)
     max_tokens = int(
         payload.get("max_tokens")
         or getattr(settings, "BAICHUAN_M3_MAX_OUTPUT_TOKENS", 1024)
@@ -1305,7 +1317,11 @@ def page_agent_chat_completions(request):
         return JsonResponse(body, status=200, safe=isinstance(body, dict))
 
     try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=timeout_seconds)
+        resp = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=timeout_seconds)
     except requests.RequestException as exc:
         logger.error(
             "[PageAgentProxy] upstream request failed",

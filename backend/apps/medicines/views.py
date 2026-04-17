@@ -18,6 +18,7 @@ from .serializers import (
 
 from django.db.models import Sum
 
+
 class MedicineViewSet(viewsets.ModelViewSet):
     """
     药品管理视图集
@@ -234,7 +235,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
         thirty_days_later = today + timezone.timedelta(days=30)
 
         total_quantity_agg = queryset.aggregate(total=Sum('quantity'))
-        
+
         stats = {
             "total_medicines": queryset.count(),
             "expired_count": queryset.filter(expiry_date__lt=today)

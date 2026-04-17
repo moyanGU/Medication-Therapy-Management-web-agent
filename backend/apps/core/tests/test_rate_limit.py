@@ -4,10 +4,13 @@ from apps.core.middleware import RateLimitMiddleware
 from django.http import HttpResponse
 from unittest.mock import MagicMock, patch
 
+
 def get_response(request):
     return HttpResponse("Success")
 
 # 使用本地内存缓存来模拟 Redis，确保限流逻辑可测试
+
+
 @override_settings(
     CACHES={
         "default": {
@@ -31,7 +34,7 @@ class RateLimitMiddlewareTest(TestCase):
         """测试基于 IP 的限流"""
         request = self.factory.get("/api/test/")
         request.META['REMOTE_ADDR'] = '192.168.1.1'
-        
+
         # 前5次应该通过 (process_request 返回 None)
         for i in range(5):
             response = self.middleware.process_request(request)
@@ -50,7 +53,7 @@ class RateLimitMiddlewareTest(TestCase):
         request.user = MagicMock()
         request.user.is_authenticated = True
         request.user.id = 123
-        
+
         # 前5次应该通过
         for i in range(5):
             response = self.middleware.process_request(request)
@@ -65,7 +68,7 @@ class RateLimitMiddlewareTest(TestCase):
     def test_rate_limit_fallback(self, mock_redis_available):
         """测试 Redis 不可用时的降级策略"""
         request = self.factory.get("/api/test/")
-        
+
         # 即使超过限制，如果 Redis 不可用，也应该放行 (返回 None)
         for i in range(10):
             response = self.middleware.process_request(request)

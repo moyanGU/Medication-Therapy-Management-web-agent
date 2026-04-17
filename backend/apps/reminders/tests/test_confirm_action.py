@@ -89,7 +89,9 @@ class ReminderConfirmActionTest(TestCase):
         )
         self.assertEqual(pending_history.count(), 1)
         self.assertEqual(response.json()["data"]["record_payload"]["delay_minutes"], 15)
-        self.assertEqual(response.json()["data"]["record_payload"]["record_status"], "delayed")
+        self.assertEqual(
+            response.json()["data"]["record_payload"]["record_status"],
+            "delayed")
 
     def test_confirm_partial_requires_quantity_less_than_dosage(self):
         response = self.client.post(

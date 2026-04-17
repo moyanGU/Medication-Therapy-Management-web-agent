@@ -367,7 +367,7 @@ def batch_process(items, batch_size: int = 100, processor_func=None):
         处理结果
     """
     for i in range(0, len(items), batch_size):
-        batch = items[i : i + batch_size]
+        batch = items[i: i + batch_size]
         if processor_func:
             yield processor_func(batch)
         else:

@@ -200,8 +200,7 @@ def _inc_redis_error(op: str, exc: Exception):
             f"连接(脱敏)：{masked_loc}，POOL_MAX={getattr(settings, 'REDIS_POOL_MAX_CONNECTIONS', 'unknown')}, "
             f"CONNECT_TIMEOUT={getattr(settings, 'REDIS_SOCKET_CONNECT_TIMEOUT', 'unknown')}, "
             f"SOCKET_TIMEOUT={getattr(settings, 'REDIS_SOCKET_TIMEOUT', 'unknown')}, "
-            f"KEY_PREFIX={getattr(settings, 'REDIS_KEY_PREFIX', 'mtm-helper')}"
-        )
+            f"KEY_PREFIX={getattr(settings, 'REDIS_KEY_PREFIX', 'mtm-helper')}")
         # 可选推送至 Spug
         _notify_spug_alert(op, count, window, threshold, cooldown, masked_loc)
 

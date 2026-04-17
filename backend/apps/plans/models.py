@@ -235,7 +235,7 @@ class MedicationPlan(models.Model):
         # 这里可以实现更复杂的药物相互作用检查逻辑
         # 目前只是一个示例框架
         for i, med1 in enumerate(medicines):
-            for med2 in medicines[i + 1 :]:
+            for med2 in medicines[i + 1:]:
                 # 简单的名称匹配检查（实际应该使用药物数据库）
                 if self._check_interaction(med1.name, med2.name):
                     interactions.append(

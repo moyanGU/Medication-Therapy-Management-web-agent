@@ -1,8 +1,7 @@
 import json
 from datetime import datetime, timedelta
 
-from django.db.models import Avg, Count, F, Q
-from django.db.models.functions import Coalesce, TruncDate
+from django.db.models import Avg, Count
 from django.http import HttpResponse
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
@@ -280,7 +279,9 @@ class MedicationRecordViewSet(viewsets.ModelViewSet):
 
             return APIResponse.success(data=data, message="获取依从性聚合数据成功")
         except ValueError as exc:
-            return APIResponse.error(message=str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+            return APIResponse.error(
+                message=str(exc),
+                status_code=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
             return APIResponse.server_error(message=f"获取依从性聚合数据失败: {exc}")
 

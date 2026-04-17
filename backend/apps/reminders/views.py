@@ -944,7 +944,8 @@ class ReminderViewSet(viewsets.ModelViewSet):
             )
             if history.sent_at:
                 response_delay = history.responded_at - history.sent_at
-                history.response_delay_minutes = int(response_delay.total_seconds() / 60)
+                history.response_delay_minutes = int(
+                    response_delay.total_seconds() / 60)
                 history.save(update_fields=["response_delay_minutes"])
             logger.info(
                 "提醒确认动作已补建手动历史，reminder_id=%s，history_id=%s，action=%s",
