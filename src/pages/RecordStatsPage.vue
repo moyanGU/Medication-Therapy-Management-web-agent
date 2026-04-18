@@ -295,7 +295,6 @@ import { useMedicineStore } from '../stores/medicine'
 import type {
   MedicationAdherencePeriodSummary,
   MedicationAdherenceSummary,
-  MedicationAdherenceTrendItem,
 } from '../types/record'
 import { isRequestCancelledError } from '@/utils/api'
 
