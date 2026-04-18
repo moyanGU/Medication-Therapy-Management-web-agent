@@ -711,6 +711,7 @@ import type {
   MtmServiceCase,
   MtmTriggerSource,
 } from '@/types/mtm'
+import { useRoute, useRouter } from 'vue-router'
 import { isRequestCancelledError } from '@/utils/api'
 import {
   buildMtmListPresetEntries,
@@ -721,6 +722,7 @@ import {
   getMtmTriggerText,
   isMtmCaseActive,
 } from '@/utils/mtm'
+import { useAuthStore } from '@/stores/auth'
 
 const isDebug = import.meta.env.MODE !== 'production'
 const log = (...args: unknown[]) => {
@@ -822,6 +824,10 @@ const createEmptyDashboardData = (): DashboardSummaryData => ({
 })
 
 const { success: showSuccess, error: showError, info: showInfo } = useToast()
+const authStore = useAuthStore()
+const isPharmacist = computed(() => authStore.user?.role === 'pharmacist')
+const router = useRouter()
+const route = useRoute()
 const dashboard = ref<DashboardSummaryData>(createEmptyDashboardData())
 const loading = ref(false)
 const loadError = ref('')

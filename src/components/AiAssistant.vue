@@ -14,7 +14,7 @@
       @touchstart="startDrag"
       @mouseenter="handleMouseEnter"
       @mouseleave="handleMouseLeave"
-      @dblclick="openChat"
+      @click="openChat"
     >
       <!-- 问候气泡 -->
       <div
@@ -22,7 +22,7 @@
         class="absolute -top-16 left-1/2 -translate-x-1/2 w-48 bg-white rounded-xl shadow-lg p-3 text-xs text-gray-700 border border-blue-100 animate-bounce-in pointer-events-none"
       >
         <div class="relative text-center font-medium">
-          双击一下我，我能给你专业的用药指导哦~
+          点一下我，我能给你专业的用药指导哦~
           <div
             class="absolute -bottom-5 left-1/2 -translate-x-1/2 border-8 border-transparent border-t-white"
           ></div>
@@ -705,6 +705,7 @@ const handleMouseLeave = () => {
 
 // --- 聊天逻辑 ---
 const openChat = () => {
+  if (isDragging.value) return
   isOpen.value = true
   showGreeting.value = false
   isIdle.value = false
