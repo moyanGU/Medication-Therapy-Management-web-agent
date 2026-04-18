@@ -27,6 +27,14 @@
             </span>
             <button
               type="button"
+              class="inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-white/30 backdrop-blur-sm"
+              @click="restartGuide"
+            >
+              <Sparkles class="h-4 w-4" />
+              重启 AI 向导
+            </button>
+            <button
+              type="button"
               class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-sky-700 shadow-sm transition hover:bg-sky-50"
               :disabled="loading"
               @click="fetchDashboardSummary"
@@ -697,6 +705,7 @@ import {
   RefreshCw,
   ShieldAlert,
   Stethoscope,
+  Sparkles,
 } from 'lucide-vue-next'
 import { dashboardApi } from '@/api/dashboard'
 import { mtmApi } from '@/api/mtm'
@@ -982,6 +991,7 @@ const quickActions = computed(() => [
     description: '查看复诊安排和历史就诊信息。',
     to: '/medical-records',
     icon: Stethoscope,
+  Sparkles,
     iconWrapperClass: 'bg-indigo-100',
     iconClass: 'text-indigo-700',
   },
@@ -1273,6 +1283,16 @@ const followupText = (daysUntilFollowUp: number | null) => {
   return `${daysUntilFollowUp} 天后复诊`
 }
 
+
+// Check if we should trigger the proactive guide
+
+// Restart the proactive guide with a confirmation prompt
+const restartGuide = () => {
+  if (confirm('是否需要让 AI 机器人重新为您介绍一次系统功能？')) {
+    localStorage.removeItem('mtm_proactive_guide_done')
+    checkProactiveGuide()
+  }
+}
 
 // Check if we should trigger the proactive guide
 const checkProactiveGuide = () => {
