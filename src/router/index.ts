@@ -27,6 +27,7 @@ const MtmServiceCaseDetailPage = () => import('@/pages/MtmServiceCaseDetailPage.
 const MtmInterviewFormPage = () => import('@/pages/MtmInterviewFormPage.vue')
 const MtmAssessmentFormPage = () => import('@/pages/MtmAssessmentFormPage.vue')
 const MtmPlanFormPage = () => import('@/pages/MtmPlanFormPage.vue')
+const MtmReportPreviewPage = () => import('@/pages/MtmReportPreviewPage.vue')
 const MedicinesPage = () => import('@/pages/MedicinesPage.vue')
 const RecordsPage = () => import('@/pages/RecordsPage.vue')
 const PlansPage = () => import('@/pages/PlansPage.vue')
@@ -109,6 +110,13 @@ const routes: RouteRecordRaw[] = [
     path: '/mtm/service-cases/:id/plan',
     name: 'MtmPlanForm',
     component: MtmPlanFormPage,
+    meta: { requiresAuth: true },
+    props: true,
+  },
+  {
+    path: '/mtm/service-cases/:id/report',
+    name: 'MtmReportPreview',
+    component: MtmReportPreviewPage,
     meta: { requiresAuth: true },
     props: true,
   },

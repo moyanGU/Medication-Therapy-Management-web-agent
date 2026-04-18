@@ -610,3 +610,70 @@ class MTMServiceCaseViewSet(
                     service_case.transition_to("follow_up", note="随访记录已创建，自动进入随访阶段")
 
             return success_response(data=MTMFollowUpSummarySerializer(follow_up).data)
+
+
+    @action(detail=True, methods=["get"], url_path="report")
+    def report(self, request, pk=None):
+        """
+        获取服务单完整的 PMR (个人用药记录) & MAP (药物行动计划) 聚合数据
+        用于在前端渲染医疗级文档和导出 PDF
+        """
+        service_case = self.get_object()
+        
+        # 依赖已有关系和序列化器，拼接完整的报告对象
+        from .serializers import (
+            MTMServiceCaseDetailSerializer,
+        )
+        from apps.medical_records.models import MedicalRecord
+        from apps.medical_records.serializers import MedicalRecordListSerializer
+        
+        # 1. 基础服务单详情 (含问诊、评估、计划、随访的最新快照)
+        case_data = MTMServiceCaseDetailSerializer(service_case).data
+        
+        # 2. PMR: 患者当前的用药记录 (聚合其在系统中维护的 MedicalRecord / Medicines)
+        # 获取患者当前所有有效的处方和用药记录
+        patient = service_case.patient
+        active_records = MedicalRecord.objects.filter(patient=patient).prefetch_related("medicines").order_by("-visit_date")
+        
+        pmr_data = []
+        for record in active_records:
+            pmr_data.append({
+                "record_id": record.id,
+                "visit_date": record.visit_date,
+                "hospital": record.hospital,
+                "department": record.department,
+                "diagnosis": record.diagnosis,
+                "medicines": [
+                    {
+                        "name": m.medicine_name,
+                        "dosage": m.dosage,
+                        "frequency": m.frequency,
+                        "instructions": m.instructions
+                    } for m in record.medicines.all()
+                ]
+            })
+            
+        # 组装完整的 Report 结构
+        report_data = {
+            "case_info": {
+                "case_number": case_data.get("case_number"),
+                "status": case_data.get("status"),
+                "service_goal": case_data.get("service_goal"),
+                "created_at": case_data.get("created_at"),
+                "completed_at": case_data.get("completed_at"),
+            },
+            "patient_info": case_data.get("patient"),
+            "pharmacist_info": case_data.get("assigned_pharmacist"),
+            "pmr": {
+                "medical_records": pmr_data,
+                "allergies": case_data.get("interview", {}).get("allergy_history", []),
+                "medication_history": case_data.get("interview", {}).get("medication_history", []),
+                "lifestyle": case_data.get("interview", {}).get("lifestyle_info", {}),
+            },
+            "assessment": case_data.get("assessment", {}),
+            "map": case_data.get("plan", {}),
+            "follow_ups": case_data.get("follow_ups", [])
+        }
+
+        logger.info("🔵 [MTM] report generated - case=%s", service_case.id)
+        return success_response(data=report_data)

@@ -34,15 +34,26 @@
             </div>
           </div>
 
-          <button
-            type="button"
-            class="inline-flex items-center gap-2 self-start rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
-            :disabled="loading || transitioning"
-            @click="fetchServiceCaseDetail"
-          >
-            <RefreshCw class="h-4 w-4" :class="loading ? 'animate-spin' : ''" />
-            刷新详情
-          </button>
+          <div class="flex flex-wrap items-center gap-3 self-start">
+            <button
+              v-if="serviceCase?.status === 'completed'"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-violet-700 shadow-sm ring-1 ring-inset ring-violet-200 transition hover:bg-violet-50"
+              @click="goToReport"
+            >
+              <FileText class="h-4 w-4" />
+              查看专业报告 (PMR/MAP)
+            </button>
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
+              :disabled="loading || transitioning"
+              @click="fetchServiceCaseDetail"
+            >
+              <RefreshCw class="h-4 w-4" :class="loading ? 'animate-spin' : ''" />
+              刷新详情
+            </button>
+          </div>
         </div>
       </section>
 
@@ -551,6 +562,7 @@ import {
   ArrowLeft,
   CalendarClock,
   ClipboardList,
+  FileText,
   HeartPulse,
   RefreshCw,
   Stethoscope,
@@ -929,6 +941,17 @@ const handleTransition = async (targetStatus: MtmServiceStatus) => {
 /**
  * 返回上一页；如果没有可回退历史，则回到首页仪表板。
  */
+
+const goToReport = () => {
+  if (!serviceCase.value) return
+  router.push({
+    name: 'MtmReportPreview',
+    params: { id: serviceCase.value.id.toString() },
+  })
+}
+
+
+
 const goBack = () => {
   if (cameFromMtmList.value) {
     const query = buildListReturnQuery()

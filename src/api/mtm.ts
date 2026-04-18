@@ -249,6 +249,18 @@ export const mtmApi = {
     return response.data
   },
 
+
+  // ============================
+  // PMR / MAP 报告 (Report)
+  // ============================
+
+  async getReport(serviceCaseId: number | string): Promise<any> {
+    log('🔵 [mtmApi] getReport called with id =', serviceCaseId)
+    const response = await api.get<any>(`/mtm/service-cases/${serviceCaseId}/report/`)
+    log('🟢 [mtmApi] getReport response =', response.data)
+    return response.data
+  },
+
   /**
    * 认领服务单 (仅药师)
    */
