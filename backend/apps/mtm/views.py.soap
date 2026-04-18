@@ -1,0 +1,108 @@
+import re
+
+with open("backend/apps/mtm/views.py", "r") as f:
+    content = f.read()
+
+soap_api = """
+    @action(detail=True, methods=["get", "put"], url_path="soap")
+    def soap_notes(self, request, pk=None):
+        \"\"\"
+        获取或保存 SOAP 药历记录
+        \"\"\"
+        service_case = self.get_object()
+        
+        if request.method == "GET":
+            return success_response(data=service_case.soap_notes)
+            
+        if request.method == "PUT":
+            soap_data = request.data
+            service_case.soap_notes = soap_data
+            service_case.save(update_fields=["soap_notes", "updated_at"])
+            logger.info("🟢 [MTM] SOAP notes updated - case=%s", service_case.id)
+            return success_response(data=service_case.soap_notes)
+
+    @action(detail=True, methods=["post"], url_path="soap/generate")
+    def generate_soap(self, request, pk=None):
+        \"\"\"
+        调用 AI 辅助一键生成 SOAP 草稿
+        \"\"\"
+        service_case = self.get_object()
+        
+        from django.conf import settings
+        if not getattr(settings, "BAICHUAN_M3_ENABLED", False):
+            return error_response("AI 服务未启用", status_code=503)
+            
+        # 收集上下文信息 (问诊记录、评估记录)
+        patient_data = {
+            "case_number": service_case.case_number,
+            "service_goal": service_case.service_goal,
+            "patient_age": service_case.patient.age,
+            "patient_gender": service_case.patient.get_gender_display() if service_case.patient.gender else "未知",
+        }
+        
+        interview = getattr(service_case, "interview", None)
+        if interview:
+            patient_data["medication_history"] = interview.medication_history
+            patient_data["allergy_history"] = interview.allergy_history
+            patient_data["lifestyle_info"] = interview.lifestyle_info
+            patient_data["health_expectations"] = interview.health_expectations
+            
+        assessment = getattr(service_case, "assessment", None)
+        if assessment:
+            patient_data["problem_list"] = assessment.problem_list
+            patient_data["assessment_summary"] = assessment.summary
+            patient_data["risk_level"] = assessment.risk_level
+            
+        # 准备调用大模型
+        base_url = getattr(settings, "BAICHUAN_M3_API_BASE_URL", "")
+        api_key = getattr(settings, "BAICHUAN_M3_API_KEY", "")
+        model = getattr(settings, "BAICHUAN_M3_MODEL", "")
+        
+        from apps.core.views import _openai_chat_completion, _extract_json_object
+        import json
+        
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "你是一个专业的临床药师。请根据提供的患者问诊信息与病史，生成标准的 SOAP 药历结构草稿。\\n"
+                    "S (Subjective): 患者主诉、病史、药物过敏史、生活习惯等。\\n"
+                    "O (Objective): 整理后的客观用药情况。\\n"
+                    "A (Assessment): 药物治疗问题评估分析。\\n"
+                    "P (Plan): 建议的干预方案。\\n"
+                    "请严格返回 JSON 格式，必须包含 keys: subjective, objective, assessment, plan。"
+                )
+            },
+            {
+                "role": "user",
+                "content": json.dumps(patient_data, ensure_ascii=False)
+            }
+        ]
+        
+        try:
+            logger.info("🔵 [MTM] SOAP AI Generation start - case=%s", service_case.id)
+            response_text = _openai_chat_completion(
+                base_url=base_url,
+                api_key=api_key,
+                model=model,
+                messages=messages,
+                temperature=0.1,
+                max_tokens=2048,
+                timeout_seconds=45.0,
+                response_format={"type": "json_object"}
+            )
+            
+            soap_json = _extract_json_object(response_text)
+            if not soap_json:
+                return error_response("AI 未返回合法的 SOAP 数据", status_code=500)
+                
+            return success_response(data=soap_json)
+        except Exception as e:
+            logger.error("🔴 [MTM] SOAP Generation Failed: %s", str(e))
+            return error_response(f"AI 生成失败: {str(e)}", status_code=500)
+"""
+
+if "def generate_soap" not in content:
+    content = content + "\n" + soap_api
+    with open("backend/apps/mtm/views.py", "w") as f:
+        f.write(content)

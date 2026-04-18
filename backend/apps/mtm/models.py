@@ -83,6 +83,12 @@ class MTMServiceCase(models.Model):
         verbose_name="服务目标",
         help_text="本次 MTM 服务的主要目标",
     )
+    soap_notes = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="SOAP 药历",
+        help_text="结构化的 SOAP 药历记录",
+    )
     notes = models.TextField(
         blank=True,
         null=True,

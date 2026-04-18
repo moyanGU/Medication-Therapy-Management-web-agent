@@ -261,6 +261,38 @@ export const mtmApi = {
     return response.data
   },
 
+
+  // ============================
+  // SOAP 药历 (SOAP Notes)
+  // ============================
+
+  async getSoapNotes(serviceCaseId: number | string): Promise<any> {
+    log('🔵 [mtmApi] getSoapNotes called with id =', serviceCaseId)
+    const response = await api.get<any>(`/mtm/service-cases/${serviceCaseId}/soap/`)
+    log('🟢 [mtmApi] getSoapNotes response =', response.data)
+    return response.data
+  },
+
+  async saveSoapNotes(
+    serviceCaseId: number | string,
+    payload: any
+  ): Promise<any> {
+    log('🔵 [mtmApi] saveSoapNotes payload =', { serviceCaseId, payload })
+    const response = await api.put<any>(
+      `/mtm/service-cases/${serviceCaseId}/soap/`,
+      payload
+    )
+    log('🟢 [mtmApi] saveSoapNotes response =', response.data)
+    return response.data
+  },
+
+  async generateSoapNotesByAi(serviceCaseId: number | string): Promise<any> {
+    log('🔵 [mtmApi] generateSoapNotesByAi called with id =', serviceCaseId)
+    const response = await api.post<any>(`/mtm/service-cases/${serviceCaseId}/soap/generate/`)
+    log('🟢 [mtmApi] generateSoapNotesByAi response =', response.data)
+    return response.data
+  },
+
   /**
    * 认领服务单 (仅药师)
    */

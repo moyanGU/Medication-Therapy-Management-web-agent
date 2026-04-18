@@ -36,6 +36,15 @@
 
           <div class="flex flex-wrap items-center gap-3 self-start">
             <button
+              v-if="serviceCase?.status === 'completed' || serviceCase?.status === 'intervening' || serviceCase?.status === 'following_up'"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-amber-700 shadow-sm ring-1 ring-inset ring-amber-200 transition hover:bg-amber-50"
+              @click="goToSoapNotes"
+            >
+              <Sparkles class="h-4 w-4" />
+              撰写/查看 SOAP 药历
+            </button>
+            <button
               v-if="serviceCase?.status === 'completed'"
               type="button"
               class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-violet-700 shadow-sm ring-1 ring-inset ring-violet-200 transition hover:bg-violet-50"
@@ -565,6 +574,7 @@ import {
   FileText,
   HeartPulse,
   RefreshCw,
+  Sparkles,
   Stethoscope,
   User,
 } from 'lucide-vue-next'
@@ -941,6 +951,15 @@ const handleTransition = async (targetStatus: MtmServiceStatus) => {
 /**
  * 返回上一页；如果没有可回退历史，则回到首页仪表板。
  */
+
+
+const goToSoapNotes = () => {
+  if (!serviceCase.value) return
+  router.push({
+    name: 'MtmSoapNotes',
+    params: { id: serviceCase.value.id.toString() },
+  })
+}
 
 const goToReport = () => {
   if (!serviceCase.value) return
