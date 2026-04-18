@@ -724,10 +724,6 @@ const switchMode = (mode: PageAgentMode) => {
  * 解析开发模式下的页面助手 QA 查询参数。
  */
 function getQaScenarioFromRoute() {
-  if (!import.meta.env.DEV) {
-    return null
-  }
-
   const openFlag = route.query.assistant === 'open'
   const task =
     typeof route.query.assistantTask === 'string'
