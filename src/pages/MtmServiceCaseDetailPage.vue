@@ -404,12 +404,47 @@
           </article>
 
           <article class="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-            <div class="flex items-center gap-2">
-              <Stethoscope class="h-5 w-5 text-emerald-600" />
-              <h2 class="text-lg font-semibold text-slate-900">干预计划</h2>
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div class="flex items-center gap-2">
+                <Stethoscope class="h-5 w-5 text-emerald-600" />
+                <h2 class="text-lg font-semibold text-slate-900">干预计划</h2>
+              </div>
+              <span
+                class="inline-flex items-center self-start rounded-full px-3 py-1 text-xs font-medium"
+                :class="planEntryMeta.badgeClass"
+              >
+                {{ planEntryMeta.badgeText }}
+              </span>
+            </div>
+
+            <div class="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p class="text-sm font-medium text-slate-900">干预计划入口</p>
+                  <p class="mt-2 text-sm leading-6 text-slate-600">
+                    {{ planEntryMeta.description }}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-2 self-start rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                  :disabled="loading || transitioning || planEntryMeta.disabled"
+                  @click="goToPlanForm"
+                >
+                  <ArrowRight class="h-4 w-4" />
+                  {{ planEntryMeta.buttonText }}
+                </button>
+              </div>
             </div>
 
             <template v-if="serviceCase.plan">
+              <p
+                v-if="serviceCase.plan.confirmed_at"
+                class="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+              >
+                计划已于 {{ formatDateTime(serviceCase.plan.confirmed_at) }} 完成制定。
+              </p>
+
               <div class="mt-5 space-y-3">
                 <div class="rounded-2xl bg-slate-50 p-4">
                   <p class="text-sm text-slate-500">优先级</p>
@@ -440,20 +475,24 @@
                 {{ serviceCase.plan.patient_confirmation_notes || '当前还没有补充患者确认说明。' }}
               </p>
             </template>
-
-            <div
-              v-else
-              class="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500"
-            >
-              当前还没有干预计划摘要。
-            </div>
           </article>
         </section>
 
         <section class="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-          <div class="flex items-center gap-2">
-            <CalendarClock class="h-5 w-5 text-indigo-600" />
-            <h2 class="text-lg font-semibold text-slate-900">随访记录</h2>
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex items-center gap-2">
+              <CalendarClock class="h-5 w-5 text-indigo-600" />
+              <h2 class="text-lg font-semibold text-slate-900">随访记录</h2>
+            </div>
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 self-start rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
+              :disabled="loading || transitioning"
+              @click="showFollowUpModal = true"
+            >
+              <span class="h-4 w-4 flex items-center justify-center font-bold text-lg leading-none">+</span>
+              新增随访记录
+            </button>
           </div>
 
           <div v-if="followUpCards.length" class="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -493,7 +532,13 @@
           </div>
         </section>
       </template>
+
     </main>
+    <MtmFollowUpModal
+      v-model="showFollowUpModal"
+      :service-case-id="serviceCaseId"
+      @success="fetchServiceCaseDetail"
+    />
   </div>
 </template>
 
@@ -513,6 +558,7 @@ import {
 } from 'lucide-vue-next'
 import { mtmApi } from '@/api/mtm'
 import { useToast } from '@/composables/useToast'
+import MtmFollowUpModal from '@/components/mtm/MtmFollowUpModal.vue'
 import type {
   MtmFollowUpSummary,
   MtmServiceCase,
@@ -550,6 +596,7 @@ const serviceCase = ref<MtmServiceCase | null>(null)
 const loading = ref(false)
 const transitioning = ref(false)
 const loadError = ref('')
+const showFollowUpModal = ref(false)
 
 const serviceCaseId = computed(() => {
   const rawId = props.id || String(route.params.id || '')
@@ -917,6 +964,58 @@ const goToInterviewForm = () => {
 /**
  * 进入评估表单页，并尽量保留当前详情页上下文。
  */
+
+const planEntryMeta = computed(() => {
+  const currentAssessment = serviceCase.value?.assessment
+  const currentPlan = serviceCase.value?.plan
+
+  if (!currentAssessment?.completed_at) {
+    return {
+      badgeText: '待评估完成',
+      badgeClass: 'bg-slate-100 text-slate-700',
+      buttonText: '暂不能制定计划',
+      description: '建议先完成评估，再进入计划页制定具体的干预措施。',
+      disabled: true,
+    }
+  }
+
+  if (!currentPlan) {
+    return {
+      badgeText: '未开始',
+      badgeClass: 'bg-slate-100 text-slate-700',
+      buttonText: '开始制定计划',
+      description: '评估已经完成，可以进入计划页制定干预措施和行动计划。',
+      disabled: false,
+    }
+  }
+
+  if (!currentPlan.confirmed_at) {
+    return {
+      badgeText: '草稿',
+      badgeClass: 'bg-amber-100 text-amber-700',
+      buttonText: '继续制定计划',
+      description: '干预计划草稿已保存，可以继续编辑或完成确认。',
+      disabled: false,
+    }
+  }
+
+  return {
+    badgeText: '已完成',
+    badgeClass: 'bg-emerald-100 text-emerald-700',
+    buttonText: '查看计划',
+    description: '干预计划已完成制定，可以随时回看详情。',
+    disabled: false,
+  }
+})
+
+const goToPlanForm = () => {
+  if (!serviceCase.value) return
+  router.push({
+    name: 'MtmPlanForm',
+    params: { id: serviceCase.value.id.toString() },
+  })
+}
+
 const goToAssessmentForm = () => {
   if (!serviceCaseId.value || assessmentEntryMeta.value.disabled) {
     return

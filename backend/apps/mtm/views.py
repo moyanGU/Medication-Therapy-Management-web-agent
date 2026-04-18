@@ -191,6 +191,30 @@ class MTMServiceCaseViewSet(
 
         return assessment
 
+
+    def _build_initial_plan_payload(self, service_case):
+        return {
+            "service_case": service_case,
+            "interventions": [],
+            "priority": "medium",
+            "patient_confirmation_status": "pending",
+            "patient_confirmation_notes": "",
+        }
+
+    def _get_or_create_plan(self, service_case):
+        from .models import MTMPlan
+        plan, created = MTMPlan.objects.get_or_create(
+            service_case=service_case,
+            defaults=self._build_initial_plan_payload(service_case),
+        )
+        if created:
+            logger.info(
+                "🟢 [MTM] plan draft initialized - case=%s plan=%s",
+                service_case.id,
+                plan.id,
+            )
+        return plan
+
     def get_queryset(self):
         """
         仅返回当前用户参与的服务单。
@@ -517,3 +541,72 @@ class MTMServiceCaseViewSet(
             data=MTMAssessmentFormSerializer(assessment).data,
             message="评估已完成",
         )
+
+
+    @action(detail=True, methods=["get", "put"])
+    def plan(self, request, pk=None):
+        service_case = self.get_object()
+        plan = self._get_or_create_plan(service_case)
+        from .serializers import MTMPlanSummarySerializer
+
+        if request.method == "GET":
+            logger.info("🔵 [MTM] plan fetch - case=%s plan=%s", service_case.id, plan.id)
+            serializer = MTMPlanSummarySerializer(plan)
+            return success_response(data=serializer.data)
+
+        if request.method == "PUT":
+            from .serializers import MTMPlanDraftSerializer
+            serializer = MTMPlanDraftSerializer(data=request.data)
+            if not serializer.is_valid():
+                return error_response(message="保存草稿失败", errors=serializer.errors)
+
+            for field, value in serializer.validated_data.items():
+                setattr(plan, field, value)
+            plan.save()
+            logger.info("🟢 [MTM] plan draft saved - case=%s", service_case.id)
+            return success_response(data=MTMPlanSummarySerializer(plan).data)
+
+    @action(detail=True, methods=["post"], url_path="plan/complete")
+    def complete_plan(self, request, pk=None):
+        service_case = self.get_object()
+        plan = self._get_or_create_plan(service_case)
+
+        from .serializers import MTMPlanCompleteSerializer, MTMPlanSummarySerializer
+        serializer = MTMPlanCompleteSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response(message="完成计划失败，数据不完整", errors=serializer.errors)
+
+        with transaction.atomic():
+            for field, value in serializer.validated_data.items():
+                setattr(plan, field, value)
+            plan.save()
+
+            if service_case.status in ["assessing", "interviewing", "pending"]:
+                service_case.transition_to("intervening", note="干预计划已制定，自动进入干预阶段")
+            
+        logger.info("🟢 [MTM] plan completed - case=%s", service_case.id)
+        return success_response(data=MTMPlanSummarySerializer(plan).data)
+
+    @action(detail=True, methods=["get", "post"], url_path="follow-ups")
+    def follow_ups(self, request, pk=None):
+        service_case = self.get_object()
+        from .serializers import MTMFollowUpSummarySerializer
+
+        if request.method == "GET":
+            follow_ups = service_case.follow_ups.all().order_by("-follow_up_time")
+            return success_response(data=MTMFollowUpSummarySerializer(follow_ups, many=True).data)
+
+        if request.method == "POST":
+            from .serializers import MTMFollowUpFormSerializer
+            serializer = MTMFollowUpFormSerializer(data=request.data)
+            if not serializer.is_valid():
+                return error_response(message="保存随访记录失败", errors=serializer.errors)
+
+            with transaction.atomic():
+                follow_up = serializer.save(service_case=service_case)
+                logger.info("🟢 [MTM] follow-up created - case=%s id=%s", service_case.id, follow_up.id)
+                
+                if service_case.status == "intervening":
+                    service_case.transition_to("follow_up", note="随访记录已创建，自动进入随访阶段")
+
+            return success_response(data=MTMFollowUpSummarySerializer(follow_up).data)
