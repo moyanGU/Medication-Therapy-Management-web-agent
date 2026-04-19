@@ -1,259 +1,138 @@
 <div align="center">
-  <img src="public/images/mtm-cover-logo.svg" alt="MTM-Helper Logo" width="800"/>
+  <img src="public/images/mtm-cover-logo.svg" alt="MTM-Helper Logo" width="120" height="120" />
+  <h1>💊 MTM-Helper 智能用药助手与管理系统</h1>
+  <p>专为老年人与专业药师打造的智能化药物治疗管理 (MTM) 平台</p>
 </div>
 
-# MTM-用药助手 药品管理系统
+## 📖 项目简介
 
-## 项目简介
+MTM-用药助手是一款旨在提升老年人用药安全与依从性的智能管理系统。系统结合了面向普通用户的**日常用药提醒**与面向专业药师的 **MTM（药物治疗管理）服务**。通过简洁的适老化界面、AI 辅助增强（Copilot）以及多渠道提醒机制，解决忘记服药、药品过期、用药冲突等痛点，提供全生命周期的健康管理。
 
-MTM-用药助手是一款专为老年人设计的智能药品管理系统，旨在帮助用户安全、便捷地管理个人药品，提供用药提醒、有效期监控、用药记录等功能。
+## ✨ 核心特性与近期重磅更新
 
-系统通过简洁易用的界面设计和智能化的提醒机制，解决老年人在药品管理中遇到的忘记服药、药品过期、用药冲突等问题，提升用药安全性和依从性。
+### 1. 👨‍⚕️ 专业的 MTM 药物治疗管理 (3.0 架构升级)
+引入了专业的双轨服务模式，打通了 MTM 的完整业务流：
+- **完整闭环**：涵盖问诊 (Interview)、评估 (Assessment)、干预计划 (Plan) 与随访 (Follow-up) 四个核心环节。
+- **医疗级文书导出**：支持自动聚合生成 PMR (个人用药记录) 与 MAP (药物行动计划)，并提供高保真 PDF 导出功能。
+- **AI 辅助生成**：基于患者上下文，一键生成结构化 SOAP 药历草稿。
 
-## 核心功能
+### 2. 🤖 AI 智能体管家 (AI Copilot)
+基于 Baichuan M3 大模型集成的全局悬浮式页面助手：
+- **用药问答**：随时解答用户的药品适应症、禁忌、相互作用等疑问。
+- **智能引导**：针对不同角色（药师/患者），在首次进入仪表板时主动弹出并进行自然语言引导。
+- **语音交互 (TTS & STT)**：完全打通了全局语音播报（TTS）与语音识别（STT）。老年人只需点击麦克风说话，AI 的回复也会自动通过语音播报，实现真正的“零打字”适老化交互。
 
-- **用户认证系统**：安全的注册登录，支持手机验证码
-- **药品管理**：药品信息录入、图片上传、存储条件管理
-- **用药记录**：服药历史记录、统计分析、依从性评价
-- **用药提醒**：智能提醒设置、定时推送、闹钟集成
-- **用药计划**：长短期用药计划、冲突检测、方案管理
-- **就医记录**：就诊信息记录、诊断治疗方案管理
-- **AI智能搜索**：基于大模型的药品智能搜索
-- **管理后台**：用户管理、系统配置、数据统计
-- **智能体管家**：引导用户操作，代替填写表单
-## 技术架构
+### 3. 🔊 适老化与无障碍支持 (老年人模式)
+- **全局语音播报**：开启“语音播报”后，系统会自动朗读页面的核心信息。内置智能打断与防抖去重机制，优先匹配优质中文语音。
+- **极简大字版**：界面设计遵循 WCAG 标准，高对比度、大点击区域，充分照顾老年用户的使用习惯。
 
-### 前端技术栈
-- **Vue 3.4+** - 渐进式JavaScript框架
-- **TypeScript 5.0+** - 类型安全的JavaScript超集
-- **Vite 5.0+** - 快速的前端构建工具
-- **Vue Router 4.0+** - Vue.js官方路由管理器
-- **Pinia 2.0+** - Vue.js状态管理库
-- **TailwindCSS** - 实用优先的CSS框架
+### 4. 📱 PWA 与全方位用药提醒
+- **PWA 支持**：利用 `vite-plugin-pwa` 实现桌面/移动端应用安装，支持离线访问。
+- **Web Push 推送**：基于 Service Worker 和 VAPID 提供浏览器原生的消息通知。
+- **后端调度器**：支持多渠道推送，确保用药提醒万无一失。
 
-### 后端技术栈
-- **Django 4.2+** - Python Web框架
-- **Django REST Framework 3.14+** - 强大的API框架
-- **MySQL 8.0+** - 关系型数据库
-- **Redis 7.0+** - 内存数据库，用于缓存和会话
-- **JWT** - JSON Web Token认证
+### 5. 🏥 基础药品与数据管理
+- 支持药品信息快速录入与管理。
+- 动态服药历史记录追踪，生成用药依从性（Adherence）统计与可视化图表。
 
-### 部署技术栈
-- **Docker** - 容器化部署
-- **Docker Compose** - 多容器应用编排
-- **Nginx** - 反向代理和静态文件服务
+## 🛠 技术架构
 
-## 项目结构
+**前端 (Frontend)**
+- **核心框架**: Vue 3.4+ (Composition API) + TypeScript 5.0+
+- **构建工具**: Vite 5.0+
+- **状态与路由**: Pinia 2.0+ & Vue Router 4.0+
+- **UI & 样式**: TailwindCSS 3.4+ + Lucide Icons
+- **PDF导出**: jspdf + html2canvas
 
-```
+**后端 (Backend)**
+- **核心框架**: Django 4.2+ & Django REST Framework
+- **数据库**: MySQL 8.0+ (关系型数据) & Redis 7.0+ (缓存与任务队列)
+- **认证体系**: JWT (JSON Web Token) 安全认证
+
+**基础设施与扩展 (Infra & AI)**
+- **AI 大模型**: Baichuan M3 API (兼容 OpenAI 格式接口)
+- **容器化部署**: Docker & Docker Compose & Nginx
+
+## 📂 项目结构
+
+```text
 mtm-helper/
-├── src/                    # 前端源码
-│   ├── components/         # Vue组件
-│   ├── pages/             # 页面组件
-│   ├── router/            # 路由配置
-│   ├── composables/       # 组合式函数
-│   └── lib/               # 工具库
-├── backend/               # 后端源码
-│   ├── mtm_helper/        # Django项目配置
-│   ├── apps/              # Django应用
-│   │   ├── authentication/# 认证应用
-│   │   ├── users/         # 用户管理
-│   │   ├── medicines/     # 药品管理
-│   │   ├── records/       # 用药记录
-│   │   ├── reminders/     # 用药提醒
-│   │   ├── plans/         # 用药计划
-│   │   ├── medical_records/# 就医记录
-│   │   └── core/          # 核心功能
-│   └── requirements.txt   # Python依赖
-├── docker-compose.yml     # Docker编排配置
-├── Dockerfile.frontend    # 前端Docker配置
-└── README.md             # 项目说明
+├── src/                    # 前端源码目录
+│   ├── api/                # 后端接口请求封装
+│   ├── components/         # 通用 Vue 组件与页面布局
+│   ├── composables/        # 组合式函数 (如 useSpeech 语音合成模块)
+│   ├── pages/              # 业务页面 (MTM服务、用药记录等)
+│   └── types/              # TypeScript 类型定义
+├── backend/                # 后端 Django 源码目录
+│   ├── apps/               # 独立业务模块
+│   │   ├── mtm/            # 核心药物治疗管理逻辑
+│   │   ├── reminders/      # 调度器与多渠道通知 (Push/SMS)
+│   │   ├── medicines/      # 药品信息库
+│   │   └── core/           # AI 代理与基础服务
+│   └── mtm_helper/         # Django 项目配置
+├── docs/                   # 项目设计与架构文档库
+├── docker-compose.yml      # 开发环境容器编排
+└── docker-compose.production.yml # 生产环境部署编排
 ```
 
-## 快速开始
+## 🚀 快速开始
 
-### 环境要求
-
-- Node.js 22.0+
+### 运行环境要求
+- Node.js 20.0+
 - Python 3.11+
-- MySQL 8.0+
-- Redis 7.0+
-- Docker & Docker Compose (可选)
+- MySQL 8.0+ / Redis 7.0+
 
-### 本地开发
-
-#### 1. 克隆项目
+### 1. 前端本地开发
 ```bash
-git clone <repository-url>
-cd mtm-helper
-```
-
-#### 2. 前端开发（Windows）
-```powershell
+# 安装依赖
 npm install
 
-$env:VITE_API_BASE_URL = "http://127.0.0.1:8000/api"
+# 启动开发服务器
 npm run dev
 ```
 
-默认访问地址：`http://127.0.0.1:3000`
-
-#### 3. 后端开发（Windows）
-```powershell
+### 2. 后端本地开发
+```bash
 cd backend
+python3 -m venv .venv
+source .venv/bin/activate  # Windows 运行 .\.venv\Scripts\Activate.ps1
 
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-
+# 安装依赖
 pip install -r requirements.txt
 
-Copy-Item .env.example .env
+# 初始化数据库
+cp .env.example .env
+# 补全 .env 中的数据库和 AI API Key 配置
+
+python manage.py makemigrations
 python manage.py migrate
-python manage.py runserver 127.0.0.1:8000
+
+# 启动服务
+python manage.py runserver 0.0.0.0:8000
 ```
+> **注意**：如需体验 AI 页面助手和自动生成 SOAP 药历，请务必在 `backend/.env` 中补齐 `BAICHUAN_M3_API_KEY` 等大模型相关环境变量。并且配置好 VAPID 密钥对以开启 Web Push 推送。
 
-后端最少需要补齐这些环境变量后，页面助手相关能力才能正常工作：
-- `DB_*`
-- `REDIS_*`
-- `BAICHUAN_M3_API_BASE_URL`
-- `BAICHUAN_M3_API_KEY`
-- `BAICHUAN_M3_MODEL`
-
-`page-agent-main` 目录不是独立必启服务。当前 mtm-helper 运行时实际依赖的是前端 `@page-agent/core`、`@page-agent/page-controller` 包，以及后端代理接口 `/api/ai/page-agent/chat/completions/`。
-
-### Docker部署
-
-#### 开发环境
+### 3. Docker 容器化部署
+**开发环境一键启动：**
 ```bash
-# 启动所有服务
-docker-compose up -d
-
-# 查看服务状态
-docker-compose ps
-
-# 查看日志
-docker-compose logs -f
+docker-compose --profile dev up -d --build
 ```
-
-#### 生产环境
-使用独立的生产编排文件 `docker-compose.production.yml` 进行部署与运维。
-
-生产环境路径与域名（已确认）：
-- 服务器项目路径：`/opt/mtm-helper`
-- 站点域名：`https://mtm-helper.com` 与 `https://www.mtm-helper.com`
-- API 域名：`https://api.mtm-helper.com`
-
-快速启动（建议在服务器上执行）：
+**生产环境独立部署：**
+项目内置了生产级部署方案（涵盖 Nginx 反代与静态资源挂载）：
 ```bash
-# 进入项目目录
-cd /opt/mtm-helper
-
-# 使用生产编排文件启动（包含 nginx / backend / redis / certbot 等服务）
 docker compose -f docker-compose.production.yml up -d
-
-# 可选：仅启动后端与 Nginx（前端已构建的情况下）
-docker compose -f docker-compose.production.yml up -d backend nginx
-
-# 查看服务与日志
-docker compose -f docker-compose.production.yml ps
-docker compose -f docker-compose.production.yml logs -f nginx
 ```
 
-首次或发生前端依赖变更时，需进行一次性前端构建并挂载到 Nginx：
-```bash
-docker compose -f docker-compose.production.yml run --rm frontend \
-  sh -lc "(npm ci --include=dev || npm install --include=dev) && (npm run build || npm run build:fast)"
+## 🤝 参与贡献
+欢迎对医疗健康、AI 智能体及适老化设计感兴趣的开发者加入！
+1. Fork 本仓库
+2. 创建您的特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 遵循现有的 ESLint 与代码规范进行开发
+4. 提交您的更改 (`git commit -m 'feat: Add some AmazingFeature'`)
+5. 推送到分支并开启 Pull Request
 
-# 验证构建产物是否挂载到 Nginx 容器
-docker compose -f docker-compose.production.yml exec nginx ls -lah /var/www/app
+## 📄 许可证
+本项目基于 [MIT License](LICENSE) 开源。
 
-# 校验并热重载 Nginx（如更新了 nginx.prod.conf）
-docker compose -f docker-compose.production.yml exec nginx nginx -t
-docker compose -f docker-compose.production.yml exec nginx nginx -s reload
-```
-
-注意事项：
-- 请务必使用正确的编排文件路径（`-f docker-compose.production.yml`）。若误用了其他文件，可能出现如 “backend has neither image nor build context specified” 的错误。
-- 前端服务的命令已内置构建回退逻辑：优先 `npm ci --include=dev`，失败时回退到 `npm install --include=dev`；构建优先 `npm run build`，失败时回退到 `npm run build:fast`（跳过 TS 检查，仅使用 Vite 构建）。
-- 同步到服务器前，请确保本地 `package.json`、`package-lock.json` 与 `vite.config.ts` 一致，且 `vite.config.ts` 中 `build.outDir` 为 `dist`，`base: '/'`。
-- 如遇到 `/webui/` 访问 500 或日志中出现 `rewrite or internal redirection cycle`，请更新本地 `nginx.prod.conf`，确保存在：
-  - `listen 443 ssl default_server;`（将 HTTPS 服务设置为默认）
-  - `location ^~ /webui/ { try_files $uri $uri/ /index.html; }`（为 SPA 路由提供回退）
-
-更多生产部署与运维细节，参见文档《docs/生产部署_docker-compose.production.yml.md》。
-
-## 开发指南
-
-### 代码规范
-
-- 前端使用ESLint + Prettier进行代码格式化
-- 后端使用Black + Flake8 + isort进行代码规范检查
-- 提交前请运行代码检查：`npm run lint`、`python -m black .`、`python -m flake8`
-
-### API文档
-
-- 后端API文档：http://localhost:8000/api/docs/
-- 管理后台：http://localhost:8000/admin/
-
-### 测试
-
-```bash
-# 前端测试
-npm run test
-
-# 后端测试
-cd backend
-python manage.py test
-```
-
-## 部署说明
-
-### 环境变量配置
-
-复制 `backend/.env.example` 到 `backend/.env` 并配置以下变量：
-
-- `SECRET_KEY`: Django密钥
-- `DB_*`: 数据库连接配置
-- `REDIS_*`: Redis连接配置
-- `*_API_KEY`: 第三方服务API密钥
-
-### 数据库初始化
-
-```bash
-# 创建数据库
-mysql -u root -p
-CREATE DATABASE mtm_helper CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-# 运行迁移
-python manage.py migrate
-
-# 加载初始数据
-python manage.py loaddata initial_data.json
-```
-
-## 贡献指南
-
-1. Fork 项目
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 打开 Pull Request
-
-## 许可证
-
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
-
-## 联系方式
-
-- 项目维护者：Gu moyan
-- 邮箱：285605428@qq.com
-- 项目地址：https://github.com/mtm-helper/mtm-helper
-
-## 更新日志
-
-### v1.0.0 (2025-01-XX)
-- 初始版本发布
-- 完成核心功能开发
-- 支持Docker部署
-- I'm currently the only developer working on this. The MTM professional section is a work in progress, and I'd love for interested contributors to join the development!
-# Medication-Therapy-Management-web-agent
+---
+*MTM-Helper — 科技让关爱更智能。*
