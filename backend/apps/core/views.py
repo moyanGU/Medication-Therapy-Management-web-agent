@@ -1559,10 +1559,11 @@ def _normalize_session_id(session_id: str) -> str:
     return normalized
 
 
+from .models import SessionMemory
+
 def _session_memory_cache_key(user_id: int, session_id: str) -> str:
     prefix = getattr(settings, "REDIS_KEY_PREFIX", "mtm-helper")
     return f"{prefix}:ai:session_memory:{user_id}:{session_id}"
-
 
 def _sanitize_messages(messages):
     if not isinstance(messages, list):
@@ -1597,13 +1598,17 @@ def session_memory(request):
         except ValueError as exc:
             return error_response(str(exc), "VALIDATION_ERROR", 400)
 
-        key = _session_memory_cache_key(int(user_id), session_id)
-        try:
-            payload = cache.get(key) or {}
-        except Exception:
+        # Try to get from DB
+        memory = SessionMemory.objects.filter(user_id=user_id, session_id=session_id).first()
+        if memory:
+            payload = {
+                "summary": memory.summary,
+                "messages": memory.messages,
+                "updated_at": memory.updated_at.isoformat()
+            }
+        else:
             payload = {}
-        if not isinstance(payload, dict):
-            payload = {}
+
         return success_response(
             {
                 "session_id": session_id,
@@ -1624,14 +1629,15 @@ def session_memory(request):
     if len(summary) > 4000:
         summary = summary[:4000]
 
-    key = _session_memory_cache_key(int(user_id), session_id)
-    now_iso = timezone.now().isoformat()
-    payload = {"summary": summary, "messages": messages, "updated_at": now_iso}
-    try:
-        cache.set(key, payload, timeout=int(getattr(settings, "CACHE_DEFAULT_TTL", 300)) * 24)
-    except Exception:
-        pass
-    return success_response({"session_id": session_id, "updated_at": now_iso}, "保存成功")
+    memory, created = SessionMemory.objects.update_or_create(
+        user_id=user_id,
+        session_id=session_id,
+        defaults={
+            "summary": summary,
+            "messages": messages,
+        }
+    )
+    return success_response({"session_id": session_id, "updated_at": memory.updated_at.isoformat()}, "保存成功")
 
 
 @api_view(["POST"])
@@ -1649,17 +1655,11 @@ def session_memory_summarize(request):
     except ValueError as exc:
         return error_response(str(exc), "VALIDATION_ERROR", 400)
 
-    key = _session_memory_cache_key(int(user_id), session_id)
-    stored = {}
-    try:
-        stored = cache.get(key) or {}
-    except Exception:
-        stored = {}
-    if not isinstance(stored, dict):
-        stored = {}
+    memory = SessionMemory.objects.filter(user_id=user_id, session_id=session_id).first()
+    stored_messages = memory.messages if memory else []
 
     incoming_messages = _sanitize_messages((request.data or {}).get("messages"))
-    messages = incoming_messages or _sanitize_messages(stored.get("messages"))
+    messages = incoming_messages or stored_messages
     if not messages:
         return error_response("暂无可总结的对话内容", "VALIDATION_ERROR", 400)
 
@@ -1712,18 +1712,20 @@ def session_memory_summarize(request):
     if len(summary_text) > 4000:
         summary_text = summary_text[:4000]
 
-    now_iso = timezone.now().isoformat()
-    stored_messages = messages
-    payload = {"summary": summary_text, "messages": stored_messages, "updated_at": now_iso}
-    try:
-        cache.set(key, payload, timeout=int(getattr(settings, "CACHE_DEFAULT_TTL", 300)) * 24)
-    except Exception:
-        pass
+    memory, created = SessionMemory.objects.update_or_create(
+        user_id=user_id,
+        session_id=session_id,
+        defaults={
+            "summary": summary_text,
+            "messages": messages,
+        }
+    )
 
     return success_response(
-        {"session_id": session_id, "summary": summary_text, "updated_at": now_iso},
+        {"session_id": session_id, "summary": summary_text, "updated_at": memory.updated_at.isoformat()},
         "生成成功",
     )
+
 
 
 @api_view(["POST"])

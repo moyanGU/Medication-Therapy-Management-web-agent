@@ -514,8 +514,7 @@ import { api, logApiErrorEvent } from '@/utils/api'
 import { createAssistantEngine } from '@/services/assistantEngine'
 import type { SessionMemoryMessage } from '@/services/sessionMemory'
 import {
-  recordConfirmedProposal,
-  shouldAutoConfirmProposal,
+  getProposalPermissionState,
 } from '@/services/agentPermissions'
 
 type ChatMessage = {
@@ -1011,7 +1010,6 @@ const confirmProposal = async (index: number) => {
       path: message.proposal.targetPath,
       query: message.proposal.query,
     })
-    recordConfirmedProposal(message.proposal)
     showSuccess(`已前往${message.proposal.targetLabel}`)
   } catch (error) {
     console.error('[AiAssistant] confirm proposal failed', error)
@@ -1212,19 +1210,32 @@ const sendPageAgentMessage = async (text: string, aiMsgIndex: number) => {
 
   try {
     const result = await executePageAgentTask(task)
+    let finalProposal = result.proposal || null
+    let finalAnswer = result.answer
+    let permissionState = 'ask'
+    
+    if (finalProposal) {
+      permissionState = getProposalPermissionState(finalProposal)
+      if (permissionState === 'deny') {
+        finalProposal = null
+        finalAnswer += '\n\n*(注意：根据当前角色权限配置，此操作已被自动拒绝)*'
+      }
+    }
+
     scopedMessages[aiMsgIndex] = {
       role: 'ai',
       mode: 'page-agent',
-      content: result.answer,
-      proposal: result.proposal || null,
-      actionState: result.proposal ? 'pending' : undefined,
+      content: finalAnswer,
+      proposal: finalProposal,
+      actionState: finalProposal ? 'pending' : undefined,
     }
-    if (result.proposal && shouldAutoConfirmProposal(result.proposal)) {
+    
+    if (finalProposal && permissionState === 'allow') {
       await nextTick()
       await confirmProposal(aiMsgIndex)
     }
     if (isSpeechEnabled.value) {
-      speakAssistantMessage(result.answer)
+      speakAssistantMessage(finalAnswer)
     }
     await assistantEngine.persist(memSessionId, buildMemoryMessages('page-agent'))
   } catch (e: any) {
