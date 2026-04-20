@@ -230,6 +230,25 @@
               </div>
             </div>
           </article>
+
+          <!-- AI Session Memory Card -->
+          <article v-if="sessionMemory" class="rounded-3xl border border-indigo-100 bg-white p-6 shadow-sm xl:col-span-3">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div class="flex items-center gap-2">
+                <Sparkles class="h-5 w-5 text-indigo-600" />
+                <h2 class="text-lg font-semibold text-slate-900">AI 会话摘要 (Session Memory)</h2>
+              </div>
+              <span class="inline-flex items-center self-start rounded-full bg-indigo-100 px-3 py-1 text-xs font-medium text-indigo-700">
+                更新时间：{{ formatDateTime(sessionMemory.updated_at) }}
+              </span>
+            </div>
+            <div class="mt-5 rounded-2xl bg-indigo-50/50 p-5">
+              <h3 class="text-sm font-medium text-indigo-900 mb-3">摘要总结</h3>
+              <p class="text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">
+                {{ sessionMemory.summary || '暂无摘要' }}
+              </p>
+            </div>
+          </article>
         </section>
 
         <section class="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
@@ -601,6 +620,8 @@ import {
   isMtmCaseActive,
 } from '@/utils/mtm'
 
+import { getSessionMemory, type SessionMemoryPayload } from '@/services/sessionMemory'
+
 const isDebug = import.meta.env.MODE !== 'production'
 const log = (...args: unknown[]) => {
   if (isDebug) console.log(...args)
@@ -615,6 +636,7 @@ const router = useRouter()
 const { success: showSuccess, error: showError } = useToast()
 
 const serviceCase = ref<MtmServiceCase | null>(null)
+const sessionMemory = ref<SessionMemoryPayload | null>(null)
 const loading = ref(false)
 const transitioning = ref(false)
 const loadError = ref('')
@@ -898,8 +920,23 @@ const fetchServiceCaseDetail = async () => {
     log('🔵 [MtmServiceCaseDetailPage] 开始获取服务详情', {
       serviceCaseId: serviceCaseId.value,
     })
-    const detail = await mtmApi.getServiceCaseDetail(serviceCaseId.value)
+    
+    // 并行拉取详情和AI记忆
+    const [detail, memory] = await Promise.all([
+      mtmApi.getServiceCaseDetail(serviceCaseId.value),
+      getSessionMemory(`mtm:${serviceCaseId.value}:page-agent`).catch(err => {
+        log('🟡 [MtmServiceCaseDetailPage] 获取AI会话记忆失败', err)
+        return null
+      })
+    ])
+    
     serviceCase.value = detail
+    if (memory && (memory.summary || memory.messages?.length)) {
+      sessionMemory.value = memory
+    } else {
+      sessionMemory.value = null
+    }
+    
     log('🟢 [MtmServiceCaseDetailPage] 服务详情获取成功', detail)
   } catch (error) {
     if (isRequestCancelledError(error)) {

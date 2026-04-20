@@ -1,5 +1,6 @@
 import type { PageAgentActionProposal } from '@/services/pageAgentService'
 import { useAuthStore } from '@/stores/auth'
+import { api } from '@/utils/api'
 
 export type AgentPermissionState = 'ask' | 'allow' | 'deny'
 
@@ -28,6 +29,29 @@ const defaultMatrix: PermissionMatrix = {
     fill_form: 'ask',
     submit: 'ask',
   },
+}
+
+export async function fetchPermissionMatrix(): Promise<void> {
+  try {
+    const res = await api.get<any>('/ai/permissions/')
+    if (res.success && res.data) {
+      const remoteMatrix = res.data
+      const newMatrix: PermissionMatrix = { ...defaultMatrix }
+      
+      // Merge remote into default
+      for (const role of Object.keys(remoteMatrix)) {
+        if (!newMatrix[role]) {
+          newMatrix[role] = {}
+        }
+        for (const action of Object.keys(remoteMatrix[role])) {
+          newMatrix[role][action] = remoteMatrix[role][action] as AgentPermissionState
+        }
+      }
+      savePermissionMatrix(newMatrix)
+    }
+  } catch {
+    // silently fail and use default or cached
+  }
 }
 
 export function getPermissionMatrix(): PermissionMatrix {

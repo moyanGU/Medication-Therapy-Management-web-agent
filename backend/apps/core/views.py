@@ -1559,7 +1559,7 @@ def _normalize_session_id(session_id: str) -> str:
     return normalized
 
 
-from .models import SessionMemory
+from .models import SessionMemory, AgentPermission
 
 def _session_memory_cache_key(user_id: int, session_id: str) -> str:
     prefix = getattr(settings, "REDIS_KEY_PREFIX", "mtm-helper")
@@ -1727,6 +1727,21 @@ def session_memory_summarize(request):
     )
 
 
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def agent_permission_matrix(request):
+    """
+    获取全局 Agent 权限矩阵
+    """
+    permissions = AgentPermission.objects.all()
+    matrix = {}
+    for p in permissions:
+        if p.role not in matrix:
+            matrix[p.role] = {}
+        matrix[p.role][p.action_type] = p.state
+        
+    return success_response(matrix, "获取成功")
 
 @api_view(["POST"])
 def clear_cache(request):

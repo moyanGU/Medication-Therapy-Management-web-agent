@@ -57,6 +57,11 @@ urlpatterns = [
         views.session_memory_summarize,
         name="ai_session_memory_summarize",
     ),
+    path(
+        "ai/permissions/",
+        views.agent_permission_matrix,
+        name="ai_agent_permissions",
+    ),
     # 管理功能
     path("clear-cache/", views.clear_cache, name="clear_cache"),
 ]

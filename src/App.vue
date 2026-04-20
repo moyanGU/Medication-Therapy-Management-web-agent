@@ -3,6 +3,7 @@ import { onMounted, watch } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AiAssistant from '@/components/AiAssistant.vue'
 import { useAuth } from '@/composables/useAuth'
+import { fetchPermissionMatrix } from '@/services/agentPermissions'
 
 /**
  * 应用根组件
@@ -15,6 +16,9 @@ const { initializeAuth, isAuthenticated } = useAuth()
 onMounted(() => {
   // 初始化用户认证状态
   initializeAuth()
+
+  // Pre-fetch agent permissions
+  fetchPermissionMatrix()
 })
 
 watch(
