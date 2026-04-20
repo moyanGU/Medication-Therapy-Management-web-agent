@@ -28,6 +28,8 @@ import {
   type PageAgentTaskResult,
 } from '@/services/pageAgentShared'
 import { resolveApiBaseURL } from '@/utils/api'
+import { globalToolRegistry } from '@/services/toolRegistry'
+
 const CONTROLLED_NAVIGATION_TARGETS = [
   {
     matcher: /(仪表板|总览|首页|概览)/,
@@ -545,6 +547,16 @@ function buildPageAgentConfig(): PageAgentCoreConfig {
       input_text: null,
       select_dropdown_option: null,
       execute_javascript: null,
+      ...Object.fromEntries(
+        globalToolRegistry.getAllTools().map((t) => [
+          t.name,
+          tool({
+            description: t.description,
+            inputSchema: t.inputSchema,
+            execute: t.execute,
+          }),
+        ])
+      ),
       get_mtm_runtime_context: tool({
         description: '获取 mtm-helper 当前页面的运行时上下文信息。',
         inputSchema: z.object({}),

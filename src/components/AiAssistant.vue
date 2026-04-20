@@ -516,6 +516,8 @@ import type { SessionMemoryMessage } from '@/services/sessionMemory'
 import {
   getProposalPermissionState,
 } from '@/services/agentPermissions'
+import { globalToolRegistry } from '@/services/toolRegistry'
+import { z } from 'zod/v4'
 
 type ChatMessage = {
   role: 'user' | 'ai'
@@ -661,6 +663,64 @@ onMounted(() => {
   // 初始位置吸附
   snapToEdge()
   void runQaScenarioFromRoute()
+
+  // 注册前端 UI 操作工具到全局注册表 (Tool Registry)
+  globalToolRegistry.register({
+    name: 'switch_assistant_mode',
+    description: '切换AI助手的模式。当用户要求切换到用药问答或页面助手时调用。',
+    inputSchema: z.object({
+      mode: z.enum(['medication', 'page-agent']).describe('目标模式：medication (用药问答), page-agent (页面助手)')
+    }),
+    execute: ({ mode }) => {
+      switchMode(mode)
+      return `已成功为您切换到${mode === 'medication' ? '用药问答' : '页面助手'}模式。`
+    }
+  })
+
+  globalToolRegistry.register({
+    name: 'clear_chat_history',
+    description: '清空当前AI助手的聊天记录。当用户说“清空记录”、“重置对话”、“重新开始”时调用。',
+    inputSchema: z.object({}),
+    execute: () => {
+      clearCurrentModeMessages()
+      return '对话记录已为您清空。'
+    }
+  })
+
+  globalToolRegistry.register({
+    name: 'close_assistant_panel',
+    description: '关闭AI助手聊天窗口。当用户说“退下”、“关闭面板”、“关掉窗口”时调用。',
+    inputSchema: z.object({}),
+    execute: () => {
+      closeChat()
+      return '即将关闭助手面板...'
+    }
+  })
+
+  globalToolRegistry.register({
+    name: 'read_aloud_text',
+    description: '使用系统语音播报（TTS）朗读一段文本内容。当用户说“帮我读一下”、“念出来”时调用。',
+    inputSchema: z.object({
+      text: z.string().describe('需要朗读的纯文本内容')
+    }),
+    execute: ({ text }) => {
+      if (!isSpeechSupported.value) {
+        return '当前设备不支持语音播报功能。'
+      }
+      speakAssistantMessage(text)
+      return '正在为您语音播报该内容。'
+    }
+  })
+
+  globalToolRegistry.register({
+    name: 'toggle_voice_recording',
+    description: '开启或关闭语音输入（麦克风）。当用户想用语音输入时调用。',
+    inputSchema: z.object({}),
+    execute: () => {
+      toggleRecording()
+      return isRecording.value ? '语音输入已开启，请说话...' : '语音输入已关闭。'
+    }
+  })
 })
 
 onUnmounted(() => {
