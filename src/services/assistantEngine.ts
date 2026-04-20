@@ -12,6 +12,9 @@ type SummaryCache = Record<string, string>
 export function createAssistantEngine() {
   const summaryCache: SummaryCache = {}
 
+  // 跨页面共享上下文 (Global cross-route reasoning)
+  let globalContextMemory = ''
+
   const getSessionIdBase = (pathname: string) => {
     const normalized = pathname || '/'
     const mtmMatch = normalized.match(/^\/mtm\/service-cases\/(\d+)(?:\/|$)/)
@@ -41,9 +44,28 @@ export function createAssistantEngine() {
 
   const augmentUserText = (mode: AssistantMode, text: string, summary: string) => {
     const cleaned = (text || '').trim()
-    if (!summary) return cleaned
-    if (mode === 'page-agent') return `会话记忆：${summary}\n\n任务：${cleaned}`
-    return `会话记忆：${summary}\n\n问题：${cleaned}`
+    
+    // 合并跨路由全局记忆和当前页面记忆
+    let combinedContext = ''
+    if (globalContextMemory) {
+      combinedContext += `【全局跨页面记忆】\n${globalContextMemory}\n\n`
+    }
+    if (summary) {
+      combinedContext += `【当前页面记忆】\n${summary}\n\n`
+    }
+    
+    if (!combinedContext) return cleaned
+
+    if (mode === 'page-agent') {
+      return `${combinedContext.trim()}\n\n任务：${cleaned}`
+    }
+    return `${combinedContext.trim()}\n\n问题：${cleaned}`
+  }
+
+  const syncGlobalContext = (newContext: string) => {
+    if (newContext) {
+      globalContextMemory = newContext
+    }
   }
 
   const persist = async (sessionId: string, messages: SessionMemoryMessage[]) => {
@@ -55,6 +77,10 @@ export function createAssistantEngine() {
       if (!shouldSummarize) return summary
       const result = await summarizeSessionMemory(sessionId, messages)
       summaryCache[sessionId] = result.summary || ''
+      
+      // 更新跨路由记忆 (保持全局感知)
+      syncGlobalContext(result.summary || '')
+      
       return summaryCache[sessionId]
     } catch {
       return summaryCache[sessionId] || ''
@@ -66,6 +92,7 @@ export function createAssistantEngine() {
     ensureSummary,
     augmentUserText,
     persist,
+    syncGlobalContext,
   }
 }
 

@@ -499,7 +499,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
+import { watch, ref, reactive, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   executePageAgentTask,
@@ -732,6 +732,24 @@ watch(
   () => route.fullPath,
   () => {
     void runQaScenarioFromRoute()
+  }
+)
+
+// 当路由变化时，主动同步当前页面的 Session Memory 作为全局跨路由记忆
+watch(
+  () => route.path,
+  async (newPath) => {
+    if (newPath && currentMode.value === 'page-agent') {
+      const sessionId = assistantEngine.buildSessionId(newPath, 'page-agent')
+      try {
+        const summary = await assistantEngine.ensureSummary(sessionId)
+        if (summary) {
+          assistantEngine.syncGlobalContext(summary)
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
   }
 )
 
