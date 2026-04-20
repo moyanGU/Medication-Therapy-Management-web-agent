@@ -511,6 +511,12 @@ import {
 import { useSpeech } from '@/composables/useSpeech'
 import { useToast } from '@/composables/useToast'
 import { api, logApiErrorEvent } from '@/utils/api'
+import { createAssistantEngine } from '@/services/assistantEngine'
+import type { SessionMemoryMessage } from '@/services/sessionMemory'
+import {
+  recordConfirmedProposal,
+  shouldAutoConfirmProposal,
+} from '@/services/agentPermissions'
 
 type ChatMessage = {
   role: 'user' | 'ai'
@@ -857,6 +863,21 @@ const quickAsk = (text: string) => {
   sendMessage()
 }
 
+const assistantEngine = createAssistantEngine()
+
+const buildMemoryMessages = (mode: PageAgentMode): SessionMemoryMessage[] => {
+  const scoped = modeMessages[mode]
+  return scoped
+    .filter((msg) => msg && (msg.role === 'user' || msg.role === 'ai'))
+    .filter((msg) => !msg.loading && !msg.error)
+    .slice(-40)
+    .map((msg) => ({
+      role: msg.role,
+      content: String(msg.content || '').trim(),
+    }))
+    .filter((msg) => msg.content.length > 0)
+}
+
 const isLikelyMedicationQuestion = (text: string) => {
   const compact = text.replace(/\s+/g, '').toLowerCase()
   const keywords = [
@@ -990,6 +1011,7 @@ const confirmProposal = async (index: number) => {
       path: message.proposal.targetPath,
       query: message.proposal.query,
     })
+    recordConfirmedProposal(message.proposal)
     showSuccess(`已前往${message.proposal.targetLabel}`)
   } catch (error) {
     console.error('[AiAssistant] confirm proposal failed', error)
@@ -1102,15 +1124,19 @@ const buildPageAgentErrorMessage = (error: any) => {
 
 const sendMedicationGuidanceMessage = async (text: string, aiMsgIndex: number) => {
   const scopedMessages = modeMessages.medication
+  const pathname = route.path || window.location.pathname || '/'
+  const memSessionId = assistantEngine.buildSessionId(pathname, 'medication')
+  const summary = await assistantEngine.ensureSummary(memSessionId)
+  const question = assistantEngine.augmentUserText('medication', text, summary)
   console.log('[AI] Sending request to /ai/medication-guidance/', {
-    question: text,
+    question,
   })
 
   try {
     const resp = await api.post<MedicationGuidancePayload>(
       '/ai/medication-guidance/',
       {
-        question: text,
+        question,
         // 全局助手不带 medicine_id，或者后续可扩展传递当前页面上下文
       },
       {
@@ -1155,6 +1181,7 @@ const sendMedicationGuidanceMessage = async (text: string, aiMsgIndex: number) =
     } else {
       throw new Error(resp.message || '请求失败')
     }
+    await assistantEngine.persist(memSessionId, buildMemoryMessages('medication'))
   } catch (e: any) {
     logApiErrorEvent('AiAssistant.medication-guidance', e, {
       questionLength: text.length,
@@ -1168,18 +1195,23 @@ const sendMedicationGuidanceMessage = async (text: string, aiMsgIndex: number) =
       content: msg,
       error: true,
     }
+    await assistantEngine.persist(memSessionId, buildMemoryMessages('medication'))
   }
 }
 
 const sendPageAgentMessage = async (text: string, aiMsgIndex: number) => {
   const scopedMessages = modeMessages['page-agent']
+  const pathname = route.path || window.location.pathname || '/'
+  const memSessionId = assistantEngine.buildSessionId(pathname, 'page-agent')
+  const summary = await assistantEngine.ensureSummary(memSessionId)
+  const task = assistantEngine.augmentUserText('page-agent', text, summary)
   console.log('[PageAgent] Sending page analysis request', {
-    task: text,
+    task,
     pathname: window.location.pathname,
   })
 
   try {
-    const result = await executePageAgentTask(text)
+    const result = await executePageAgentTask(task)
     scopedMessages[aiMsgIndex] = {
       role: 'ai',
       mode: 'page-agent',
@@ -1187,9 +1219,14 @@ const sendPageAgentMessage = async (text: string, aiMsgIndex: number) => {
       proposal: result.proposal || null,
       actionState: result.proposal ? 'pending' : undefined,
     }
+    if (result.proposal && shouldAutoConfirmProposal(result.proposal)) {
+      await nextTick()
+      await confirmProposal(aiMsgIndex)
+    }
     if (isSpeechEnabled.value) {
       speakAssistantMessage(result.answer)
     }
+    await assistantEngine.persist(memSessionId, buildMemoryMessages('page-agent'))
   } catch (e: any) {
     logApiErrorEvent('AiAssistant.page-agent', e, {
       taskLength: text.length,
@@ -1205,6 +1242,7 @@ const sendPageAgentMessage = async (text: string, aiMsgIndex: number) => {
       error: true,
       proposal: null,
     }
+    await assistantEngine.persist(memSessionId, buildMemoryMessages('page-agent'))
   }
 }
 

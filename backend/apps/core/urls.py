@@ -47,6 +47,16 @@ urlpatterns = [
         views.page_agent_chat_completions,
         name="ai_page_agent_chat_completions_no_slash",
     ),
+    path(
+        "ai/session-memory/",
+        views.session_memory,
+        name="ai_session_memory",
+    ),
+    path(
+        "ai/session-memory/summarize/",
+        views.session_memory_summarize,
+        name="ai_session_memory_summarize",
+    ),
     # 管理功能
     path("clear-cache/", views.clear_cache, name="clear_cache"),
 ]

@@ -1548,6 +1548,184 @@ def medication_guidance(request):
     )
 
 
+def _normalize_session_id(session_id: str) -> str:
+    normalized = (session_id or "").strip()
+    if not normalized:
+        raise ValueError("缺少 session_id")
+    if len(normalized) > 128:
+        raise ValueError("session_id 过长")
+    if not re.match(r"^[a-zA-Z0-9:_-]+$", normalized):
+        raise ValueError("session_id 格式不合法")
+    return normalized
+
+
+def _session_memory_cache_key(user_id: int, session_id: str) -> str:
+    prefix = getattr(settings, "REDIS_KEY_PREFIX", "mtm-helper")
+    return f"{prefix}:ai:session_memory:{user_id}:{session_id}"
+
+
+def _sanitize_messages(messages):
+    if not isinstance(messages, list):
+        return []
+    sanitized = []
+    for item in messages:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "").strip()
+        content = str(item.get("content") or "").strip()
+        if role not in ("user", "ai", "assistant", "system"):
+            continue
+        if not content:
+            continue
+        if len(content) > 2000:
+            content = content[:2000]
+        sanitized.append({"role": "ai" if role == "assistant" else role, "content": content})
+    return sanitized[-60:]
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def session_memory(request):
+    user_id = getattr(request.user, "id", None)
+    if not user_id:
+        return error_response("需要登录", "AUTH_REQUIRED", 401)
+
+    if request.method == "GET":
+        session_id_raw = request.query_params.get("session_id") or ""
+        try:
+            session_id = _normalize_session_id(session_id_raw)
+        except ValueError as exc:
+            return error_response(str(exc), "VALIDATION_ERROR", 400)
+
+        key = _session_memory_cache_key(int(user_id), session_id)
+        try:
+            payload = cache.get(key) or {}
+        except Exception:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        return success_response(
+            {
+                "session_id": session_id,
+                "summary": str(payload.get("summary") or ""),
+                "messages": payload.get("messages") if isinstance(payload.get("messages"), list) else [],
+                "updated_at": payload.get("updated_at"),
+            },
+            "获取成功",
+        )
+
+    try:
+        session_id = _normalize_session_id(str((request.data or {}).get("session_id") or ""))
+    except ValueError as exc:
+        return error_response(str(exc), "VALIDATION_ERROR", 400)
+
+    messages = _sanitize_messages((request.data or {}).get("messages"))
+    summary = str((request.data or {}).get("summary") or "").strip()
+    if len(summary) > 4000:
+        summary = summary[:4000]
+
+    key = _session_memory_cache_key(int(user_id), session_id)
+    now_iso = timezone.now().isoformat()
+    payload = {"summary": summary, "messages": messages, "updated_at": now_iso}
+    try:
+        cache.set(key, payload, timeout=int(getattr(settings, "CACHE_DEFAULT_TTL", 300)) * 24)
+    except Exception:
+        pass
+    return success_response({"session_id": session_id, "updated_at": now_iso}, "保存成功")
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def session_memory_summarize(request):
+    user_id = getattr(request.user, "id", None)
+    if not user_id:
+        return error_response("需要登录", "AUTH_REQUIRED", 401)
+
+    if not getattr(settings, "BAICHUAN_M3_ENABLED", False):
+        return error_response("AI 服务未启用", "AI_DISABLED", 503)
+
+    try:
+        session_id = _normalize_session_id(str((request.data or {}).get("session_id") or ""))
+    except ValueError as exc:
+        return error_response(str(exc), "VALIDATION_ERROR", 400)
+
+    key = _session_memory_cache_key(int(user_id), session_id)
+    stored = {}
+    try:
+        stored = cache.get(key) or {}
+    except Exception:
+        stored = {}
+    if not isinstance(stored, dict):
+        stored = {}
+
+    incoming_messages = _sanitize_messages((request.data or {}).get("messages"))
+    messages = incoming_messages or _sanitize_messages(stored.get("messages"))
+    if not messages:
+        return error_response("暂无可总结的对话内容", "VALIDATION_ERROR", 400)
+
+    base_url = getattr(settings, "BAICHUAN_M3_API_BASE_URL", "")
+    api_key = getattr(settings, "BAICHUAN_M3_API_KEY", "")
+    model = getattr(settings, "BAICHUAN_M3_MODEL", "")
+    timeout_seconds = float(getattr(settings, "BAICHUAN_M3_TIMEOUT_SECONDS", 30))
+
+    if not base_url or not model:
+        return error_response("AI 服务配置缺失", "AI_CONFIG_MISSING", 503)
+
+    system_prompt = (
+        "你是一个严谨的临床用药助理，请将以下对话总结为“会话记忆”，用于后续连续对话。\n"
+        "要求：\n"
+        "1) 只保留对后续用药管理/MTM服务有帮助的事实与结论；\n"
+        "2) 包括：用户背景与目标、关键药品/剂量/频次、已确认的计划、未解决问题、下一步建议；\n"
+        "3) 不要编造；不包含隐私敏感信息（如身份证、住址）；\n"
+        "4) 用中文输出，控制在 400 字以内。\n"
+    )
+
+    transcript_lines = []
+    for item in messages[-40:]:
+        role = "用户" if item.get("role") == "user" else "助手"
+        transcript_lines.append(f"{role}：{item.get('content')}")
+    transcript = "\n".join(transcript_lines)
+
+    llm_messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": transcript},
+    ]
+
+    try:
+        summary_text = _openai_chat_completion(
+            base_url=base_url,
+            api_key=api_key,
+            model=model,
+            messages=llm_messages,
+            temperature=0.1,
+            max_tokens=512,
+            timeout_seconds=timeout_seconds,
+        )
+    except Exception as exc:
+        logger.error(
+            "[AI] session_memory_summarize failed",
+            extra={"user_id": user_id, "session_id": session_id, "error": str(exc)},
+        )
+        return error_response("AI 生成失败", "AI_GENERATION_FAILED", 500)
+
+    summary_text = _normalize_llm_answer(str(summary_text or "")).strip()
+    if len(summary_text) > 4000:
+        summary_text = summary_text[:4000]
+
+    now_iso = timezone.now().isoformat()
+    stored_messages = messages
+    payload = {"summary": summary_text, "messages": stored_messages, "updated_at": now_iso}
+    try:
+        cache.set(key, payload, timeout=int(getattr(settings, "CACHE_DEFAULT_TTL", 300)) * 24)
+    except Exception:
+        pass
+
+    return success_response(
+        {"session_id": session_id, "summary": summary_text, "updated_at": now_iso},
+        "生成成功",
+    )
+
+
 @api_view(["POST"])
 def clear_cache(request):
     """
