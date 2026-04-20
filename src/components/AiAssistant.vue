@@ -1186,59 +1186,74 @@ const sendMedicationGuidanceMessage = async (text: string, aiMsgIndex: number) =
   const memSessionId = assistantEngine.buildSessionId(pathname, 'medication')
   const summary = await assistantEngine.ensureSummary(memSessionId)
   const question = assistantEngine.augmentUserText('medication', text, summary)
-  console.log('[AI] Sending request to /ai/medication-guidance/', {
-    question,
-  })
+  console.log('[AI] Sending stream request to /ai/medication-guidance/', { question })
+
+  let answerText = ''
+  let fallbackUsed = false
+  let blocked = false
+  let reason = ''
+  let hasReceivedFirstChunk = false
 
   try {
-    const resp = await api.post<MedicationGuidancePayload>(
+    await api.stream(
       '/ai/medication-guidance/',
       {
         question,
-        // 全局助手不带 medicine_id，或者后续可扩展传递当前页面上下文
+        stream: true,
       },
-      {
-        timeout: 70000,
-      }
+      (chunkText, isJson, data) => {
+        if (!hasReceivedFirstChunk) {
+          scopedMessages[aiMsgIndex].loading = false
+          hasReceivedFirstChunk = true
+        }
+
+        if (isJson && data) {
+          if (data.chunk) {
+            answerText += data.chunk
+            scopedMessages[aiMsgIndex].content = answerText
+          } else if (data.error) {
+             // Handle stream error
+             if (data.fallback) {
+               answerText = data.fallback
+               fallbackUsed = true
+               scopedMessages[aiMsgIndex].content = answerText
+               scopedMessages[aiMsgIndex].fallbackUsed = true
+             }
+          } else if (data.blocked !== undefined) {
+             // Blocked response
+             blocked = true
+             reason = data.reason
+             answerText = data.answer || ''
+             scopedMessages[aiMsgIndex].content = answerText
+          } else if (data.answer !== undefined) {
+             // non-streamed response fallback
+             answerText = data.answer
+             fallbackUsed = Boolean(data.fallback_used)
+             scopedMessages[aiMsgIndex].content = answerText
+             scopedMessages[aiMsgIndex].fallbackUsed = fallbackUsed
+          }
+        }
+        scrollToBottom()
+      },
+      { timeout: 70000 }
     )
 
-    console.log('[AI] medication-guidance response', resp)
-
-    if (resp.success) {
-      const data = resolveMedicationGuidancePayload(resp)
-      console.log('[AI] medication-guidance payload', data)
-
-      if (!data.blocked && !data.answer) {
-        throw new Error('AI 暂时没有返回可用内容，请稍后重试。')
-      }
-
-      if (data.blocked) {
-        if (isLikelyMedicationQuestion(text)) {
-          scopedMessages[aiMsgIndex] = {
-            role: 'ai',
-            mode: 'medication',
-            content:
-              '你问的是用药相关问题。我可以继续给出通用用药指导：请补充药品规格（如 0.1g/片）、使用者年龄/体重、是否怀孕/哺乳及合并用药，我会按说明书要点给出更准确建议。',
-            fallbackUsed: true,
-          }
-          return
-        }
-        scopedMessages[aiMsgIndex] = {
-          role: 'ai',
-          mode: 'medication',
-          content: `⚠️ ${data.reason || '抱歉，我只能回答用药相关的问题。'}\n\n请尝试询问具体药品的用法、用量或禁忌。`,
-        }
+    if (blocked) {
+      if (isLikelyMedicationQuestion(text)) {
+        scopedMessages[aiMsgIndex].content = '你问的是用药相关问题。我可以继续给出通用用药指导：请补充药品规格（如 0.1g/片）、使用者年龄/体重、是否怀孕/哺乳及合并用药，我会按说明书要点给出更准确建议。'
+        scopedMessages[aiMsgIndex].fallbackUsed = true
       } else {
-        scopedMessages[aiMsgIndex] = {
-          role: 'ai',
-          mode: 'medication',
-          content: data.answer,
-          fallbackUsed: !!data.fallback_used,
-        }
+        scopedMessages[aiMsgIndex].content = `⚠️ ${reason || '抱歉，我只能回答用药相关的问题。'}\n\n请尝试询问具体药品的用法、用量或禁忌。`
       }
+    } else if (!answerText) {
+      throw new Error('AI 暂时没有返回可用内容，请稍后重试。')
     } else {
-      throw new Error(resp.message || '请求失败')
+      scopedMessages[aiMsgIndex].fallbackUsed = fallbackUsed
+      if (isSpeechEnabled.value) {
+        speakAssistantMessage(answerText)
+      }
     }
+
     await assistantEngine.persist(memSessionId, buildMemoryMessages('medication'))
   } catch (e: any) {
     logApiErrorEvent('AiAssistant.medication-guidance', e, {
@@ -1252,6 +1267,7 @@ const sendMedicationGuidanceMessage = async (text: string, aiMsgIndex: number) =
       mode: 'medication',
       content: msg,
       error: true,
+      loading: false,
     }
     await assistantEngine.persist(memSessionId, buildMemoryMessages('medication'))
   }
@@ -1269,7 +1285,15 @@ const sendPageAgentMessage = async (text: string, aiMsgIndex: number) => {
   })
 
   try {
-    const result = await executePageAgentTask(task)
+    const result = await executePageAgentTask(task, (steps: string[]) => {
+      // Update UI with latest steps in real-time
+      if (steps && steps.length > 0) {
+        scopedMessages[aiMsgIndex].loading = false
+        scopedMessages[aiMsgIndex].content = steps.join('\n') + '\n\n*(思考中...)*'
+        scrollToBottom()
+      }
+    })
+    
     let finalProposal = result.proposal || null
     let finalAnswer = result.answer
     let permissionState = 'ask'

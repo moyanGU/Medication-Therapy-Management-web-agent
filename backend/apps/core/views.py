@@ -835,6 +835,64 @@ def _extract_json_object(text: str) -> dict | None:
         return None
 
 
+def _openai_chat_completion_stream(
+    *,
+    base_url: str,
+    api_key: str,
+    model: str,
+    messages: list[dict],
+    temperature: float,
+    max_tokens: int,
+    timeout_seconds: float,
+):
+    """调用 OpenAI 兼容 /chat/completions 接口，并使用流式输出生成器。"""
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+
+    urls = _build_openai_chat_completion_urls(base_url)
+    if not urls:
+        raise RuntimeError("llm_invalid_base_url")
+
+    last_error: str | None = None
+    for index, url in enumerate(urls):
+        try:
+            with requests.post(url, headers=headers, json=payload, timeout=timeout_seconds, stream=True) as resp:
+                if resp.status_code >= 300:
+                    body_text = str(getattr(resp, "text", "") or "")
+                    last_error = f"llm_http_error:{resp.status_code}:{body_text[:200]}"
+                    continue
+                
+                for line in resp.iter_lines():
+                    if line:
+                        line_str = line.decode('utf-8')
+                        if line_str.startswith('data: '):
+                            data_str = line_str[6:]
+                            if data_str == '[DONE]':
+                                break
+                            try:
+                                data = json.loads(data_str)
+                                delta = data.get('choices', [{}])[0].get('delta', {})
+                                content = delta.get('content', '')
+                                if content:
+                                    yield json.dumps({"chunk": content}, ensure_ascii=False) + "\n"
+                            except Exception:
+                                pass
+                return
+        except Exception as exc:
+            last_error = f"llm_request_exception:{type(exc).__name__}:{str(exc)[:120]}"
+            continue
+
+    yield json.dumps({"error": last_error or "llm_invalid_response"}, ensure_ascii=False) + "\n"
+
+
 def _openai_chat_completion(
     *,
     base_url: str,
@@ -957,41 +1015,7 @@ def _looks_unhelpful_answer(text: str) -> bool:
     return False
 
 
-def _is_probably_medication_question(question: str, medicine_context: dict | None) -> bool:
-    q = (question or "").strip()
-    if not q:
-        return False
-    if isinstance(medicine_context, dict) and medicine_context:
-        return True
 
-    q_compact = re.sub(r"\s+", "", q).lower()
-    keyword_hits = [
-        "药",
-        "用药",
-        "服用",
-        "剂量",
-        "用法",
-        "用量",
-        "禁忌",
-        "副作用",
-        "相互作用",
-        "饭前",
-        "饭后",
-        "一次",
-        "每日",
-        "多久",
-        "aspirin",
-        "amoxicillin",
-        "ibuprofen",
-        "paracetamol",
-        "acetaminophen",
-        "阿司匹林",
-        "阿莫西林",
-        "布洛芬",
-        "头孢",
-        "对乙酰氨基酚",
-    ]
-    return any(k in q_compact for k in keyword_hits)
 
 
 def _fallback_medication_guidance_answer(
@@ -1342,12 +1366,15 @@ def medication_guidance(request):
     question = str((request.data or {}).get("question", "")).strip()
     medicine_id = (request.data or {}).get("medicine_id")
 
+    stream_requested = str(request.data.get("stream", "")).lower() == "true"
+
     logger.info(
         "[AI] medication_guidance request",
         extra={
             "user_id": getattr(request.user, "id", None),
             "has_question": bool(question),
             "medicine_id": medicine_id,
+            "stream": stream_requested,
         },
     )
 
@@ -1393,73 +1420,14 @@ def medication_guidance(request):
         except Exception as e:
             logger.warning(f"[AI] medicine_context load failed: {e}")
 
-    classifier_messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are a strict content classifier for a medication guidance app. "
-                "Decide whether the user request is ONLY about medications and medication use guidance. "
-                "Allowed: drug names, dosage, frequency, timing, interactions, contraindications, side effects, "
-                "missed dose, storage, pregnancy/children/elderly precautions related to a medication. "
-                "Disallowed: diagnosis, differential diagnosis, lab/imaging, treatment plan for diseases, "
-                "medical record interpretation, emergency triage, prognosis. "
-                "Answer directly. Do not include analysis. "
-                "Return ONLY a JSON object with keys: allowed (boolean), reason (string). "
-                "No markdown. No code fences. "
-                'Example allowed: {"allowed": true, "reason": ""}. '
-                'Example disallowed: {"allowed": false, "reason": "short reason"}.'
-            ),
-        },
-        {
-            "role": "user",
-            "content": json.dumps(
-                {
-                    "question": question,
-                    "medicine_context": medicine_context,
-                },
-                ensure_ascii=False,
-            ),
-        },
-    ]
-
     try:
-        try:
-            cls_text = _openai_chat_completion(
-                base_url=base_url,
-                api_key=api_key,
-                model=model,
-                messages=classifier_messages,
-                temperature=0.0,
-                max_tokens=cls_max_tokens,
-                timeout_seconds=timeout_seconds,
-                response_format={"type": "json_object"},
-            )
-        except Exception as e:
-            logger.info(f"[AI] classifier response_format fallback: {e}")
-            cls_text = _openai_chat_completion(
-                base_url=base_url,
-                api_key=api_key,
-                model=model,
-                messages=classifier_messages,
-                temperature=0.0,
-                max_tokens=cls_max_tokens,
-                timeout_seconds=timeout_seconds,
-            )
-
-        logger.info(f"[AI] classifier raw len={len(cls_text)} head={cls_text[:180]!r}")
-        cls_obj = _extract_json_object(cls_text) or {}
-        allowed = bool(cls_obj.get("allowed"))
-        reason = str(cls_obj.get("reason", "")).strip() or ""
+        from apps.core.agents.medication_agent import MedicationAgent
+        agent = MedicationAgent(user_id=getattr(request.user, "id", None))
+        intent = agent.check_intent(question, medicine_context)
+        allowed = intent["allowed"]
+        reason = intent["reason"]
     except Exception as e:
         logger.warning(f"[AI] classifier failed: {e}")
-        allowed = _is_probably_medication_question(question, medicine_context)
-        reason = "" if allowed else "分类失败，且问题不符合用药咨询范围"
-
-    if not allowed and _is_probably_medication_question(question, medicine_context):
-        logger.info(
-            "[AI] classifier corrected to allow by heuristic",
-            extra={"user_id": getattr(request.user, "id", None)},
-        )
         allowed = True
         reason = ""
 
@@ -1468,51 +1436,35 @@ def medication_guidance(request):
             "[AI] blocked non-medication request",
             extra={"user_id": getattr(request.user, "id", None), "reason": reason},
         )
-        return success_response(
-            {
-                "blocked": True,
-                "reason": reason or "当前仅支持药物信息与用药指导咨询（不支持诊断/检查/疾病治疗方案）。",
-                "answer": "当前仅支持药物信息与用药指导咨询。请将问题改为具体药物的用法用量、注意事项、相互作用、不良反应等。",
-            },
-            "已拦截非用药咨询",
-        )
-
-    system_prompt = (
-        "你是 MTM-用药助手的用药指导助手。\n"
-        "你只能回答药物信息与用药指导相关内容，不做疾病诊断、不判断病情严重程度、不替代医生。\n"
-        "如果用户的问题包含疾病诊断/检查/治疗方案请求，请拒绝并引导其改问用药问题。\n"
-        "不要仅用一句话拒答（例如‘无法提供/无法直接提供’）；当关键信息不足以给出具体剂量时，请给出通用用药原则并提出澄清问题。\n"
-        "回答时请尽量结构化：用法用量（一般信息）、禁忌/慎用人群、相互作用、常见不良反应、漏服/过量处理、储存方式、何时就医（仅基于用药风险）。\n"
-        "避免给出超出说明书或权威指南的精确个体化剂量；需要关键信息时，先提出澄清问题。"
-    )
-
-    user_payload = {
-        "question": question,
-        "medicine_context": medicine_context,
-        "constraints": {
-            "only_medication_guidance": True,
-            "no_diagnosis": True,
-        },
-    }
+        resp_data = {
+            "blocked": True,
+            "reason": reason or "当前仅支持药物信息与用药指导咨询（不支持诊断/检查/疾病治疗方案）。",
+            "answer": "当前仅支持药物信息与用药指导咨询。请将问题改为具体药物的用法用量、注意事项、相互作用、不良反应等。",
+        }
+        if stream_requested:
+            from django.http import StreamingHttpResponse
+            def _gen():
+                yield json.dumps(resp_data, ensure_ascii=False) + "\n"
+            return StreamingHttpResponse(_gen(), content_type="application/x-ndjson")
+        return success_response(resp_data, "已拦截非用药咨询")
 
     fallback_used = False
 
     try:
-        answer = _openai_chat_completion(
-            base_url=base_url,
-            api_key=api_key,
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": json.dumps(user_payload, ensure_ascii=False),
-                },
-            ],
-            temperature=0.2,
-            max_tokens=max_tokens,
-            timeout_seconds=timeout_seconds,
-        )
+        if stream_requested:
+            from django.http import StreamingHttpResponse
+            def _stream_generator():
+                try:
+                    for chunk in agent.run_stream(question, medicine_context):
+                        yield chunk
+                except Exception as e:
+                    logger.error(f"[AI] stream generation failed: {e}")
+                    fallback_answer = _fallback_medication_guidance_answer(question, medicine_context)
+                    yield json.dumps({"error": "generation_failed", "fallback": fallback_answer}, ensure_ascii=False) + "\n"
+
+            return StreamingHttpResponse(_stream_generator(), content_type="application/x-ndjson")
+            
+        answer = agent.run(question, medicine_context)
     except Exception as e:
         logger.error(f"[AI] generation failed: {e}")
         answer = _fallback_medication_guidance_answer(question, medicine_context)
@@ -1663,44 +1615,10 @@ def session_memory_summarize(request):
     if not messages:
         return error_response("暂无可总结的对话内容", "VALIDATION_ERROR", 400)
 
-    base_url = getattr(settings, "BAICHUAN_M3_API_BASE_URL", "")
-    api_key = getattr(settings, "BAICHUAN_M3_API_KEY", "")
-    model = getattr(settings, "BAICHUAN_M3_MODEL", "")
-    timeout_seconds = float(getattr(settings, "BAICHUAN_M3_TIMEOUT_SECONDS", 30))
-
-    if not base_url or not model:
-        return error_response("AI 服务配置缺失", "AI_CONFIG_MISSING", 503)
-
-    system_prompt = (
-        "你是一个严谨的临床用药助理，请将以下对话总结为“会话记忆”，用于后续连续对话。\n"
-        "要求：\n"
-        "1) 只保留对后续用药管理/MTM服务有帮助的事实与结论；\n"
-        "2) 包括：用户背景与目标、关键药品/剂量/频次、已确认的计划、未解决问题、下一步建议；\n"
-        "3) 不要编造；不包含隐私敏感信息（如身份证、住址）；\n"
-        "4) 用中文输出，控制在 400 字以内。\n"
-    )
-
-    transcript_lines = []
-    for item in messages[-40:]:
-        role = "用户" if item.get("role") == "user" else "助手"
-        transcript_lines.append(f"{role}：{item.get('content')}")
-    transcript = "\n".join(transcript_lines)
-
-    llm_messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": transcript},
-    ]
-
     try:
-        summary_text = _openai_chat_completion(
-            base_url=base_url,
-            api_key=api_key,
-            model=model,
-            messages=llm_messages,
-            temperature=0.1,
-            max_tokens=512,
-            timeout_seconds=timeout_seconds,
-        )
+        from apps.core.agents.memory_agent import SessionMemoryAgent
+        agent = SessionMemoryAgent(user_id=user_id, session_id=session_id)
+        summary_text = agent.summarize(messages)
     except Exception as exc:
         logger.error(
             "[AI] session_memory_summarize failed",
@@ -1708,7 +1626,6 @@ def session_memory_summarize(request):
         )
         return error_response("AI 生成失败", "AI_GENERATION_FAILED", 500)
 
-    summary_text = _normalize_llm_answer(str(summary_text or "")).strip()
     if len(summary_text) > 4000:
         summary_text = summary_text[:4000]
 

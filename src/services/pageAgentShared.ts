@@ -3,9 +3,11 @@ export type PageAgentMode = 'medication' | 'page-agent'
 export interface PageAgentTaskResult {
   success: boolean
   answer: string
-  steps: string[]
+  steps?: string[]
   proposal?: PageAgentActionProposal | null
 }
+
+export type OnStepCallback = (steps: string[]) => void
 
 export type PageAgentPageKey =
   | 'dashboard'

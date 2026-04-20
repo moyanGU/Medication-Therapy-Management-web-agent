@@ -1204,6 +1204,91 @@ class ApiClient {
       this.handleError(error, config)
     }
   }
+
+  /**
+   * 流式请求处理 (SSE / NDJSON)
+   */
+  async stream(
+    endpoint: string,
+    data: any,
+    onChunk: (chunkText: string, isJson: boolean, rawData: any) => void,
+    config: RequestConfig = {}
+  ): Promise<void> {
+    const url = this.buildURL(endpoint)
+    const timeout = config.timeout || 70000
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+    const isForm = typeof FormData !== 'undefined' && data instanceof FormData
+    const headers = this.buildHeaders({ ...config, isFormData: isForm }, url)
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: isForm ? data : data ? JSON.stringify(data) : undefined,
+        signal: controller.signal,
+      })
+
+      if (!response.ok) {
+        throw new ApiError(`流请求失败: ${response.status}`, response.status, response)
+      }
+
+      if (!response.body) {
+        throw new ApiError('响应体为空', 0)
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder('utf-8')
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // 留着最后一段不完整的
+
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed) continue
+          
+          try {
+            const parsed = JSON.parse(trimmed)
+            onChunk(trimmed, true, parsed)
+          } catch (e) {
+            onChunk(trimmed, false, null)
+          }
+        }
+      }
+      
+      if (buffer.trim()) {
+        try {
+          const parsed = JSON.parse(buffer.trim())
+          onChunk(buffer.trim(), true, parsed)
+        } catch (e) {
+          onChunk(buffer.trim(), false, null)
+        }
+      }
+
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.code === 401 &&
+        this.isTokenRefreshEligible(endpoint, config)
+      ) {
+        const refreshed = await this.tryRefreshAccessToken()
+        if (refreshed) {
+          return this.stream(endpoint, data, onChunk, { ...config, _retry401: true })
+        }
+      }
+      this.handleError(error, config as RequestConfig, { url, method: 'POST' })
+    } finally {
+      clearTimeout(timeoutId)
+    }
+  }
 }
 
 // 创建默认API客户端实例

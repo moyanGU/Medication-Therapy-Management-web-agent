@@ -26,6 +26,7 @@ import {
   type PageAgentActionProposal,
   type PageAgentPageKey,
   type PageAgentTaskResult,
+  type OnStepCallback,
 } from '@/services/pageAgentShared'
 import { resolveApiBaseURL } from '@/utils/api'
 import { globalToolRegistry } from '@/services/toolRegistry'
@@ -65,6 +66,7 @@ const CONTROLLED_NAVIGATION_TARGETS = [
 const NAVIGATION_TRIGGER = /(打开|进入|跳转|前往|去|带我去|切换到|导航到|查看)/
 
 let pageAgentInstance: PageAgentCore | null = null
+let currentOnStep: OnStepCallback | null = null
 
 /**
  * 将本地受限控制器收口为 PageAgentCore 期望的控制器契约类型。
@@ -611,6 +613,11 @@ function buildPageAgentConfig(): PageAgentCoreConfig {
         path: window.location.pathname,
       })
     },
+    onAfterStep: (_agent, history) => {
+      if (currentOnStep) {
+        currentOnStep(summarizeHistory(history))
+      }
+    },
     onAfterTask: (_agent, result) => {
       console.log('[PageAgent] 页面任务完成', {
         success: result.success,
@@ -689,7 +696,8 @@ function buildPageAgentAnswer(result: ExecutionResult): string {
  * 执行当前页面的分析或辅助填写任务。
  */
 export async function executePageAgentTask(
-  task: string
+  task: string,
+  onStep?: OnStepCallback
 ): Promise<PageAgentTaskResult> {
   const pathname = window.location.pathname
   const normalizedTask = task.trim()
@@ -697,6 +705,8 @@ export async function executePageAgentTask(
     task: normalizedTask,
     pathname,
   })
+
+  currentOnStep = onStep || null
 
   if (!canUsePageAgentOnCurrentPage(pathname)) {
     throw new Error(
@@ -738,11 +748,18 @@ export async function executePageAgentTask(
     `用户任务：${normalizedTask}`,
   ].join('\n')
 
-  const result = await agent.execute(normalizedPrompt)
+  let result
+  try {
+    result = await agent.execute(normalizedPrompt)
+  } finally {
+    currentOnStep = null
+  }
+
   console.log('[PageAgent] 模型执行完成', {
     success: result.success,
     historyLength: Array.isArray(result.history) ? result.history.length : 0,
   })
+
   return {
     success: result.success,
     answer: buildPageAgentAnswer(result),

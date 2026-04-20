@@ -728,49 +728,13 @@ class MTMServiceCaseViewSet(
             patient_data["assessment_summary"] = assessment.summary
             patient_data["risk_level"] = assessment.risk_level
             
-        # 准备调用大模型
-        base_url = getattr(settings, "BAICHUAN_M3_API_BASE_URL", "")
-        api_key = getattr(settings, "BAICHUAN_M3_API_KEY", "")
-        model = getattr(settings, "BAICHUAN_M3_MODEL", "")
-        
-        from apps.core.views import _openai_chat_completion, _extract_json_object
-        import json
-        
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "你是一个专业的临床药师。请根据提供的患者问诊信息与病史，生成标准的 SOAP 药历结构草稿。\n"
-                    "S (Subjective): 患者主诉、病史、药物过敏史、生活习惯等。\n"
-                    "O (Objective): 整理后的客观用药情况。\n"
-                    "A (Assessment): 药物治疗问题评估分析。\n"
-                    "P (Plan): 建议的干预方案。\n"
-                    "请严格返回 JSON 格式，必须包含 keys: subjective, objective, assessment, plan。"
-                )
-            },
-            {
-                "role": "user",
-                "content": json.dumps(patient_data, ensure_ascii=False)
-            }
-        ]
+        # 准备调用大模型子代理
+        from apps.core.agents.soap_agent import SoapAgent
         
         try:
             logger.info("🔵 [MTM] SOAP AI Generation start - case=%s", service_case.id)
-            response_text = _openai_chat_completion(
-                base_url=base_url,
-                api_key=api_key,
-                model=model,
-                messages=messages,
-                temperature=0.1,
-                max_tokens=2048,
-                timeout_seconds=45.0,
-                response_format={"type": "json_object"}
-            )
-            
-            soap_json = _extract_json_object(response_text)
-            if not soap_json:
-                return error_response("AI 未返回合法的 SOAP 数据", status_code=500)
-                
+            agent = SoapAgent(user_id=request.user.id, session_id=f"mtm_soap_{service_case.id}")
+            soap_json = agent.generate(patient_data)
             return success_response(data=soap_json)
         except Exception as e:
             logger.error("🔴 [MTM] SOAP Generation Failed: %s", str(e))
