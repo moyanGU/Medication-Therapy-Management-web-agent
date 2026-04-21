@@ -1,142 +1,106 @@
 <div align="center">
   <img src="public/images/mtm-cover-logo.svg" alt="MTM-Helper Logo" width="120" height="120" />
-  <h1>💊 MTM-Helper 智能用药助手与管理系统</h1>
-  <p>专为老年人与专业药师打造的智能化药物治疗管理 (MTM) 平台</p>
+  <h1>💊 MTM-Helper 3.0：基于 Agent 架构的智能用药生态池</h1>
+  <p>一个以“龙虾（AI Agent）与养虾池（业务底座）”为核心架构理念的双轨制药物治疗管理平台</p>
 </div>
 
-## 📖 项目简介
+## 📖 项目定位：从“套壳 LLM”到“Agent 生态”
 
-MTM-用药助手是一款旨在提升老年人用药安全与依从性的智能管理系统。系统结合了面向普通用户的**日常用药提醒**与面向专业药师的 **MTM（药物治疗管理）服务**。通过简洁的适老化界面、AI 辅助增强（Copilot）以及多渠道提醒机制，解决忘记服药、药品过期、用药冲突等痛点，提供全生命周期的健康管理。
+MTM-Helper 3.0 是一次彻底的架构蜕变。我们摒弃了传统的“对话框式”大模型接入，将 AI 拆解为多个具备感知、分析、行动能力的领域专家（Sub-Agents），并将它们无缝植入到真实的医疗业务流水线中。
+- **面向大众用户**：提供用药打卡、过期预警、语音播报等日常健康守护（链路A）。
+- **面向专业药师**：提供全流程的 MTM（药物治疗管理）服务，包括自动问诊、五维度评估、SOAP 药历生成与 PMR/MAP 医疗文书导出（链路B）。
 
-## ✨ 核心特性与近期重磅更新
+---
 
-### 1. 👨‍⚕️ 专业的 MTM 药物治疗管理 (3.0 架构升级)
-引入了专业的双轨服务模式，打通了 MTM 的完整业务流：
-- **完整闭环**：涵盖问诊 (Interview)、评估 (Assessment)、干预计划 (Plan) 与随访 (Follow-up) 四个核心环节。
-- **医疗级文书导出**：支持自动聚合生成 PMR (个人用药记录) 与 MAP (药物行动计划)，并提供高保真 PDF 导出功能。
-- **AI 辅助生成**：基于患者上下文，一键生成结构化 SOAP 药历草稿。
+## ✨ 3.0 架构核心特性 (The "Lobster" Engine)
 
-### 2. 🤖 AI 智能体管家 (AI Copilot)
-基于大模型集成的全局悬浮式页面助手（支持公网 API 与内网本地模型）：
-- **用药问答**：随时解答用户的药品适应症、禁忌、相互作用等疑问。
-- **智能引导**：针对不同角色（药师/患者），在首次进入仪表板时主动弹出并进行自然语言引导。
-- **语音交互 (TTS & STT)**：完全打通了全局语音播报（TTS）与语音识别（STT）。老年人只需点击麦克风说话，AI 的回复也会自动通过系统原生的语音引擎播报，实现真正的“零打字”适老化交互。
+### 1. 🦞 多领域子代理集群 (Sub-Agent Orchestration)
+不再依赖臃肿的单一 Prompt。我们将 MTM 业务流拆解，在后端实现了专职的 `BaseAgent` 专家群：
+- **`MedicationAgent`**：专攻药物相互作用、禁忌症与五维度适宜性评估。
+- **`SoapAgent`**：负责将离散的问诊和评估数据，自动聚合为医疗标准的 SOAP 药历。
+- **`MemoryAgent`**：负责提取、压缩和持久化患者的长期记忆。
 
-### 3. 🔊 适老化与无障碍支持 (老年人模式)
-- **全局语音播报**：开启“语音播报”后，系统会自动朗读页面的核心信息。内置智能打断与防抖去重机制，优先匹配优质中文语音。
-- **极简大字版**：界面设计遵循 WCAG 标准，高对比度、大点击区域，充分照顾老年用户的使用习惯。
+### 2. 🌊 跨路由上下文串联 (Cross-Route Context Reasoning)
+彻底治愈 AI 的“页面失忆症”。前端 `assistantEngine.ts` 与 Vue Router 深度绑定，当用户在 MTM 列表页进行筛选、排序或进入详情页时，系统会实时将这些环境数据捕获为 `globalContextMemory`。AI 的感知触角真正扎入了业务流的活水中。
 
-### 4. 📱 PWA 与全方位用药提醒
-- **PWA 支持**：利用 `vite-plugin-pwa` 实现桌面/移动端应用安装，支持离线访问。
-- **Web Push 推送**：基于 Service Worker 和 VAPID 提供浏览器原生的消息通知。
-- **后端调度器**：支持多渠道推送，确保用药提醒万无一失。
+### 3. ⚡ 流式输出与步骤回显 (Streaming & Steps)
+从阻塞式 API 全面升级为基于 Server-Sent Events (SSE) 的 NDJSON 块流式传输。结合前端的 `onStep` 钩子，AI “思考、调用、生成”的每一步都在用户面前透明回显，彻底消除等待焦虑。
 
-### 5. 🏥 基础药品与数据管理
-- 支持药品信息快速录入与管理。
-- 动态服药历史记录追踪，生成用药依从性（Adherence）统计与可视化图表。
+### 4. 🔊 适老化与无障碍原生支持 (Elderly-Friendly)
+- **全局语音交互 (TTS & STT)**：前端原生打通 Web Speech API。用户说话即可提问，系统原生语音播报回复，实现真正的“零打字”。
+- **高对比度大字模式**：遵循 WCAG 标准，专为老年人与视障人群设计。
 
-### 6. 🛡️ 私有化与离线环境支持 (Air-gapped 友好)
-系统在架构设计上充分考虑了外部网络依赖的“优雅降级”，支持在物理隔离的内网环境中完全离线运行：
-- **本地 LLM 接入**：后端代码兼容标准的 OpenAI 接口规范，只需在 `.env` 中将 `BAICHUAN_M3_API_BASE_URL` 指向局域网内使用 Ollama、vLLM 等部署的开源大模型（如 Qwen2-7B），即可实现完全离线的 AI 对话与药历生成，确保敏感医疗数据不出网。
-- **本地语音播报**：TTS (Text-to-Speech) 模块调用的是浏览器底层的 Web Speech API，直接利用操作系统的本地语音合成引擎发声，**不依赖任何外部云端 API**。
-- **断网提醒兜底**：当内网环境无法连接 Apple APNs 或 Google FCM 导致 PWA 消息推送失败时，前端独创的“离线轮询机制”会接管提醒功能，在服药时间点直接通过浏览器本地弹窗与 TTS 语音大声提醒患者。
+### 5. 🛡️ 离线优先与 Air-gapped 部署
+专为医院内网与数据敏感场景设计：
+- **大模型私有化接入**：完全兼容 OpenAI 接口规范，一键接入本地部署的 Ollama / vLLM（如 Qwen2-7B、百川医疗大模型）。
+- **纯本地 TTS/STT**：语音合成不依赖云端 API。
+- **离线轮询兜底**：当 APNs/FCM 消息推送因断网失败时，前端 Service Worker 配合本地轮询触发浏览器原生弹窗提醒。
 
+---
 
-## 🛠 技术架构
+## 🛠 技术栈 (Tech Stack)
 
-**前端 (Frontend)**
-- **核心框架**: Vue 3.4+ (Composition API) + TypeScript 5.0+
-- **构建工具**: Vite 5.0+
-- **状态与路由**: Pinia 2.0+ & Vue Router 4.0+
-- **UI & 样式**: TailwindCSS 3.4+ + Lucide Icons
-- **PDF导出**: jspdf + html2canvas
+**前端生态 (Frontend)**
+- Vue 3.4+ (Composition API) + TypeScript 5.0+ + Vite 5.0+
+- 状态管理：Pinia + Vue Router
+- 流式解析：Fetch API + TextDecoder (原生支持 SSE 规范)
+- 样式组件：TailwindCSS 3.4+ + Lucide Icons
+- 文书渲染：jspdf + html2canvas
 
-**后端 (Backend)**
-- **核心框架**: Django 4.2+ & Django REST Framework
-- **数据库**: MySQL 8.0+ (关系型数据) & Redis 7.0+ (缓存与任务队列)
-- **认证体系**: JWT (JSON Web Token) 安全认证
+**后端生态 (Backend)**
+- 框架：Django 4.2+ & Django REST Framework (DRF)
+- Agent 调度：纯 Python 原生生成器 (`yield`) 实现非阻塞流式编排
+- 数据库：MySQL 8.0+ (核心业务) & Redis 7.0+ (缓存与 Celery 任务队列)
 
-**基础设施与扩展 (Infra & AI)**
-- **AI 大模型**: Baichuan M3 API (兼容 OpenAI 格式接口)
-- **容器化部署**: Docker & Docker Compose & Nginx
+---
 
-## 📂 项目结构
+## 🚀 开发者指南 (Quick Start)
 
-```text
-mtm-helper/
-├── src/                    # 前端源码目录
-│   ├── api/                # 后端接口请求封装
-│   ├── components/         # 通用 Vue 组件与页面布局
-│   ├── composables/        # 组合式函数 (如 useSpeech 语音合成模块)
-│   ├── pages/              # 业务页面 (MTM服务、用药记录等)
-│   └── types/              # TypeScript 类型定义
-├── backend/                # 后端 Django 源码目录
-│   ├── apps/               # 独立业务模块
-│   │   ├── mtm/            # 核心药物治疗管理逻辑
-│   │   ├── reminders/      # 调度器与多渠道通知 (Push/SMS)
-│   │   ├── medicines/      # 药品信息库
-│   │   └── core/           # AI 代理与基础服务
-│   └── mtm_helper/         # Django 项目配置
-├── docs/                   # 项目设计与架构文档库
-├── docker-compose.yml      # 开发环境容器编排
-└── docker-compose.production.yml # 生产环境部署编排
-```
-
-## 🚀 快速开始
-
-### 运行环境要求
+### 环境依赖
 - Node.js 20.0+
 - Python 3.11+
-- MySQL 8.0+ / Redis 7.0+
+- MySQL 8.0+ / Redis 7.0+ (推荐使用 Docker 部署基础设施)
 
-### 1. 前端本地开发
+### 1. 前端服务启动
 ```bash
-# 安装依赖
+# 1. 安装依赖并排除冲突的三方子模块
 npm install
 
-# 启动开发服务器
+# 2. 启动 Vite 开发服务器 (已配置 host 暴露与依赖优化)
 npm run dev
 ```
 
-### 2. 后端本地开发
+### 2. 后端服务启动
 ```bash
 cd backend
+# 1. 创建并激活虚拟环境
 python3 -m venv .venv
 source .venv/bin/activate  # Windows 运行 .\.venv\Scripts\Activate.ps1
 
-# 安装依赖
+# 2. 安装依赖
 pip install -r requirements.txt
 
-# 初始化数据库
+# 3. 初始化数据库配置
 cp .env.example .env
-# 补全 .env 中的数据库和 AI API Key 配置
+# 必须在 .env 中配置 DB 连接和 BAICHUAN_M3_API_KEY (或本地模型 URL)
 
+# 4. 迁移与启动
 python manage.py makemigrations
 python manage.py migrate
-
-# 启动服务
 python manage.py runserver 0.0.0.0:8000
 ```
-> **注意**：如需体验 AI 页面助手和自动生成 SOAP 药历，请务必在 `backend/.env` 中补齐 `BAICHUAN_M3_API_KEY` 等大模型相关环境变量。并且配置好 VAPID 密钥对以开启 Web Push 推送。
 
-### 3. Docker 容器化部署
-**开发环境一键启动：**
-```bash
-docker-compose --profile dev up -d --build
-```
-**生产环境独立部署：**
+### 3. Docker 生产级部署 (Production)
 项目内置了生产级部署方案（涵盖 Nginx 反代与静态资源挂载）：
 ```bash
-docker compose -f docker-compose.production.yml up -d
+docker compose -f docker-compose.production.yml up -d --build
 ```
 
+---
+
 ## 🤝 参与贡献
-欢迎对医疗健康、AI 智能体及适老化设计感兴趣的开发者加入！
-1. Fork 本仓库
-2. 创建您的特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 遵循现有的 ESLint 与代码规范进行开发
-4. 提交您的更改 (`git commit -m 'feat: Add some AmazingFeature'`)
-5. 推送到分支并开启 Pull Request
+MTM-Helper 目前处于 Phase 3（AI 深度增强）冲刺阶段，正在探索基于 MCP (Model Context Protocol) 的工具链解耦。
+欢迎对**医疗 Agent 架构**、**适老化设计**感兴趣的开发者提交 PR 或 Issue。
 
 ## 📄 许可证
 本项目基于 [MIT License](LICENSE) 开源。
