@@ -420,11 +420,7 @@ class ReminderScheduler:
             "four_times_daily",
         }
 
-    def _should_remind_on_date(self, reminder, date):
-        if not self._is_within_active_window(reminder, date):
-            return False
-
-        frequency = str(getattr(reminder, "frequency", "") or "").strip()
+    def _should_remind_by_frequency(self, reminder, date, frequency: str) -> bool:
         if self._is_daily_like_frequency(frequency):
             return True
 
@@ -438,6 +434,13 @@ class ReminderScheduler:
             weekdays = getattr(reminder, "weekdays", None) or []
             return weekday in weekdays
         return False
+
+    def _should_remind_on_date(self, reminder, date):
+        if not self._is_within_active_window(reminder, date):
+            return False
+
+        frequency = str(getattr(reminder, "frequency", "") or "").strip()
+        return self._should_remind_by_frequency(reminder, date, frequency)
 
     def cleanup_old_reminders(self, days=30):
         """
