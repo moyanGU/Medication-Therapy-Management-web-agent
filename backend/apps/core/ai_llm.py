@@ -36,27 +36,55 @@ def _build_llm_payload(
     return payload
 
 
-def _parse_openai_chat_content(data, *, url: str, index: int, urls: list[str]):
+def _preview_json(data) -> str:
+    if not isinstance(data, dict):
+        return ""
+    try:
+        return json.dumps(data, ensure_ascii=False)[:300]
+    except Exception:
+        return ""
+
+
+def _extract_openai_choices(data):
     choices = data.get("choices") if isinstance(data, dict) else None
-    if not isinstance(choices, list) or not choices:
-        fallback_hint = json.dumps(data, ensure_ascii=False)[:300] if isinstance(data, dict) else ""
+    if isinstance(choices, list) and choices:
+        return choices, None
+    return None, f"llm_empty_choices:{_preview_json(data)}"
+
+
+def _extract_openai_message_from_choices(choices):
+    first = choices[0] if choices else None
+    msg = (first or {}).get("message") if isinstance(first, dict) else None
+    return msg if isinstance(msg, dict) else {}
+
+
+def _non_empty_str(value):
+    if isinstance(value, str) and value.strip():
+        return value
+    return None
+
+
+def _parse_openai_chat_content(data, *, url: str, index: int, urls: list[str]):
+    choices, err = _extract_openai_choices(data)
+    if err:
         if index < len(urls) - 1:
             logger.warning(
                 "[LLMProxy] empty choices on primary endpoint, retrying fallback",
-                extra={"url": url, "response_preview": fallback_hint},
+                extra={"url": url, "response_preview": err.split(":", 1)[-1]},
             )
-        return None, f"llm_empty_choices:{fallback_hint}"
+        return None, err
 
-    msg = (choices[0] or {}).get("message") or {}
-    content = msg.get("content")
-    if isinstance(content, str) and content.strip():
+    msg = _extract_openai_message_from_choices(choices)
+    content = _non_empty_str(msg.get("content"))
+    if content is not None:
         return content, None
 
-    reasoning_content = msg.get("reasoning_content")
-    if isinstance(reasoning_content, str) and reasoning_content.strip():
+    reasoning_content = _non_empty_str(msg.get("reasoning_content"))
+    if reasoning_content is not None:
         return reasoning_content, None
 
-    if isinstance(content, str):
+    raw_content = msg.get("content")
+    if isinstance(raw_content, str):
         return None, "llm_empty_content"
     return None, "llm_invalid_content"
 
