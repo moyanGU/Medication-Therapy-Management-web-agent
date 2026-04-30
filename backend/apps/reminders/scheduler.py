@@ -420,10 +420,9 @@ class ReminderScheduler:
             return True
 
         days_diff = self._days_since_start(reminder, date)
-        if frequency == "every_other_day":
-            return days_diff % 2 == 0
-        if frequency == "weekly":
-            return days_diff % 7 == 0
+        period = {"every_other_day": 2, "weekly": 7}.get(frequency)
+        if period:
+            return days_diff % period == 0
         if frequency == "custom":
             weekday = date.weekday() + 1
             weekdays = getattr(reminder, "weekdays", None) or []
