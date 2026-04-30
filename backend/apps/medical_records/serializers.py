@@ -66,26 +66,41 @@ class MedicalRecordSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("复诊日期必须在就诊日期之后")
         return value
 
-    def validate(self, attrs):
+    def _validate_follow_up_date_order(self, attrs):
         follow_up_date = attrs.get("follow_up_date")
         visit_date = attrs.get("visit_date")
         if follow_up_date and visit_date and follow_up_date <= visit_date:
             raise serializers.ValidationError("复诊日期必须在就诊日期之后")
-        symptom_score = attrs.get("symptom_improvement")
-        if symptom_score is not None and not (1 <= symptom_score <= 10):
-            raise serializers.ValidationError("症状评分必须在1-10之间")
-        satisfaction = attrs.get("satisfaction_score")
-        if satisfaction is not None and not (1 <= satisfaction <= 5):
-            raise serializers.ValidationError("满意度评分必须在1-5之间")
-        total_cost = attrs.get("total_cost")
-        if total_cost is not None and total_cost < 0:
-            raise serializers.ValidationError("总费用不能为负数")
-        insurance = attrs.get("insurance_coverage")
-        if insurance is not None and insurance < 0:
-            raise serializers.ValidationError("医保报销金额不能为负数")
-        out_of_pocket = attrs.get("out_of_pocket_cost")
-        if out_of_pocket is not None and out_of_pocket < 0:
-            raise serializers.ValidationError("自费金额不能为负数")
+
+    def _validate_numeric_ranges(self, attrs):
+        rules = [
+            ("symptom_improvement", 1, 10, "症状评分必须在1-10之间"),
+            ("satisfaction_score", 1, 5, "满意度评分必须在1-5之间"),
+        ]
+        for field, lo, hi, msg in rules:
+            value = attrs.get(field)
+            if value is None:
+                continue
+            if not (lo <= value <= hi):
+                raise serializers.ValidationError(msg)
+
+    def _validate_non_negative(self, attrs):
+        rules = [
+            ("total_cost", "总费用不能为负数"),
+            ("insurance_coverage", "医保报销金额不能为负数"),
+            ("out_of_pocket_cost", "自费金额不能为负数"),
+        ]
+        for field, msg in rules:
+            value = attrs.get(field)
+            if value is None:
+                continue
+            if value < 0:
+                raise serializers.ValidationError(msg)
+
+    def validate(self, attrs):
+        self._validate_follow_up_date_order(attrs)
+        self._validate_numeric_ranges(attrs)
+        self._validate_non_negative(attrs)
         return attrs
 
 
