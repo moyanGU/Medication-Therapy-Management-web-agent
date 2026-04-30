@@ -513,42 +513,52 @@ class CacheMiddleware(MiddlewareMixin):
         Returns:
             HttpResponse: 响应对象
         """
-        # 只缓存GET请求的成功响应
-        request_path = getattr(request, "path", "") or ""
-        if request_path and any(
-            request_path.startswith(prefix) for prefix in self.exclude_path_prefixes
-        ):
+        if self._should_skip_cache_path(request):
+            return response
+        if not self._should_cache_response(request, response):
             return response
 
-        if (
+        if not _redis_available():
+            return response
+
+        cache_data = self._extract_cache_data(response)
+        if cache_data is None:
+            return response
+
+        cache_key = self._generate_cache_key(request)
+        self._set_cache_safely(cache_key, cache_data)
+        return response
+
+    def _should_skip_cache_path(self, request) -> bool:
+        request_path = getattr(request, "path", "") or ""
+        return bool(
+            request_path
+            and any(request_path.startswith(prefix) for prefix in self.exclude_path_prefixes)
+        )
+
+    def _should_cache_response(self, request, response) -> bool:
+        return bool(
             request.method == "GET"
             and response.status_code == 200
             and not request.user.is_authenticated
-        ):
-            cache_key = self._generate_cache_key(request)
+        )
 
-            if not _redis_available():
-                return response
+    def _extract_cache_data(self, response):
+        try:
+            if hasattr(response, "data"):
+                return response.data
+            return json.loads(response.content.decode("utf-8"))
+        except (json.JSONDecodeError, AttributeError) as e:
+            logger.warning(f"缓存解析失败: {e}")
+            return None
 
-            try:
-                # 尝试解析响应内容
-                if hasattr(response, "data"):
-                    cache_data = response.data
-                else:
-                    cache_data = json.loads(response.content.decode("utf-8"))
-            except (json.JSONDecodeError, AttributeError) as e:
-                logger.warning(f"缓存解析失败: {e}")
-                return response
-
-            # 设置缓存（对Redis异常容错）
-            try:
-                cache.set(cache_key, cache_data, self.cache_timeout)
-                logger.debug(f"设置缓存: {cache_key}")
-            except Exception as e:
-                _inc_redis_error("set", e)
-                logger.warning(f"[CacheMiddleware] 缓存写入失败(已忽略): {e}")
-
-        return response
+    def _set_cache_safely(self, cache_key: str, cache_data):
+        try:
+            cache.set(cache_key, cache_data, self.cache_timeout)
+            logger.debug(f"设置缓存: {cache_key}")
+        except Exception as e:
+            _inc_redis_error("set", e)
+            logger.warning(f"[CacheMiddleware] 缓存写入失败(已忽略): {e}")
 
     def _generate_cache_key(self, request):
         """
