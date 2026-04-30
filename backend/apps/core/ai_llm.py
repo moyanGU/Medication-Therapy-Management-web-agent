@@ -122,36 +122,60 @@ def _openai_chat_completion_stream(
 
     last_error: str | None = None
     for url in urls:
-        try:
-            with requests.post(
-                url, headers=headers, json=payload, timeout=timeout_seconds, stream=True
-            ) as resp:
-                if resp.status_code >= 300:
-                    body_text = str(getattr(resp, "text", "") or "")
-                    last_error = f"llm_http_error:{resp.status_code}:{body_text[:200]}"
-                    continue
-
-                for line in resp.iter_lines():
-                    if line:
-                        line_str = line.decode("utf-8")
-                        if line_str.startswith("data: "):
-                            data_str = line_str[6:]
-                            if data_str == "[DONE]":
-                                break
-                            try:
-                                data = json.loads(data_str)
-                                delta = data.get("choices", [{}])[0].get("delta", {})
-                                content = delta.get("content", "")
-                                if content:
-                                    yield json.dumps({"chunk": content}, ensure_ascii=False) + "\n"
-                            except Exception:
-                                pass
-                return
-        except Exception as exc:
-            last_error = f"llm_request_exception:{type(exc).__name__}:{str(exc)[:120]}"
-            continue
-
+        last_error = yield from _try_openai_stream_url(
+            url=url,
+            headers=headers,
+            payload=payload,
+            timeout_seconds=timeout_seconds,
+        )
+        if last_error is None:
+            return
     yield json.dumps({"error": last_error or "llm_invalid_response"}, ensure_ascii=False) + "\n"
+
+
+def _iter_openai_sse_data(resp):
+    for line in resp.iter_lines():
+        if not line:
+            continue
+        try:
+            line_str = line.decode("utf-8")
+        except Exception:
+            continue
+        if not line_str.startswith("data: "):
+            continue
+        yield line_str[6:]
+
+
+def _extract_openai_stream_chunk(data_str: str):
+    if not data_str or data_str == "[DONE]":
+        return None
+    try:
+        data = json.loads(data_str)
+        delta = data.get("choices", [{}])[0].get("delta", {})
+        content = delta.get("content", "")
+        return content if content else None
+    except Exception:
+        return None
+
+
+def _try_openai_stream_url(*, url: str, headers: dict, payload: dict, timeout_seconds: float):
+    try:
+        with requests.post(
+            url, headers=headers, json=payload, timeout=timeout_seconds, stream=True
+        ) as resp:
+            if resp.status_code >= 300:
+                body_text = str(getattr(resp, "text", "") or "")
+                return f"llm_http_error:{resp.status_code}:{body_text[:200]}"
+
+            for data_str in _iter_openai_sse_data(resp):
+                if data_str == "[DONE]":
+                    break
+                content = _extract_openai_stream_chunk(data_str)
+                if content:
+                    yield json.dumps({"chunk": content}, ensure_ascii=False) + "\n"
+            return None
+    except Exception as exc:
+        return f"llm_request_exception:{type(exc).__name__}:{str(exc)[:120]}"
 
 
 def _openai_chat_completion(
