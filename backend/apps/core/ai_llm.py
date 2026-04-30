@@ -7,6 +7,60 @@ import requests
 logger = logging.getLogger("mtm_helper")
 
 
+def _build_llm_headers(api_key: str) -> dict:
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    return headers
+
+
+def _build_llm_payload(
+    *,
+    model: str,
+    messages: list[dict],
+    temperature: float,
+    max_tokens: int,
+    response_format: dict | None = None,
+    stream: bool = False,
+) -> dict:
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if response_format is not None:
+        payload["response_format"] = response_format
+    if stream:
+        payload["stream"] = True
+    return payload
+
+
+def _parse_openai_chat_content(data, *, url: str, index: int, urls: list[str]):
+    choices = data.get("choices") if isinstance(data, dict) else None
+    if not isinstance(choices, list) or not choices:
+        fallback_hint = json.dumps(data, ensure_ascii=False)[:300] if isinstance(data, dict) else ""
+        if index < len(urls) - 1:
+            logger.warning(
+                "[LLMProxy] empty choices on primary endpoint, retrying fallback",
+                extra={"url": url, "response_preview": fallback_hint},
+            )
+        return None, f"llm_empty_choices:{fallback_hint}"
+
+    msg = (choices[0] or {}).get("message") or {}
+    content = msg.get("content")
+    if isinstance(content, str) and content.strip():
+        return content, None
+
+    reasoning_content = msg.get("reasoning_content")
+    if isinstance(reasoning_content, str) and reasoning_content.strip():
+        return reasoning_content, None
+
+    if isinstance(content, str):
+        return None, "llm_empty_content"
+    return None, "llm_invalid_content"
+
+
 def _normalize_openai_base_url(raw: str) -> str:
     base = (raw or "").strip().rstrip("/")
     if not base:
@@ -53,16 +107,14 @@ def _openai_chat_completion_stream(
     max_tokens: int,
     timeout_seconds: float,
 ):
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "stream": True,
-    }
+    headers = _build_llm_headers(api_key)
+    payload = _build_llm_payload(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        stream=True,
+    )
 
     urls = _build_openai_chat_completion_urls(base_url)
     if not urls:
@@ -113,17 +165,14 @@ def _openai_chat_completion(
     timeout_seconds: float,
     response_format: dict | None = None,
 ) -> str:
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-    }
-    if response_format is not None:
-        payload["response_format"] = response_format
+    headers = _build_llm_headers(api_key)
+    payload = _build_llm_payload(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        response_format=response_format,
+    )
 
     urls = _build_openai_chat_completion_urls(base_url)
     if not urls:
@@ -148,30 +197,12 @@ def _openai_chat_completion(
             last_error = "llm_invalid_json"
             continue
 
-        choices = data.get("choices") if isinstance(data, dict) else None
-        if not isinstance(choices, list) or not choices:
-            fallback_hint = json.dumps(data, ensure_ascii=False)[:300] if isinstance(data, dict) else ""
-            if index < len(urls) - 1:
-                logger.warning(
-                    "[LLMProxy] empty choices on primary endpoint, retrying fallback",
-                    extra={"url": url, "response_preview": fallback_hint},
-                )
-            last_error = f"llm_empty_choices:{fallback_hint}"
-            continue
-        msg = (choices[0] or {}).get("message") or {}
-
-        content = msg.get("content")
-        if isinstance(content, str) and content.strip():
+        content, parse_error = _parse_openai_chat_content(
+            data, url=url, index=index, urls=urls
+        )
+        if content is not None:
             return content
-
-        reasoning_content = msg.get("reasoning_content")
-        if isinstance(reasoning_content, str) and reasoning_content.strip():
-            return reasoning_content
-
-        if isinstance(content, str):
-            last_error = "llm_empty_content"
-            continue
-        last_error = "llm_invalid_content"
+        last_error = parse_error
 
     raise RuntimeError(last_error or "llm_invalid_response")
 
@@ -211,4 +242,3 @@ def _looks_unhelpful_answer(text: str) -> bool:
     if len(t2) <= 200 and (mentions_age_weight or mentions_dose) and not has_number:
         return True
     return False
-
