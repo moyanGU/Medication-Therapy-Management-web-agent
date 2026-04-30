@@ -54,11 +54,32 @@ def _parse_redis_host_port() -> tuple[str, int] | None:
         return None
 
 
-def _redis_available() -> bool:
+def _probe_redis(host: str, port: int) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=0.2):
+            return True
+    except Exception:
+        return False
+
+
+def _update_redis_probe_state(ok: bool, now: float):
     global _redis_probe_ok
     global _redis_probe_next_at
     global _redis_probe_last_log_at
 
+    prev_ok = _redis_probe_ok
+    _redis_probe_ok = ok
+    _redis_probe_next_at = now + (2.0 if not ok else 5.0)
+
+    if (prev_ok != ok) or (not ok and (now - _redis_probe_last_log_at) >= 30.0):
+        _redis_probe_last_log_at = now
+        if ok:
+            logger.info("[RedisProbe] Redis 连接恢复，可重新启用缓存/限流")
+        else:
+            logger.warning("[RedisProbe] Redis 不可用，缓存/限流将降级跳过")
+
+
+def _redis_available() -> bool:
     if not _is_redis_cache_backend():
         return True
 
@@ -73,29 +94,12 @@ def _redis_available() -> bool:
 
         hp = _parse_redis_host_port()
         if not hp:
-            _redis_probe_ok = False
-            _redis_probe_next_at = now2 + 2.0
+            _update_redis_probe_state(False, now2)
             return _redis_probe_ok
 
         host, port = hp
-        ok = False
-        try:
-            with socket.create_connection((host, port), timeout=0.2):
-                ok = True
-        except Exception:
-            ok = False
-
-        prev_ok = _redis_probe_ok
-        _redis_probe_ok = ok
-        _redis_probe_next_at = now2 + (2.0 if not ok else 5.0)
-
-        if (prev_ok != ok) or (not ok and (now2 - _redis_probe_last_log_at) >= 30.0):
-            _redis_probe_last_log_at = now2
-            if ok:
-                logger.info("[RedisProbe] Redis 连接恢复，可重新启用缓存/限流")
-            else:
-                logger.warning("[RedisProbe] Redis 不可用，缓存/限流将降级跳过")
-
+        ok = _probe_redis(host, port)
+        _update_redis_probe_state(ok, now2)
         return _redis_probe_ok
 
 
