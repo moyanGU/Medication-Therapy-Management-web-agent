@@ -268,11 +268,7 @@ def _normalize_llm_answer(text: str) -> str:
     return t
 
 
-def _looks_unhelpful_answer(text: str) -> bool:
-    t = (text or "").strip()
-    if not t:
-        return True
-    t2 = re.sub(r"[\*`\s]", "", t)
+def _looks_like_refusal(text_compact: str, raw_text: str) -> bool:
     refusal_markers = [
         "无法直接提供",
         "无法提供",
@@ -282,15 +278,31 @@ def _looks_unhelpful_answer(text: str) -> bool:
         "我不能",
         "我无法",
     ]
-    if len(t2) <= 40 and any(m in t2 for m in refusal_markers):
-        return True
+    return len(text_compact) <= 40 and any(m in text_compact for m in refusal_markers)
 
-    if t.rstrip().endswith(("，", "、", ",", ";", "：", ":", "（", "(")):
-        return True
 
-    has_number = bool(re.search(r"\d", t))
-    mentions_dose = any(k in t for k in ("剂量", "用量", "mg", "毫克"))
-    mentions_age_weight = bool(re.search(r"(根据|取决于).{0,12}(年龄|体重)", t))
-    if len(t2) <= 200 and (mentions_age_weight or mentions_dose) and not has_number:
+def _looks_like_incomplete_sentence(text: str) -> bool:
+    return text.rstrip().endswith(("，", "、", ",", ";", "：", ":", "（", "("))
+
+
+def _mentions_dose_without_numbers(text: str, text_compact: str) -> bool:
+    if len(text_compact) > 200:
+        return False
+    has_number = bool(re.search(r"\d", text))
+    if has_number:
+        return False
+    mentions_dose = any(k in text for k in ("剂量", "用量", "mg", "毫克"))
+    mentions_age_weight = bool(re.search(r"(根据|取决于).{0,12}(年龄|体重)", text))
+    return (mentions_age_weight or mentions_dose) and not has_number
+
+
+def _looks_unhelpful_answer(text: str) -> bool:
+    t = (text or "").strip()
+    if not t:
         return True
-    return False
+    t2 = re.sub(r"[\*`\s]", "", t)
+    if _looks_like_refusal(t2, t):
+        return True
+    if _looks_like_incomplete_sentence(t):
+        return True
+    return _mentions_dose_without_numbers(t, t2)
