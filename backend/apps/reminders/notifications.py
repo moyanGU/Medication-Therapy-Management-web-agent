@@ -245,31 +245,21 @@ class NotificationService:
     def __init__(self):
         self.enabled_types = ["push", "email", "sms"]  # 可用的通知类型
 
-    def _resolve_preferred_channels(self, user_settings, reminder, history):
-        from_history = False
-        if history and getattr(history, "notification_methods", None):
-            preferred = [
-                item
-                for item in list(history.notification_methods or [])
-                if item in self.enabled_types
-            ]
-            from_history = True
-        elif reminder and getattr(reminder, "notification_types", None):
-            preferred = [
-                item
-                for item in list(reminder.notification_types or [])
-                if item in self.enabled_types
-            ]
-        else:
-            preferred = []
-            if user_settings.get("push_enabled"):
-                preferred = ["push"]
-            elif user_settings.get("sms_enabled"):
-                preferred = ["sms"]
-            elif user_settings.get("email_enabled"):
-                preferred = ["email"]
+    def _filter_enabled_types(self, methods):
+        return [item for item in list(methods or []) if item in self.enabled_types]
 
-        return preferred, from_history
+    def _default_preferred_channel(self, user_settings):
+        for t, key in (("push", "push_enabled"), ("sms", "sms_enabled"), ("email", "email_enabled")):
+            if user_settings.get(key):
+                return [t]
+        return []
+
+    def _resolve_preferred_channels(self, user_settings, reminder, history):
+        if history and getattr(history, "notification_methods", None):
+            return self._filter_enabled_types(history.notification_methods), True
+        if reminder and getattr(reminder, "notification_types", None):
+            return self._filter_enabled_types(reminder.notification_types), False
+        return self._default_preferred_channel(user_settings), False
 
     def _schedule_fallback_pending(self, user, title, message, reminder, user_settings, trace_id: str):
         if reminder is None:
