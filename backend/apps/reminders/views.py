@@ -389,6 +389,82 @@ class ReminderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    def _ics_weekday(self, d: int) -> str:
+        return {
+            1: "MO",
+            2: "TU",
+            3: "WE",
+            4: "TH",
+            5: "FR",
+            6: "SA",
+            7: "SU",
+        }.get(d, "MO")
+
+    def _build_ics_rrule_parts(self, reminder):
+        parts: list[str] = []
+        if reminder.frequency == "daily":
+            parts = ["FREQ=DAILY", "INTERVAL=1"]
+        elif reminder.frequency == "every_other_day":
+            parts = ["FREQ=DAILY", "INTERVAL=2"]
+        elif reminder.frequency == "weekly":
+            parts = ["FREQ=WEEKLY", "INTERVAL=1"]
+        elif reminder.frequency == "custom" and reminder.weekdays:
+            byday = ",".join(self._ics_weekday(d) for d in reminder.weekdays)
+            parts = ["FREQ=WEEKLY", f"BYDAY={byday}"]
+        elif reminder.frequency in [
+            "twice_daily",
+            "three_times_daily",
+            "four_times_daily",
+        ]:
+            parts = ["FREQ=DAILY", "INTERVAL=1"]
+
+        if reminder.end_date and parts:
+            parts.append(f"UNTIL={reminder.end_date.strftime('%Y%m%d')}")
+        return parts
+
+    def _build_ics_event_lines(self, reminder, tzid: str, now):
+        title = reminder.title or f"用药提醒 - {reminder.medicine.name}"
+        description = (
+            reminder.message
+            or f"请按计划服用 {reminder.medicine.name}，剂量：{reminder.dosage}{reminder.dosage_unit}"
+        )
+
+        start_date = reminder.start_date or now.date()
+        dtstart = timezone.make_aware(
+            timezone.datetime.combine(start_date, reminder.reminder_time)
+        )
+
+        dtstart_str = dtstart.strftime("%Y%m%dT%H%M%S")
+        dtstamp_str = now.strftime("%Y%m%dT%H%M%S")
+
+        lines = [
+            "BEGIN:VEVENT",
+            f"UID:mtm-helper-reminder-{reminder.id}@mtm-helper.com",
+            f"DTSTAMP;TZID={tzid}:{dtstamp_str}",
+            f"DTSTART;TZID={tzid}:{dtstart_str}",
+            f"SUMMARY:{title}",
+            f"DESCRIPTION:{description}",
+        ]
+
+        rrule_parts = self._build_ics_rrule_parts(reminder)
+        if rrule_parts:
+            lines.append("RRULE:" + ";".join(rrule_parts))
+
+        lines.append("END:VEVENT")
+        return lines
+
+    def _build_ics_calendar_content(self, reminders, tzid: str, now):
+        lines: list[str] = [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//MTM Helper//EN",
+            "CALSCALE:GREGORIAN",
+        ]
+        for reminder in reminders:
+            lines.extend(self._build_ics_event_lines(reminder, tzid, now))
+        lines.append("END:VCALENDAR")
+        return "\r\n".join(lines) + "\r\n"
+
     @action(detail=False, methods=["get"])
     def calendar_ics(self, request):
         try:
@@ -398,80 +474,7 @@ class ReminderViewSet(viewsets.ModelViewSet):
             now = timezone.localtime()
 
             reminders = self.get_queryset().filter(is_active=True)
-
-            lines: list[str] = []
-            lines.append("BEGIN:VCALENDAR")
-            lines.append("VERSION:2.0")
-            lines.append("PRODID:-//MTM Helper//EN")
-            lines.append("CALSCALE:GREGORIAN")
-
-            def weekday_to_ics(d: int) -> str:
-                mapping = {
-                    1: "MO",
-                    2: "TU",
-                    3: "WE",
-                    4: "TH",
-                    5: "FR",
-                    6: "SA",
-                    7: "SU",
-                }
-                return mapping.get(d, "MO")
-
-            for r in reminders:
-                title = r.title or f"用药提醒 - {r.medicine.name}"
-                description = (
-                    r.message
-                    or f"请按计划服用 {r.medicine.name}，剂量：{r.dosage}{r.dosage_unit}"
-                )
-
-                start_date = r.start_date or now.date()
-                dtstart = timezone.make_aware(
-                    timezone.datetime.combine(start_date, r.reminder_time)
-                )
-                dtstamp = now
-
-                # DTSTART with TZID
-                dtstart_str = dtstart.strftime("%Y%m%dT%H%M%S")
-                dtstamp_str = dtstamp.strftime("%Y%m%dT%H%M%S")
-
-                lines.append("BEGIN:VEVENT")
-                lines.append(f"UID:mtm-helper-reminder-{r.id}@mtm-helper.com")
-                lines.append(f"DTSTAMP;TZID={tzid}:{dtstamp_str}")
-                lines.append(f"DTSTART;TZID={tzid}:{dtstart_str}")
-                lines.append(f"SUMMARY:{title}")
-                lines.append(f"DESCRIPTION:{description}")
-
-                # RRULE by frequency
-                rrule_parts: list[str] = []
-                if r.frequency == "daily":
-                    rrule_parts = ["FREQ=DAILY", "INTERVAL=1"]
-                elif r.frequency == "every_other_day":
-                    rrule_parts = ["FREQ=DAILY", "INTERVAL=2"]
-                elif r.frequency == "weekly":
-                    rrule_parts = ["FREQ=WEEKLY", "INTERVAL=1"]
-                elif r.frequency == "custom" and r.weekdays:
-                    byday = ",".join(weekday_to_ics(d) for d in r.weekdays)
-                    rrule_parts = ["FREQ=WEEKLY", f"BYDAY={byday}"]
-                elif r.frequency in [
-                    "twice_daily",
-                    "three_times_daily",
-                    "four_times_daily",
-                ]:
-                    # 简化为每日一次（当前模型仅支持单个时间点）
-                    rrule_parts = ["FREQ=DAILY", "INTERVAL=1"]
-
-                if r.end_date:
-                    until = r.end_date.strftime("%Y%m%d")
-                    rrule_parts.append(f"UNTIL={until}")
-
-                if rrule_parts:
-                    lines.append("RRULE:" + ";".join(rrule_parts))
-
-                lines.append("END:VEVENT")
-
-            lines.append("END:VCALENDAR")
-
-            content = "\r\n".join(lines) + "\r\n"
+            content = self._build_ics_calendar_content(reminders, tzid, now)
             resp = HttpResponse(content, content_type="text/calendar; charset=utf-8")
             resp["Content-Disposition"] = 'attachment; filename="mtm-reminders.ics"'
             return resp
