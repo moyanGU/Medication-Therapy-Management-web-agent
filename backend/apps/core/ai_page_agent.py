@@ -43,18 +43,34 @@ def _get_page_agent_url(base_url: str) -> str:
     return f"{_normalize_openai_base_url(base_url)}/chat/completions"
 
 
-def _build_page_agent_proxy_payload(data: dict) -> dict:
-    messages = data.get("messages")
+def _validate_page_agent_messages(messages):
     if not isinstance(messages, list) or not messages:
         raise ValueError("messages 必须为非空数组")
     if len(messages) > 20:
         raise ValueError("messages 数量超过限制")
+    return messages
 
-    tools = data.get("tools")
-    if tools is not None and not isinstance(tools, list):
+
+def _validate_page_agent_tools(tools):
+    if tools is None:
+        return None
+    if not isinstance(tools, list):
         raise ValueError("tools 必须为数组")
-    if isinstance(tools, list) and len(tools) > 20:
+    if len(tools) > 20:
         raise ValueError("tools 数量超过限制")
+    return tools
+
+
+def _apply_page_agent_max_tokens(payload: dict, raw_value):
+    if not isinstance(raw_value, int) or raw_value <= 0:
+        return
+    max_limit = int(getattr(settings, "BAICHUAN_M3_MAX_OUTPUT_TOKENS", 1024))
+    payload["max_tokens"] = min(raw_value, max_limit)
+
+
+def _build_page_agent_proxy_payload(data: dict) -> dict:
+    messages = _validate_page_agent_messages(data.get("messages"))
+    tools = _validate_page_agent_tools(data.get("tools"))
 
     payload = {
         "model": getattr(settings, "BAICHUAN_M3_MODEL", ""),
@@ -67,10 +83,7 @@ def _build_page_agent_proxy_payload(data: dict) -> dict:
     if tools:
         payload["tools"] = tools
 
-    max_tokens = data.get("max_tokens")
-    if isinstance(max_tokens, int) and max_tokens > 0:
-        max_limit = int(getattr(settings, "BAICHUAN_M3_MAX_OUTPUT_TOKENS", 1024))
-        payload["max_tokens"] = min(max_tokens, max_limit)
+    _apply_page_agent_max_tokens(payload, data.get("max_tokens"))
 
     return payload
 
