@@ -300,6 +300,33 @@ def _create_user(username: str, phone: str, password: str):
         )
 
 
+def _ensure_unique_username_phone(username: str, phone: str):
+    if User.objects.filter(username=username).exists():
+        return _response_error("用户名已存在", status.HTTP_400_BAD_REQUEST)
+    if User.objects.filter(phone=phone).exists():
+        return _response_error("手机号已被注册", status.HTTP_400_BAD_REQUEST)
+    return None
+
+
+def _issue_tokens(user):
+    refresh = RefreshToken.for_user(user)
+    return refresh, refresh.access_token
+
+
+def _build_register_response(user, refresh, access_token):
+    return Response(
+        {
+            "success": True,
+            "message": "注册成功",
+            "data": {
+                "user": _build_user_payload(user),
+                "tokens": {"access": str(access_token), "refresh": str(refresh)},
+            },
+        },
+        status=status.HTTP_201_CREATED,
+    )
+
+
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def register(request):
@@ -341,29 +368,15 @@ def register(request):
 
         _cache_delete_with_session_fallback(request, cache_key, approved_key)
 
-        if User.objects.filter(username=username).exists():
-            return _response_error("用户名已存在", status.HTTP_400_BAD_REQUEST)
-
-        if User.objects.filter(phone=phone).exists():
-            return _response_error("手机号已被注册", status.HTTP_400_BAD_REQUEST)
+        error = _ensure_unique_username_phone(username, phone)
+        if error is not None:
+            return error
 
         user = _create_user(username, phone, password)
-
-        refresh = RefreshToken.for_user(user)
-        access_token = refresh.access_token
+        refresh, access_token = _issue_tokens(user)
 
         logger.info(f"用户注册成功: user_id={user.id}, username={username}")
-        return Response(
-            {
-                "success": True,
-                "message": "注册成功",
-                "data": {
-                    "user": _build_user_payload(user),
-                    "tokens": {"access": str(access_token), "refresh": str(refresh)},
-                },
-            },
-            status=status.HTTP_201_CREATED,
-        )
+        return _build_register_response(user, refresh, access_token)
     except Exception:
         logger.exception("用户注册失败")
         return _response_error("注册失败，请稍后重试", status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -652,42 +665,63 @@ def approve_verification_code(request):
     - message
     """
     try:
-        user = getattr(request, "user", None)
-        if not user or not (
-            getattr(user, "is_superuser", False)
-            or getattr(user, "is_staff", False)
-            or getattr(user, "is_admin", False)
-        ):
+        if not _is_admin_user(getattr(request, "user", None)):
             return _response_error("需要管理员权限", status.HTTP_403_FORBIDDEN)
 
         data, error_resp = _parse_request_data(request, "审批验证码")
         if error_resp is not None:
             return error_resp
 
-        phone = str((data or {}).get("phone") or "").strip()
-        code = str((data or {}).get("code") or "").strip()
+        phone, code, error = _parse_phone_code(data)
+        if error is not None:
+            return error
 
-        if not phone or not code:
-            return _response_error("手机号和验证码均为必填", status.HTTP_400_BAD_REQUEST)
+        error = _verify_cached_code(request, phone, code)
+        if error is not None:
+            return error
 
-        cache_key = f"sms:code:{phone}"
-        cached_code = _cache_get_with_session_fallback(request, cache_key)
-        if not cached_code:
-            return _response_error("验证码不存在或已过期", status.HTTP_404_NOT_FOUND)
-        if str(cached_code) != str(code):
-            return _response_error("验证码不匹配", status.HTTP_400_BAD_REQUEST)
-
-        approved_key = f"sms:approved:{phone}:{code}"
-        ttl = int(getattr(settings, "SMS_CODE_TTL", 300))
-        _cache_set_with_session_fallback(request, approved_key, 1, ttl)
-
+        _set_approved_code_flag(request, phone, code)
         logger.info(
             f"管理员({getattr(request.user, 'username', 'admin')})已审批验证码: phone={_mask_phone(phone)}"
         )
-
         return Response(
             {"success": True, "message": "已审批，验证码现在有效"}, status=status.HTTP_200_OK
         )
     except Exception:
         logger.exception("审批验证码失败")
         return _response_error("审批失败，请稍后重试", status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _is_admin_user(user) -> bool:
+    return bool(
+        user
+        and (
+            getattr(user, "is_superuser", False)
+            or getattr(user, "is_staff", False)
+            or getattr(user, "is_admin", False)
+        )
+    )
+
+
+def _parse_phone_code(data):
+    phone = str((data or {}).get("phone") or "").strip()
+    code = str((data or {}).get("code") or "").strip()
+    if not phone or not code:
+        return None, None, _response_error("手机号和验证码均为必填", status.HTTP_400_BAD_REQUEST)
+    return phone, code, None
+
+
+def _verify_cached_code(request, phone: str, code: str):
+    cache_key = f"sms:code:{phone}"
+    cached_code = _cache_get_with_session_fallback(request, cache_key)
+    if not cached_code:
+        return _response_error("验证码不存在或已过期", status.HTTP_404_NOT_FOUND)
+    if str(cached_code) != str(code):
+        return _response_error("验证码不匹配", status.HTTP_400_BAD_REQUEST)
+    return None
+
+
+def _set_approved_code_flag(request, phone: str, code: str):
+    approved_key = f"sms:approved:{phone}:{code}"
+    ttl = int(getattr(settings, "SMS_CODE_TTL", 300))
+    _cache_set_with_session_fallback(request, approved_key, 1, ttl)
