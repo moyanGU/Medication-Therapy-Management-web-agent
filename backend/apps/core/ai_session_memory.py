@@ -96,6 +96,25 @@ def _handle_session_memory_post(request, user_id):
     )
 
 
+def _require_ai_enabled():
+    if not getattr(settings, "BAICHUAN_M3_ENABLED", False):
+        return error_response("AI 服务未启用", "AI_DISABLED", 503)
+    return None
+
+
+def _resolve_summarize_messages(memory, request):
+    stored_messages = memory.messages if memory else []
+    incoming_messages = _sanitize_messages((request.data or {}).get("messages"))
+    messages = incoming_messages or stored_messages
+    if not messages:
+        return None, error_response("暂无可总结的对话内容", "VALIDATION_ERROR", 400)
+    return messages, None
+
+
+def _truncate_summary(summary_text: str) -> str:
+    return summary_text[:4000] if summary_text and len(summary_text) > 4000 else summary_text
+
+
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def session_memory(request):
@@ -111,12 +130,13 @@ def session_memory(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def session_memory_summarize(request):
-    user_id = getattr(request.user, "id", None)
-    if not user_id:
-        return error_response("需要登录", "AUTH_REQUIRED", 401)
+    user_id, error = _require_user_id(request)
+    if error is not None:
+        return error
 
-    if not getattr(settings, "BAICHUAN_M3_ENABLED", False):
-        return error_response("AI 服务未启用", "AI_DISABLED", 503)
+    error = _require_ai_enabled()
+    if error is not None:
+        return error
 
     try:
         session_id = _normalize_session_id(str((request.data or {}).get("session_id") or ""))
@@ -124,12 +144,9 @@ def session_memory_summarize(request):
         return error_response(str(exc), "VALIDATION_ERROR", 400)
 
     memory = SessionMemory.objects.filter(user_id=user_id, session_id=session_id).first()
-    stored_messages = memory.messages if memory else []
-
-    incoming_messages = _sanitize_messages((request.data or {}).get("messages"))
-    messages = incoming_messages or stored_messages
-    if not messages:
-        return error_response("暂无可总结的对话内容", "VALIDATION_ERROR", 400)
+    messages, error = _resolve_summarize_messages(memory, request)
+    if error is not None:
+        return error
 
     try:
         from apps.core.agents.memory_agent import SessionMemoryAgent
@@ -139,8 +156,7 @@ def session_memory_summarize(request):
     except Exception:
         return error_response("AI 生成失败", "AI_GENERATION_FAILED", 500)
 
-    if len(summary_text) > 4000:
-        summary_text = summary_text[:4000]
+    summary_text = _truncate_summary(summary_text)
 
     memory, created = SessionMemory.objects.update_or_create(
         user_id=user_id,
