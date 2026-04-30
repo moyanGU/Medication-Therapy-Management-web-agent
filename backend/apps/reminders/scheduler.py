@@ -352,6 +352,30 @@ class ReminderScheduler:
             logger.error(f"发送提醒异常 {reminder.id}: {str(e)}")
             return False
 
+    def _get_active_reminders_for_upcoming(self, user, now, end_time):
+        return (
+            Reminder.objects.filter(user=user, is_active=True, start_date__lte=end_time.date())
+            .filter(Q(end_date__isnull=True) | Q(end_date__gte=now.date()))
+            .order_by("reminder_time")
+        )
+
+    def _build_reminder_datetime_for_date(self, reminder, check_date):
+        reminder_datetime = timezone.datetime.combine(check_date, reminder.reminder_time)
+        reminder_datetime = timezone.make_aware(reminder_datetime)
+        if reminder.advance_minutes > 0:
+            reminder_datetime -= timedelta(minutes=reminder.advance_minutes)
+        return reminder_datetime
+
+    def _collect_upcoming_for_date(self, reminders, check_date, now, end_time):
+        items = []
+        for reminder in reminders:
+            if not self._should_remind_on_date(reminder, check_date):
+                continue
+            reminder_datetime = self._build_reminder_datetime_for_date(reminder, check_date)
+            if now <= reminder_datetime <= end_time:
+                items.append({"reminder": reminder, "datetime": reminder_datetime, "date": check_date})
+        return items
+
     def get_upcoming_reminders(self, user, hours=24):
         """
         获取用户未来指定小时内的提醒
@@ -359,43 +383,14 @@ class ReminderScheduler:
         now = timezone.now()
         end_time = now + timedelta(hours=hours)
 
-        reminders = (
-            Reminder.objects.filter(
-                user=user, is_active=True, start_date__lte=end_time.date()
-            )
-            .filter(Q(end_date__isnull=True) | Q(end_date__gte=now.date()))
-            .order_by("reminder_time")
-        )
+        reminders = self._get_active_reminders_for_upcoming(user, now, end_time)
 
         upcoming = []
         current_date = now.date()
-
-        # 检查今天和明天的提醒
         for days_ahead in range(2):
             check_date = current_date + timedelta(days=days_ahead)
+            upcoming.extend(self._collect_upcoming_for_date(reminders, check_date, now, end_time))
 
-            for reminder in reminders:
-                # 模拟检查该日期是否应该提醒
-                if self._should_remind_on_date(reminder, check_date):
-                    reminder_datetime = timezone.datetime.combine(
-                        check_date, reminder.reminder_time
-                    )
-                    reminder_datetime = timezone.make_aware(reminder_datetime)
-
-                    # 考虑提前提醒时间
-                    if reminder.advance_minutes > 0:
-                        reminder_datetime -= timedelta(minutes=reminder.advance_minutes)
-
-                    if now <= reminder_datetime <= end_time:
-                        upcoming.append(
-                            {
-                                "reminder": reminder,
-                                "datetime": reminder_datetime,
-                                "date": check_date,
-                            }
-                        )
-
-        # 按时间排序
         upcoming.sort(key=lambda x: x["datetime"])
         return upcoming
 
