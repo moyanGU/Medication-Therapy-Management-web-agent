@@ -389,6 +389,30 @@ def register(request):
         return _response_error("注册失败，请稍后重试", status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+def _parse_login_payload(data):
+    username = str((data or {}).get("username") or "").strip()
+    password = str((data or {}).get("password") or "").strip()
+    return username, password
+
+
+def _login_user_flow(username: str, password: str):
+    if not username or not password:
+        return None, None, None, _response_error("用户名和密码都是必填的", status.HTTP_400_BAD_REQUEST)
+
+    user = _find_user_by_identifier(username)
+    if not user:
+        return None, None, None, _response_error("用户不存在", status.HTTP_400_BAD_REQUEST)
+
+    if not user.check_password(password):
+        return None, None, None, _response_error("密码错误", status.HTTP_400_BAD_REQUEST)
+
+    if not user.is_active:
+        return None, None, None, _response_error("账户已被禁用", status.HTTP_400_BAD_REQUEST)
+
+    refresh = RefreshToken.for_user(user)
+    return user, refresh, refresh.access_token, None
+
+
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def login(request):
@@ -409,26 +433,13 @@ def login(request):
         return error_resp
 
     try:
-        username = str((data or {}).get("username") or "").strip()
-        password = str((data or {}).get("password") or "").strip()
+        username, password = _parse_login_payload(data)
 
         logger.info(f"用户登录请求: username={username}")
 
-        if not all([username, password]):
-            return _response_error("用户名和密码都是必填的", status.HTTP_400_BAD_REQUEST)
-
-        user = _find_user_by_identifier(username)
-        if not user:
-            return _response_error("用户不存在", status.HTTP_400_BAD_REQUEST)
-
-        if not user.check_password(password):
-            return _response_error("密码错误", status.HTTP_400_BAD_REQUEST)
-
-        if not user.is_active:
-            return _response_error("账户已被禁用", status.HTTP_400_BAD_REQUEST)
-
-        refresh = RefreshToken.for_user(user)
-        access_token = refresh.access_token
+        user, refresh, access_token, error = _login_user_flow(username, password)
+        if error is not None:
+            return error
 
         logger.info(f"用户登录成功: user_id={user.id}, username={user.username}")
 
