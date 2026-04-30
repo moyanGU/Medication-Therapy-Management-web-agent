@@ -13,6 +13,36 @@ from .ai_llm import _normalize_openai_base_url
 logger = logging.getLogger("mtm_helper")
 
 
+def _json_error(message: str, error_type: str, status_code: int):
+    return JsonResponse({"error": {"message": message, "type": error_type}}, status=status_code)
+
+
+def _get_page_agent_config():
+    if not getattr(settings, "BAICHUAN_M3_ENABLED", False):
+        return None, None, None, None, _json_error("AI 服务未启用", "service_unavailable", 503)
+
+    base_url = getattr(settings, "BAICHUAN_M3_API_BASE_URL", "")
+    api_key = getattr(settings, "BAICHUAN_M3_API_KEY", "")
+    model = getattr(settings, "BAICHUAN_M3_MODEL", "")
+    timeout_seconds = float(getattr(settings, "BAICHUAN_M3_TIMEOUT_SECONDS", 30))
+
+    if not base_url or not model:
+        return None, None, None, None, _json_error("AI 服务配置缺失", "config_error", 503)
+
+    return base_url, api_key, model, timeout_seconds, None
+
+
+def _build_page_agent_headers(api_key: str) -> dict:
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    return headers
+
+
+def _get_page_agent_url(base_url: str) -> str:
+    return f"{_normalize_openai_base_url(base_url)}/chat/completions"
+
+
 def _build_page_agent_proxy_payload(data: dict) -> dict:
     messages = data.get("messages")
     if not isinstance(messages, list) or not messages:
@@ -74,15 +104,19 @@ def _select_page_agent_tool(payload: dict) -> dict | None:
     return first_tool if isinstance(first_tool, dict) else None
 
 
-def _build_page_agent_fallback_messages(messages: list[dict], tool_spec: dict) -> list[dict]:
+def _extract_page_agent_tool_meta(tool_spec: dict):
     function = tool_spec.get("function") if isinstance(tool_spec, dict) else {}
     tool_name = str(function.get("name") or "AgentOutput").strip() or "AgentOutput"
     description = str(function.get("description") or "").strip()
     parameters = function.get("parameters")
     if not isinstance(parameters, dict):
         parameters = {"type": "object"}
+    return tool_name, description, parameters
 
-    instruction = (
+
+def _build_page_agent_fallback_instruction(tool_spec: dict) -> str:
+    tool_name, description, parameters = _extract_page_agent_tool_meta(tool_spec)
+    return (
         "你当前运行在一个不支持 function calling 的模型兼容层。"
         f"请直接模拟一次对工具 {tool_name} 的调用，并只输出该工具参数对应的 JSON 对象。"
         "禁止输出 markdown、代码块、解释、前后缀、思考过程或任何非 JSON 内容。"
@@ -91,20 +125,28 @@ def _build_page_agent_fallback_messages(messages: list[dict], tool_spec: dict) -
         f"\n参数 JSON Schema：{json.dumps(parameters, ensure_ascii=False)}"
         "\n如果字段无法确定，请给出最保守、最可执行且满足 schema 的值。"
     )
-    system_parts = [instruction]
+
+
+def _normalize_page_agent_messages(messages: list[dict]):
+    system_parts = []
     normalized_messages = []
     for message in messages:
         if not isinstance(message, dict):
             continue
-        role = message.get("role")
-        content = message.get("content")
-        if role == "system":
+        if message.get("role") == "system":
+            content = message.get("content")
             if content:
                 system_parts.append(str(content))
             continue
         normalized_messages.append(message)
+    return system_parts, normalized_messages
+
+
+def _build_page_agent_fallback_messages(messages: list[dict], tool_spec: dict) -> list[dict]:
+    instruction = _build_page_agent_fallback_instruction(tool_spec)
+    system_parts, normalized_messages = _normalize_page_agent_messages(messages)
     return [
-        {"role": "system", "content": "\n\n".join(part for part in system_parts if part)},
+        {"role": "system", "content": "\n\n".join(part for part in [instruction, *system_parts] if part)},
         *normalized_messages,
     ]
 
@@ -170,8 +212,7 @@ def _execute_page_agent_fallback(
     if not tool_spec:
         raise ValueError("未找到可用工具")
 
-    function = tool_spec.get("function") if isinstance(tool_spec, dict) else {}
-    tool_name = str(function.get("name") or "AgentOutput").strip() or "AgentOutput"
+    tool_name, _, _ = _extract_page_agent_tool_meta(tool_spec)
     fallback_messages = _build_page_agent_fallback_messages(payload["messages"], tool_spec)
     max_tokens = int(payload.get("max_tokens") or getattr(settings, "BAICHUAN_M3_MAX_OUTPUT_TOKENS", 1024))
     from apps.core import views as core_views
@@ -196,80 +237,61 @@ def _execute_page_agent_fallback(
     )
 
 
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def page_agent_chat_completions(request):
-    if not getattr(settings, "BAICHUAN_M3_ENABLED", False):
-        return JsonResponse(
-            {"error": {"message": "AI 服务未启用", "type": "service_unavailable"}},
-            status=503,
-        )
-
-    base_url = getattr(settings, "BAICHUAN_M3_API_BASE_URL", "")
-    api_key = getattr(settings, "BAICHUAN_M3_API_KEY", "")
-    model = getattr(settings, "BAICHUAN_M3_MODEL", "")
-    timeout_seconds = float(getattr(settings, "BAICHUAN_M3_TIMEOUT_SECONDS", 30))
-
-    if not base_url or not model:
-        return JsonResponse(
-            {"error": {"message": "AI 服务配置缺失", "type": "config_error"}},
-            status=503,
-        )
-
+def _handle_page_agent_tools_fallback(*, base_url: str, api_key: str, model: str, timeout_seconds: float, payload: dict):
     try:
-        payload = _build_page_agent_proxy_payload(request.data or {})
-    except ValueError as exc:
-        return JsonResponse(
-            {"error": {"message": str(exc), "type": "invalid_request_error"}},
-            status=400,
+        body = _execute_page_agent_fallback(
+            base_url=base_url,
+            api_key=api_key,
+            model=model,
+            timeout_seconds=timeout_seconds,
+            payload=payload,
         )
-
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-
-    url = f"{_normalize_openai_base_url(base_url)}/chat/completions"
-
-    if payload.get("tools"):
-        try:
-            body = _execute_page_agent_fallback(
-                base_url=base_url,
-                api_key=api_key,
-                model=model,
-                timeout_seconds=timeout_seconds,
-                payload=payload,
-            )
-        except requests.RequestException:
-            return JsonResponse(
-                {"error": {"message": "上游模型服务请求失败", "type": "upstream_error"}},
-                status=502,
-            )
-        except RuntimeError:
-            return JsonResponse(
-                {"error": {"message": "上游模型返回错误", "type": "upstream_error"}},
-                status=502,
-            )
-        except ValueError as exc:
-            return JsonResponse(
-                {"error": {"message": str(exc), "type": "invalid_response_error"}},
-                status=502,
-            )
         return JsonResponse(body, status=200, safe=isinstance(body, dict))
+    except requests.RequestException:
+        return _json_error("上游模型服务请求失败", "upstream_error", 502)
+    except RuntimeError:
+        return _json_error("上游模型返回错误", "upstream_error", 502)
+    except ValueError as exc:
+        return _json_error(str(exc), "invalid_response_error", 502)
 
+
+def _proxy_page_agent_upstream(*, url: str, headers: dict, payload: dict, timeout_seconds: float):
     try:
         resp = requests.post(url, headers=headers, json=payload, timeout=timeout_seconds)
     except requests.RequestException:
-        return JsonResponse(
-            {"error": {"message": "上游模型服务请求失败", "type": "upstream_error"}},
-            status=502,
-        )
+        return _json_error("上游模型服务请求失败", "upstream_error", 502)
 
     try:
         body = resp.json()
     except ValueError:
-        return JsonResponse(
-            {"error": {"message": "上游模型响应格式错误", "type": "bad_gateway"}},
-            status=502,
-        )
+        return _json_error("上游模型响应格式错误", "bad_gateway", 502)
 
     return JsonResponse(body, status=resp.status_code, safe=isinstance(body, dict))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def page_agent_chat_completions(request):
+    base_url, api_key, model, timeout_seconds, error = _get_page_agent_config()
+    if error is not None:
+        return error
+
+    try:
+        payload = _build_page_agent_proxy_payload(request.data or {})
+    except ValueError as exc:
+        return _json_error(str(exc), "invalid_request_error", 400)
+
+    headers = _build_page_agent_headers(api_key)
+    url = _get_page_agent_url(base_url)
+    if payload.get("tools"):
+        return _handle_page_agent_tools_fallback(
+            base_url=base_url,
+            api_key=api_key,
+            model=model,
+            timeout_seconds=timeout_seconds,
+            payload=payload,
+        )
+
+    return _proxy_page_agent_upstream(
+        url=url, headers=headers, payload=payload, timeout_seconds=timeout_seconds
+    )
