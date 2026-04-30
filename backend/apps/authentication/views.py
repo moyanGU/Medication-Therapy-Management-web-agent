@@ -127,6 +127,34 @@ def _build_user_payload(user):
     }
 
 
+def _find_user_by_identifier(identifier: str):
+    ident = str(identifier or "").strip()
+    if not ident:
+        return None
+    if _is_valid_phone(ident):
+        return User.objects.filter(phone=ident).first()
+    return User.objects.filter(username=ident).first()
+
+
+def _safe_avatar_url(user):
+    try:
+        avatar = getattr(user, "avatar", None)
+        if avatar and getattr(avatar, "name", None):
+            return avatar.url
+        return None
+    except Exception:
+        return None
+
+
+def _build_login_payload(user, refresh, access_token):
+    payload = _build_user_payload(user)
+    payload["avatar"] = _safe_avatar_url(user)
+    return {
+        "user": payload,
+        "tokens": {"access": str(access_token), "refresh": str(refresh)},
+    }
+
+
 def _send_verification_via_spug(phone: str, code: str) -> tuple[bool, str | None]:
     if not _is_spug_enabled():
         return True, None
@@ -311,111 +339,45 @@ def login(request):
     - data: 用户信息和令牌
     - message: 提示信息
     """
-    # 仅捕获请求体解析错误，避免误将客户端错误转为500
-    try:
-        data = request.data
-    except ParseError as pe:
-        logger.warning(f"用户登录请求体解析失败: {str(pe)}")
-        return Response(
-            {
-                "success": False,
-                "message": "请求体格式错误，请使用application/json提交",
-                "data": None,
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    data, error_resp = _parse_request_data(request, "用户登录")
+    if error_resp is not None:
+        return error_resp
 
     try:
-        # 获取请求参数
-        username = (data.get("username") or "").strip()
-        password = (data.get("password") or "").strip()
+        username = str((data or {}).get("username") or "").strip()
+        password = str((data or {}).get("password") or "").strip()
 
         logger.info(f"用户登录请求: username={username}")
 
-        # 参数验证
         if not all([username, password]):
-            return Response(
-                {"success": False, "message": "用户名和密码都是必填的", "data": None},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return _response_error("用户名和密码都是必填的", status.HTTP_400_BAD_REQUEST)
 
-        # 查找用户（支持用户名或手机号登录）
-        user = None
-        if re.match(r"^1[3-9]\d{9}$", username):  # 手机号格式
-            try:
-                user = User.objects.get(phone=username)
-            except User.DoesNotExist:
-                pass
-        else:  # 用户名格式
-            try:
-                user = User.objects.get(username=username)
-            except User.DoesNotExist:
-                pass
-
+        user = _find_user_by_identifier(username)
         if not user:
-            return Response(
-                {"success": False, "message": "用户不存在", "data": None},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return _response_error("用户不存在", status.HTTP_400_BAD_REQUEST)
 
-        # 验证密码
         if not user.check_password(password):
-            return Response(
-                {"success": False, "message": "密码错误", "data": None},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return _response_error("密码错误", status.HTTP_400_BAD_REQUEST)
 
-        # 检查用户状态
         if not user.is_active:
-            return Response(
-                {"success": False, "message": "账户已被禁用", "data": None},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return _response_error("账户已被禁用", status.HTTP_400_BAD_REQUEST)
 
-        # 生成JWT令牌
         refresh = RefreshToken.for_user(user)
         access_token = refresh.access_token
 
         logger.info(f"用户登录成功: user_id={user.id}, username={user.username}")
 
-        # 注意：avatar字段需可JSON序列化，这里返回URL或None
-        avatar_value = None
-        try:
-            avatar_value = (
-                user.avatar.url
-                if getattr(user, "avatar", None) and user.avatar.name
-                else None
-            )
-        except Exception:
-            avatar_value = None
-
         return Response(
             {
                 "success": True,
                 "message": "登录成功",
-                "data": {
-                    "user": {
-                        "id": user.id,
-                        "username": user.username,
-                        "phone": user.phone,
-                        "email": user.email,
-                        "is_admin": user.is_admin,
-                        "role": "pharmacist" if getattr(user, "is_staff", False) or getattr(user, "is_admin", False) else "patient",
-                        "avatar": avatar_value,
-                        "created_at": user.created_at.isoformat(),
-                    },
-                    "tokens": {"access": str(access_token), "refresh": str(refresh)},
-                },
+                "data": _build_login_payload(user, refresh, access_token),
             },
             status=status.HTTP_200_OK,
         )
-
     except Exception:
         logger.exception("用户登录失败")
-        return Response(
-            {"success": False, "message": "登录失败，请稍后重试", "data": None},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+        return _response_error("登录失败，请稍后重试", status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(["POST"])
@@ -681,89 +643,42 @@ def approve_verification_code(request):
     - message
     """
     try:
-        # 运行时权限校验：允许 is_superuser / is_staff / 自定义 is_admin
         user = getattr(request, "user", None)
         if not user or not (
             getattr(user, "is_superuser", False)
             or getattr(user, "is_staff", False)
             or getattr(user, "is_admin", False)
         ):
-            return Response(
-                {"success": False, "message": "需要管理员权限"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            return _response_error("需要管理员权限", status.HTTP_403_FORBIDDEN)
 
-        try:
-            data = request.data
-        except ParseError as pe:
-            logger.warning(f"审批验证码请求体解析失败: {str(pe)}")
-            return Response(
-                {
-                    "success": False,
-                    "message": "请求体格式错误，请使用application/json提交",
-                    "data": None,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        data, error_resp = _parse_request_data(request, "审批验证码")
+        if error_resp is not None:
+            return error_resp
 
-        phone = (data.get("phone") or "").strip()
-        code = (data.get("code") or "").strip()
+        phone = str((data or {}).get("phone") or "").strip()
+        code = str((data or {}).get("code") or "").strip()
 
         if not phone or not code:
-            return Response(
-                {"success": False, "message": "手机号和验证码均为必填", "data": None},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return _response_error("手机号和验证码均为必填", status.HTTP_400_BAD_REQUEST)
 
-        # 校验当前缓存中是否存在该验证码（未过期）
         cache_key = f"sms:code:{phone}"
-        try:
-            cached_code = cache.get(cache_key)
-        except Exception as ce:
-            logger.error(f"读取验证码缓存失败，将回退到Session: {str(ce)}")
-            cached_code = request.session.get(cache_key)
-
+        cached_code = _cache_get_with_session_fallback(request, cache_key)
         if not cached_code:
-            return Response(
-                {"success": False, "message": "验证码不存在或已过期", "data": None},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
+            return _response_error("验证码不存在或已过期", status.HTTP_404_NOT_FOUND)
         if str(cached_code) != str(code):
-            return Response(
-                {"success": False, "message": "验证码不匹配", "data": None},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return _response_error("验证码不匹配", status.HTTP_400_BAD_REQUEST)
 
-        # 设置审批标记
         approved_key = f"sms:approved:{phone}:{code}"
-        ttl = getattr(settings, "SMS_CODE_TTL", 300)
-        try:
-            cache.set(approved_key, 1, ttl)
-        except Exception as ce:
-            logger.error(f"写入审批标记失败，将回退到Session: {str(ce)}")
-            request.session[approved_key] = 1
-            try:
-                request.session.set_expiry(min(ttl, 300))
-            except Exception:
-                pass
+        ttl = int(getattr(settings, "SMS_CODE_TTL", 300))
+        _cache_set_with_session_fallback(request, approved_key, 1, ttl)
 
-        masked_phone = (
-            (phone[:3] + "****" + phone[-4:])
-            if isinstance(phone, str) and len(phone) == 11
-            else "[masked]"
-        )
         logger.info(
-            f"管理员({getattr(request.user, 'username', 'admin')})已审批验证码: phone={masked_phone}"
+            f"管理员({getattr(request.user, 'username', 'admin')})已审批验证码: phone={_mask_phone(phone)}"
         )
 
         return Response(
             {"success": True, "message": "已审批，验证码现在有效"}, status=status.HTTP_200_OK
         )
-
     except Exception:
         logger.exception("审批验证码失败")
-        return Response(
-            {"success": False, "message": "审批失败，请稍后重试", "data": None},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+        return _response_error("审批失败，请稍后重试", status.HTTP_500_INTERNAL_SERVER_ERROR)
