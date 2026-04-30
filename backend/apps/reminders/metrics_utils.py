@@ -88,24 +88,63 @@ def _compute_warnings(response_rate: float, sent_count: int, failed_count: int) 
     return warnings
 
 
+def _compute_status_and_channel_counts(items):
+    sent_items = []
+    failed = 0
+    pending = 0
+    push_sent = 0
+    sms_sent = 0
+    email_sent = 0
+    push_failed = 0
+    sms_failed = 0
+    email_failed = 0
+
+    for h in items:
+        status = getattr(h, "status", None)
+        methods = getattr(h, "notification_methods", None) or []
+        if status == "sent":
+            sent_items.append(h)
+            if "push" in methods:
+                push_sent += 1
+            if "sms" in methods:
+                sms_sent += 1
+            if "email" in methods:
+                email_sent += 1
+            continue
+        if status == "failed":
+            failed += 1
+            if "push" in methods:
+                push_failed += 1
+            if "sms" in methods:
+                sms_failed += 1
+            if "email" in methods:
+                email_failed += 1
+            continue
+        if status == "pending":
+            pending += 1
+
+    return {
+        "sent_items": sent_items,
+        "failed": failed,
+        "pending": pending,
+        "push_sent": push_sent,
+        "sms_sent": sms_sent,
+        "email_sent": email_sent,
+        "push_failed": push_failed,
+        "sms_failed": sms_failed,
+        "email_failed": email_failed,
+    }
+
+
 def build_history_metrics(items, days: int) -> HistoryMetrics:
     items = list(items or [])
     total = len(items)
-    sent_items = [h for h in items if getattr(h, "status", None) == "sent"]
-    failed = sum(1 for h in items if getattr(h, "status", None) == "failed")
-    pending = sum(1 for h in items if getattr(h, "status", None) == "pending")
+    counts = _compute_status_and_channel_counts(items)
+    sent_items = counts["sent_items"]
+    failed = counts["failed"]
+    pending = counts["pending"]
 
     avg_delay = _compute_avg_delay_minutes(sent_items)
-
-    push_sent = sum(1 for h in sent_items if _has_method(h, "push"))
-    sms_sent = sum(1 for h in sent_items if _has_method(h, "sms"))
-    email_sent = sum(1 for h in sent_items if _has_method(h, "email"))
-
-    push_failed = sum(1 for h in items if getattr(h, "status", None) == "failed" and _has_method(h, "push"))
-    sms_failed = sum(1 for h in items if getattr(h, "status", None) == "failed" and _has_method(h, "sms"))
-    email_failed = sum(
-        1 for h in items if getattr(h, "status", None) == "failed" and _has_method(h, "email")
-    )
 
     response_rate = _compute_response_rate(sent_items)
 
@@ -119,12 +158,12 @@ def build_history_metrics(items, days: int) -> HistoryMetrics:
         failed=failed,
         pending=pending,
         avg_response_delay_minutes=round(avg_delay or 0.0, 2),
-        push_sent=push_sent,
-        sms_sent=sms_sent,
-        email_sent=email_sent,
-        push_failed=push_failed,
-        sms_failed=sms_failed,
-        email_failed=email_failed,
+        push_sent=counts["push_sent"],
+        sms_sent=counts["sms_sent"],
+        email_sent=counts["email_sent"],
+        push_failed=counts["push_failed"],
+        sms_failed=counts["sms_failed"],
+        email_failed=counts["email_failed"],
         response_rate=response_rate,
         escalated_total=escalated_total,
         escalated_sent=escalated_sent,
@@ -157,4 +196,3 @@ def history_metrics_to_dict(metrics: HistoryMetrics) -> dict:
         },
         "warnings": metrics.warnings,
     }
-
