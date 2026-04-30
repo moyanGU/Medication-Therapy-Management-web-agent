@@ -49,6 +49,9 @@ backend/!.env.example
 *.tar
 backend/db.sqlite3
 
+# Generated code health reports (reproducible via scripts/)
+reports/code_health/
+
 # Certificates/keys (if present)
 *.pem
 *.key
@@ -56,4 +59,3 @@ backend/db.sqlite3
 # Certbot artifacts
 certbot/conf/
 certbot/www/
-
