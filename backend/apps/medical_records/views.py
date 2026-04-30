@@ -406,21 +406,11 @@ class MedicalRecordViewSet(viewsets.ModelViewSet):
 
             queryset = self.get_queryset()
 
-            # 根据分类类型过滤
-            if category_type == "department":
-                queryset = queryset.filter(department__icontains=category_value)
-            elif category_type == "visit_type":
-                queryset = queryset.filter(visit_type=category_value)
-            elif category_type == "hospital":
-                queryset = queryset.filter(hospital__icontains=category_value)
-            elif category_type == "diagnosis":
-                queryset = queryset.filter(diagnosis__icontains=category_value)
-            elif category_type == "urgency":
-                queryset = queryset.filter(urgency=category_value)
-            elif category_type == "status":
-                queryset = queryset.filter(status=category_value)
-            else:
-                return error_response(message="不支持的分类类型")
+            queryset, error = self._apply_category_filter(
+                queryset, category_type, category_value
+            )
+            if error is not None:
+                return error
 
             # 分页
             page = self.paginate_queryset(queryset)
@@ -807,6 +797,56 @@ class MedicalRecordViewSet(viewsets.ModelViewSet):
             logger.error(f"获取附件列表异常: {str(e)}")
             return error_response(message="获取附件列表失败")
 
+    def _apply_category_filter(self, queryset, category_type: str, category_value: str):
+        contains_fields = {
+            "department": "department__icontains",
+            "hospital": "hospital__icontains",
+            "diagnosis": "diagnosis__icontains",
+        }
+        exact_fields = {
+            "visit_type": "visit_type",
+            "urgency": "urgency",
+            "status": "status",
+        }
+        if category_type in contains_fields:
+            return queryset.filter(**{contains_fields[category_type]: category_value}), None
+        if category_type in exact_fields:
+            return queryset.filter(**{exact_fields[category_type]: category_value}), None
+        return queryset, error_response(message="不支持的分类类型")
+
+    def _format_record_time(self, record):
+        t = getattr(record, "visit_time", None)
+        return t.strftime("%H:%M") if t else ""
+
+    def _format_record_date(self, record, field: str):
+        d = getattr(record, field, None)
+        return d.strftime("%Y-%m-%d") if d else ""
+
+    def _record_total_cost(self, record):
+        v = getattr(record, "total_cost", None)
+        return float(v) if v else 0.0
+
+    def _export_record_payload(self, record):
+        return {
+            "id": record.id,
+            "visit_date": self._format_record_date(record, "visit_date"),
+            "visit_time": self._format_record_time(record),
+            "hospital": record.hospital,
+            "department": record.department or "",
+            "doctor": record.doctor or "",
+            "visit_type": record.get_visit_type_display(),
+            "chief_complaint": record.chief_complaint or "",
+            "diagnosis": record.diagnosis or "",
+            "treatment": record.treatment or "",
+            "prescribed_medicines": record.get_prescribed_medicine_names(),
+            "examinations": record.get_examination_names(),
+            "total_cost": self._record_total_cost(record),
+            "follow_up_date": self._format_record_date(record, "follow_up_date"),
+            "satisfaction_score": record.satisfaction_score or 0,
+            "status": record.get_status_display(),
+            "urgency": record.get_urgency_display(),
+        }
+
     @action(detail=False, methods=["get"])
     def export_data(self, request):
         """
@@ -817,36 +857,7 @@ class MedicalRecordViewSet(viewsets.ModelViewSet):
             filterset = MedicalRecordFilter(request.GET, queryset=self.get_queryset())
             queryset = filterset.qs
 
-            # 获取导出数据
-            export_data = []
-            for record in queryset:
-                export_data.append(
-                    {
-                        "id": record.id,
-                        "visit_date": record.visit_date.strftime("%Y-%m-%d"),
-                        "visit_time": record.visit_time.strftime("%H:%M")
-                        if record.visit_time
-                        else "",
-                        "hospital": record.hospital,
-                        "department": record.department or "",
-                        "doctor": record.doctor or "",
-                        "visit_type": record.get_visit_type_display(),
-                        "chief_complaint": record.chief_complaint or "",
-                        "diagnosis": record.diagnosis or "",
-                        "treatment": record.treatment or "",
-                        "prescribed_medicines": record.get_prescribed_medicine_names(),
-                        "examinations": record.get_examination_names(),
-                        "total_cost": float(record.total_cost)
-                        if record.total_cost
-                        else 0,
-                        "follow_up_date": record.follow_up_date.strftime("%Y-%m-%d")
-                        if record.follow_up_date
-                        else "",
-                        "satisfaction_score": record.satisfaction_score or 0,
-                        "status": record.get_status_display(),
-                        "urgency": record.get_urgency_display(),
-                    }
-                )
+            export_data = [self._export_record_payload(record) for record in queryset]
 
             return success_response(
                 data={
