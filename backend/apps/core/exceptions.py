@@ -41,76 +41,63 @@ def _summarize_error_payload(payload):
     return str(payload)
 
 
-def custom_exception_handler(exc, context):
-    """
-    自定义异常处理器
-    统一处理API异常，返回标准格式的错误响应
+def _get_request_id(request):
+    if not request:
+        return None
+    return getattr(request, "request_id", None) or request.META.get("HTTP_X_REQUEST_ID")
 
-    Args:
-        exc: 异常实例
-        context: 异常上下文
 
-    Returns:
-        Response: 标准格式的错误响应
-    """
-    # 调用DRF默认的异常处理器
-    response = exception_handler(exc, context)
+def _log_api_exception(exc, request, view):
+    if not request:
+        return
+    request_id = _get_request_id(request)
+    logger.error(
+        f"API异常: {exc.__class__.__name__} - {str(exc)} - "
+        f"URL: {request.get_full_path()} - "
+        f"Method: {request.method} - "
+        f"Request ID: {request_id or 'unknown'} - "
+        f"User: {getattr(request.user, 'username', 'Anonymous')} - "
+        f"View: {view.__class__.__name__ if view else 'Unknown'}"
+    )
 
-    # 获取请求信息用于日志记录
-    request = context.get("request")
-    view = context.get("view")
 
-    # 记录异常信息
+def _normalize_validation_payload(exc, payload):
+    if isinstance(exc, DRFValidationError) and isinstance(payload, list):
+        return {"non_field_errors": payload}
+    return payload
+
+
+def _build_custom_response_data(exc, response, request, view):
+    response_payload = _normalize_validation_payload(exc, response.data)
+    custom_response_data = {
+        "success": False,
+        "data": response_payload if isinstance(exc, DRFValidationError) else None,
+        "message": _get_error_message(exc, response.data),
+        "error_code": _get_error_code(exc),
+        "status_code": response.status_code,
+        "request_id": getattr(request, "request_id", None) if request else None,
+    }
     if request:
-        request_id = getattr(request, "request_id", None) or request.META.get(
-            "HTTP_X_REQUEST_ID"
-        )
         logger.error(
-            f"API异常: {exc.__class__.__name__} - {str(exc)} - "
-            f"URL: {request.get_full_path()} - "
-            f"Method: {request.method} - "
-            f"Request ID: {request_id or 'unknown'} - "
-            f"User: {getattr(request.user, 'username', 'Anonymous')} - "
-            f"View: {view.__class__.__name__ if view else 'Unknown'}"
+            "API异常摘要: %s",
+            {
+                "exception": exc.__class__.__name__,
+                "url": request.get_full_path(),
+                "method": request.method,
+                "user": getattr(request.user, "username", "Anonymous"),
+                "view": view.__class__.__name__ if view else "Unknown",
+                "request_id": custom_response_data["request_id"],
+                "status_code": response.status_code,
+                "error_code": custom_response_data["error_code"],
+                "payload_summary": _summarize_error_payload(
+                    response_payload if isinstance(exc, DRFValidationError) else response.data
+                ),
+            },
         )
+    return custom_response_data
 
-    # 如果DRF处理了异常，自定义响应格式
-    if response is not None:
-        response_payload = response.data
-        if isinstance(exc, DRFValidationError) and isinstance(response_payload, list):
-            response_payload = {"non_field_errors": response_payload}
 
-        custom_response_data = {
-            "success": False,
-            "data": response_payload if isinstance(exc, DRFValidationError) else None,
-            "message": _get_error_message(exc, response.data),
-            "error_code": _get_error_code(exc),
-            "status_code": response.status_code,
-            "request_id": getattr(request, "request_id", None) if request else None,
-        }
-        if request:
-            logger.error(
-                "API异常摘要: %s",
-                {
-                    "exception": exc.__class__.__name__,
-                    "url": request.get_full_path(),
-                    "method": request.method,
-                    "user": getattr(request.user, "username", "Anonymous"),
-                    "view": view.__class__.__name__ if view else "Unknown",
-                    "request_id": custom_response_data["request_id"],
-                    "status_code": response.status_code,
-                    "error_code": custom_response_data["error_code"],
-                    "payload_summary": _summarize_error_payload(
-                        response_payload
-                        if isinstance(exc, DRFValidationError)
-                        else response.data
-                    ),
-                },
-            )
-        response.data = custom_response_data
-        return response
-
-    # 处理Django原生异常
+def _handle_django_exception(exc):
     if isinstance(exc, Http404):
         return Response(
             {
@@ -147,7 +134,10 @@ def custom_exception_handler(exc, context):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # 处理未捕获的异常
+    return None
+
+
+def _internal_error_response(exc):
     logger.error(f"未处理的异常: {exc.__class__.__name__} - {str(exc)}", exc_info=True)
     return Response(
         {
@@ -159,6 +149,41 @@ def custom_exception_handler(exc, context):
         },
         status=status.HTTP_500_INTERNAL_SERVER_ERROR,
     )
+
+
+def custom_exception_handler(exc, context):
+    """
+    自定义异常处理器
+    统一处理API异常，返回标准格式的错误响应
+
+    Args:
+        exc: 异常实例
+        context: 异常上下文
+
+    Returns:
+        Response: 标准格式的错误响应
+    """
+    # 调用DRF默认的异常处理器
+    response = exception_handler(exc, context)
+
+    # 获取请求信息用于日志记录
+    request = context.get("request")
+    view = context.get("view")
+
+    # 记录异常信息
+    _log_api_exception(exc, request, view)
+
+    # 如果DRF处理了异常，自定义响应格式
+    if response is not None:
+        response.data = _build_custom_response_data(exc, response, request, view)
+        return response
+
+    # 处理Django原生异常
+    django_resp = _handle_django_exception(exc)
+    if django_resp is not None:
+        return django_resp
+
+    return _internal_error_response(exc)
 
 
 def _get_error_message(exc, response_data):
@@ -192,25 +217,29 @@ def _get_error_message(exc, response_data):
     if isinstance(exc, Throttled):
         return f"请求过于频繁，请在{exc.wait}秒后重试"
 
-    # 验证异常
     if isinstance(exc, DRFValidationError):
-        if isinstance(response_data, dict):
-            # 提取第一个字段的第一个错误消息
-            for field, errors in response_data.items():
-                if isinstance(errors, list) and errors:
-                    if field == "non_field_errors":
-                        return str(errors[0])
-                    return f"{field}: {str(errors[0])}"
-                elif isinstance(errors, str):
-                    return f"{field}: {errors}"
-        elif isinstance(response_data, list) and response_data:
-            return str(response_data[0])
-        return "数据验证失败"
+        msg = _validation_error_message(response_data)
+        return msg or "数据验证失败"
 
     # 默认返回异常字符串表示
     if getattr(settings, "DEBUG", False):
         return str(exc) if str(exc) else "未知错误"
     return "请求处理失败，请稍后重试"
+
+
+def _validation_error_message(response_data):
+    if isinstance(response_data, dict):
+        for field, errors in response_data.items():
+            if isinstance(errors, list) and errors:
+                if field == "non_field_errors":
+                    return str(errors[0])
+                return f"{field}: {str(errors[0])}"
+            if isinstance(errors, str):
+                return f"{field}: {errors}"
+        return None
+    if isinstance(response_data, list) and response_data:
+        return str(response_data[0])
+    return None
 
 
 def _get_error_code(exc):
