@@ -317,6 +317,101 @@ class NotificationService:
         except Exception as ie:
             logger.error(f"[notify:{trace_id}] fallback_pending_create_error: {ie}")
 
+    def _log_notification_start(self, trace_id: str, user, reminder, history, from_history, preferred, title, message):
+        logger.info(
+            f"[notify:{trace_id}] start user_id={getattr(user, 'id', None)} "
+            f"reminder_id={getattr(reminder, 'id', None)} history_id={getattr(history, 'id', None)} "
+            f"from_history={from_history} preferred={preferred} title_len={len(title or '')} message_len={len(message or '')}"
+        )
+
+    def _log_notification_done(self, trace_id: str, sent: bool, attempts, user, reminder, history):
+        logger.info(
+            f"[notify:{trace_id}] done sent={sent} attempts={json.dumps(attempts, ensure_ascii=False)} "
+            f"user_id={getattr(user, 'id', None)} reminder_id={getattr(reminder, 'id', None)} history_id={getattr(history, 'id', None)}"
+        )
+
+    def _try_send_channel(
+        self,
+        notification_type,
+        user,
+        title,
+        message,
+        reminder,
+        history,
+        trace_id: str,
+    ):
+        try:
+            ok = self._send_by_type(
+                notification_type,
+                user,
+                title,
+                message,
+                reminder,
+                history,
+                trace_id=trace_id,
+            )
+            return bool(ok), None
+        except Exception as e:
+            logger.error(
+                f"[notify:{trace_id}] channel_error type={notification_type} "
+                f"user_id={getattr(user, 'id', None)} reminder_id={getattr(reminder, 'id', None)} "
+                f"history_id={getattr(history, 'id', None)} err={type(e).__name__}: {e}"
+            )
+            return False, f"{type(e).__name__}: {e}"
+
+    def _attempt_preferred_channels(
+        self,
+        preferred,
+        user,
+        title,
+        message,
+        reminder,
+        history,
+        trace_id: str,
+    ):
+        attempts = []
+        for notification_type in preferred:
+            if notification_type not in self.enabled_types:
+                continue
+            ok, err = self._try_send_channel(
+                notification_type,
+                user,
+                title,
+                message,
+                reminder,
+                history,
+                trace_id,
+            )
+            attempt = {"type": notification_type, "ok": ok}
+            if err:
+                attempt["error"] = err
+            attempts.append(attempt)
+            if ok:
+                self._log_notification(
+                    user,
+                    title,
+                    message,
+                    [notification_type],
+                    reminder,
+                    trace_id=trace_id,
+                )
+                return True, attempts
+        return False, attempts
+
+    def _maybe_schedule_fallback_pending(
+        self, sent: bool, reminder, from_history: bool, user, title, message, user_settings, trace_id: str
+    ):
+        if sent or reminder is None or from_history:
+            return
+        self._schedule_fallback_pending(
+            user=user,
+            title=title,
+            message=message,
+            reminder=reminder,
+            user_settings=user_settings,
+            trace_id=trace_id,
+        )
+
     def send_notification(
         self,
         user,
@@ -333,67 +428,17 @@ class NotificationService:
                 user_settings=user_settings, reminder=reminder, history=history
             )
 
-            logger.info(
-                f"[notify:{trace_id}] start user_id={getattr(user, 'id', None)} "
-                f"reminder_id={getattr(reminder, 'id', None)} history_id={getattr(history, 'id', None)} "
-                f"from_history={from_history} preferred={preferred} title_len={len(title or '')} message_len={len(message or '')}"
+            self._log_notification_start(
+                trace_id, user, reminder, history, from_history, preferred, title, message
             )
 
-            sent = False
-            attempts = []
-            for notification_type in preferred:
-                if notification_type in self.enabled_types:
-                    try:
-                        ok = self._send_by_type(
-                            notification_type,
-                            user,
-                            title,
-                            message,
-                            reminder,
-                            history,
-                            trace_id=trace_id,
-                        )
-                        attempts.append({"type": notification_type, "ok": bool(ok)})
-                        if ok:
-                            sent = True
-                            self._log_notification(
-                                user,
-                                title,
-                                message,
-                                [notification_type],
-                                reminder,
-                                trace_id=trace_id,
-                            )
-                            break
-                    except Exception as e:
-                        attempts.append(
-                            {
-                                "type": notification_type,
-                                "ok": False,
-                                "error": f"{type(e).__name__}: {e}",
-                            }
-                        )
-                        logger.error(
-                            f"[notify:{trace_id}] channel_error type={notification_type} "
-                            f"user_id={getattr(user, 'id', None)} reminder_id={getattr(reminder, 'id', None)} "
-                            f"history_id={getattr(history, 'id', None)} err={type(e).__name__}: {e}"
-                        )
-
-            if not sent and reminder is not None and not from_history:
-                self._schedule_fallback_pending(
-                    user=user,
-                    title=title,
-                    message=message,
-                    reminder=reminder,
-                    user_settings=user_settings,
-                    trace_id=trace_id,
-                )
-
-            logger.info(
-                f"[notify:{trace_id}] done sent={sent} attempts={json.dumps(attempts, ensure_ascii=False)} "
-                f"user_id={getattr(user, 'id', None)} reminder_id={getattr(reminder, 'id', None)} history_id={getattr(history, 'id', None)}"
+            sent, attempts = self._attempt_preferred_channels(
+                preferred, user, title, message, reminder, history, trace_id
             )
-
+            self._maybe_schedule_fallback_pending(
+                sent, reminder, from_history, user, title, message, user_settings, trace_id
+            )
+            self._log_notification_done(trace_id, sent, attempts, user, reminder, history)
             return sent
         except Exception as e:
             logger.error(f"[notify:{trace_id or 'no-trace'}] fatal_error: {str(e)}")
