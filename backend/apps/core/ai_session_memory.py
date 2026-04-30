@@ -38,40 +38,43 @@ def _sanitize_messages(messages):
     return sanitized[-60:]
 
 
-@api_view(["GET", "POST"])
-@permission_classes([IsAuthenticated])
-def session_memory(request):
+def _require_user_id(request):
     user_id = getattr(request.user, "id", None)
     if not user_id:
-        return error_response("需要登录", "AUTH_REQUIRED", 401)
+        return None, error_response("需要登录", "AUTH_REQUIRED", 401)
+    return user_id, None
 
-    if request.method == "GET":
-        session_id_raw = request.query_params.get("session_id") or ""
-        try:
-            session_id = _normalize_session_id(session_id_raw)
-        except ValueError as exc:
-            return error_response(str(exc), "VALIDATION_ERROR", 400)
 
-        memory = SessionMemory.objects.filter(user_id=user_id, session_id=session_id).first()
-        if memory:
-            payload = {
-                "summary": memory.summary,
-                "messages": memory.messages,
-                "updated_at": memory.updated_at.isoformat(),
-            }
-        else:
-            payload = {}
+def _build_session_memory_response(session_id: str, memory: SessionMemory | None):
+    if memory:
+        payload = {
+            "summary": memory.summary,
+            "messages": memory.messages,
+            "updated_at": memory.updated_at.isoformat(),
+        }
+    else:
+        payload = {}
 
-        return success_response(
-            {
-                "session_id": session_id,
-                "summary": str(payload.get("summary") or ""),
-                "messages": payload.get("messages") if isinstance(payload.get("messages"), list) else [],
-                "updated_at": payload.get("updated_at"),
-            },
-            "获取成功",
-        )
+    return {
+        "session_id": session_id,
+        "summary": str(payload.get("summary") or ""),
+        "messages": payload.get("messages") if isinstance(payload.get("messages"), list) else [],
+        "updated_at": payload.get("updated_at"),
+    }
 
+
+def _handle_session_memory_get(request, user_id):
+    session_id_raw = request.query_params.get("session_id") or ""
+    try:
+        session_id = _normalize_session_id(session_id_raw)
+    except ValueError as exc:
+        return error_response(str(exc), "VALIDATION_ERROR", 400)
+
+    memory = SessionMemory.objects.filter(user_id=user_id, session_id=session_id).first()
+    return success_response(_build_session_memory_response(session_id, memory), "获取成功")
+
+
+def _handle_session_memory_post(request, user_id):
     try:
         session_id = _normalize_session_id(str((request.data or {}).get("session_id") or ""))
     except ValueError as exc:
@@ -82,7 +85,7 @@ def session_memory(request):
     if len(summary) > 4000:
         summary = summary[:4000]
 
-    memory, created = SessionMemory.objects.update_or_create(
+    memory, _ = SessionMemory.objects.update_or_create(
         user_id=user_id,
         session_id=session_id,
         defaults={"summary": summary, "messages": messages},
@@ -91,6 +94,18 @@ def session_memory(request):
         {"session_id": session_id, "updated_at": memory.updated_at.isoformat()},
         "保存成功",
     )
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def session_memory(request):
+    user_id, error = _require_user_id(request)
+    if error is not None:
+        return error
+
+    if request.method == "GET":
+        return _handle_session_memory_get(request, user_id)
+    return _handle_session_memory_post(request, user_id)
 
 
 @api_view(["POST"])
@@ -137,4 +152,3 @@ def session_memory_summarize(request):
         {"session_id": session_id, "summary": summary_text, "updated_at": memory.updated_at.isoformat()},
         "生成成功",
     )
-
