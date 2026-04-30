@@ -88,51 +88,50 @@ def _compute_warnings(response_rate: float, sent_count: int, failed_count: int) 
     return warnings
 
 
+def _inc_channel_counts(counts: dict, methods, key_prefix: str):
+    for method in methods or []:
+        if method == "push":
+            counts[f"{key_prefix}_push"] += 1
+        elif method == "sms":
+            counts[f"{key_prefix}_sms"] += 1
+        elif method == "email":
+            counts[f"{key_prefix}_email"] += 1
+
+
 def _compute_status_and_channel_counts(items):
     sent_items = []
-    failed = 0
-    pending = 0
-    push_sent = 0
-    sms_sent = 0
-    email_sent = 0
-    push_failed = 0
-    sms_failed = 0
-    email_failed = 0
-
+    counts = {
+        "failed": 0,
+        "pending": 0,
+        "sent_push": 0,
+        "sent_sms": 0,
+        "sent_email": 0,
+        "failed_push": 0,
+        "failed_sms": 0,
+        "failed_email": 0,
+    }
     for h in items:
         status = getattr(h, "status", None)
         methods = getattr(h, "notification_methods", None) or []
         if status == "sent":
             sent_items.append(h)
-            if "push" in methods:
-                push_sent += 1
-            if "sms" in methods:
-                sms_sent += 1
-            if "email" in methods:
-                email_sent += 1
-            continue
-        if status == "failed":
-            failed += 1
-            if "push" in methods:
-                push_failed += 1
-            if "sms" in methods:
-                sms_failed += 1
-            if "email" in methods:
-                email_failed += 1
-            continue
-        if status == "pending":
-            pending += 1
+            _inc_channel_counts(counts, methods, "sent")
+        elif status == "failed":
+            counts["failed"] += 1
+            _inc_channel_counts(counts, methods, "failed")
+        elif status == "pending":
+            counts["pending"] += 1
 
     return {
         "sent_items": sent_items,
-        "failed": failed,
-        "pending": pending,
-        "push_sent": push_sent,
-        "sms_sent": sms_sent,
-        "email_sent": email_sent,
-        "push_failed": push_failed,
-        "sms_failed": sms_failed,
-        "email_failed": email_failed,
+        "failed": counts["failed"],
+        "pending": counts["pending"],
+        "push_sent": counts["sent_push"],
+        "sms_sent": counts["sent_sms"],
+        "email_sent": counts["sent_email"],
+        "push_failed": counts["failed_push"],
+        "sms_failed": counts["failed_sms"],
+        "email_failed": counts["failed_email"],
     }
 
 
