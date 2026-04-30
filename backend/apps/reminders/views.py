@@ -777,76 +777,23 @@ class ReminderViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"])
     def respond_by_subscription(self, request):
         try:
-            endpoint = request.data.get("endpoint")
-            response_type = request.data.get("response_type")
-            history_id = request.data.get("history_id")
-            reminder_id = request.data.get("reminder_id")
-            delay_minutes = int(request.data.get("delay_minutes", 5))
+            parsed, error = self._parse_subscription_response_payload(request)
+            if error is not None:
+                return error
 
-            if not endpoint or not response_type:
-                return Response(
-                    {"success": False, "message": "缺少必需参数", "data": None},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            endpoint = parsed["endpoint"]
+            response_type = parsed["response_type"]
+            history_id = parsed["history_id"]
+            reminder_id = parsed["reminder_id"]
+            delay_minutes = parsed["delay_minutes"]
 
-            from apps.users.models import PushSubscription
-
-            sub = (
-                PushSubscription.objects.filter(endpoint=endpoint, is_active=True)
-                .select_related("user")
-                .first()
-            )
-            if not sub:
-                return Response(
-                    {"success": False, "message": "订阅不存在或已失效", "data": None},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            user = sub.user
+            user, error = self._get_subscription_user(endpoint)
+            if error is not None:
+                return error
 
             if history_id:
-                from .history_models import ReminderHistory
-
-                history = (
-                    ReminderHistory.objects.filter(id=history_id, user=user)
-                    .select_related("reminder")
-                    .first()
-                )
-                if not history:
-                    return Response(
-                        {"success": False, "message": "历史记录不存在", "data": None},
-                        status=status.HTTP_404_NOT_FOUND,
-                    )
-                history.mark_responded(response_type)
-                reminder = history.reminder
-                if response_type == "taken":
-                    reminder.increment_response_count()
-                elif response_type == "delayed":
-                    try:
-                        # 创建5分钟后补发的待发送历史
-                        from django.utils import timezone as dj_tz
-
-                        from .history_models import ReminderHistory
-
-                        ReminderHistory.objects.create(
-                            user=user,
-                            reminder=reminder,
-                            title=history.title,
-                            message=history.message,
-                            notification_methods=["push"],
-                            scheduled_time=dj_tz.now()
-                            + dj_tz.timedelta(minutes=delay_minutes),
-                            reminder_type="repeat",
-                            status="pending",
-                        )
-                    except Exception as e:
-                        logger.error(f"创建延迟补发历史失败: {e}")
-                return Response(
-                    {
-                        "success": True,
-                        "message": "响应已记录",
-                        "data": {"history_id": history.id},
-                    }
+                return self._respond_history_by_subscription(
+                    user, history_id, response_type, delay_minutes
                 )
 
             if not reminder_id:
@@ -862,28 +809,7 @@ class ReminderViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            if response_type == "taken":
-                reminder.increment_response_count()
-            elif response_type == "delayed":
-                try:
-                    from django.utils import timezone as dj_tz
-
-                    from .history_models import ReminderHistory
-
-                    ReminderHistory.objects.create(
-                        user=user,
-                        reminder=reminder,
-                        title=reminder.title or f"用药提醒 - {reminder.medicine.name}",
-                        message=reminder.get_default_message(),
-                        notification_methods=["push"],
-                        scheduled_time=dj_tz.now()
-                        + dj_tz.timedelta(minutes=delay_minutes),
-                        reminder_type="repeat",
-                        status="pending",
-                    )
-                except Exception as e:
-                    logger.error(f"创建延迟补发历史失败: {e}")
-
+            self._apply_subscription_response(reminder, response_type, delay_minutes)
             return Response(
                 {
                     "success": True,
@@ -897,6 +823,108 @@ class ReminderViewSet(viewsets.ModelViewSet):
                 {"success": False, "message": f"订阅响应处理失败: {str(e)}", "data": None},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+    def _parse_subscription_response_payload(self, request):
+        endpoint = (request.data or {}).get("endpoint")
+        response_type = (request.data or {}).get("response_type")
+        history_id = (request.data or {}).get("history_id")
+        reminder_id = (request.data or {}).get("reminder_id")
+        delay_minutes = int((request.data or {}).get("delay_minutes", 5))
+
+        if not endpoint or not response_type:
+            return None, Response(
+                {"success": False, "message": "缺少必需参数", "data": None},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return (
+            {
+                "endpoint": endpoint,
+                "response_type": response_type,
+                "history_id": history_id,
+                "reminder_id": reminder_id,
+                "delay_minutes": delay_minutes,
+            },
+            None,
+        )
+
+    def _get_subscription_user(self, endpoint):
+        from apps.users.models import PushSubscription
+
+        sub = (
+            PushSubscription.objects.filter(endpoint=endpoint, is_active=True)
+            .select_related("user")
+            .first()
+        )
+        if not sub:
+            return None, Response(
+                {"success": False, "message": "订阅不存在或已失效", "data": None},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return sub.user, None
+
+    def _respond_history_by_subscription(
+        self, user, history_id, response_type, delay_minutes: int
+    ):
+        from .history_models import ReminderHistory
+
+        history = (
+            ReminderHistory.objects.filter(id=history_id, user=user)
+            .select_related("reminder")
+            .first()
+        )
+        if not history:
+            return Response(
+                {"success": False, "message": "历史记录不存在", "data": None},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        history.mark_responded(response_type)
+        reminder = history.reminder
+        self._apply_subscription_response(
+            reminder, response_type, delay_minutes, history=history
+        )
+        return Response(
+            {
+                "success": True,
+                "message": "响应已记录",
+                "data": {"history_id": history.id},
+            }
+        )
+
+    def _create_delayed_pending_history(self, user, reminder, title, message, delay_minutes: int):
+        try:
+            from django.utils import timezone as dj_tz
+
+            from .history_models import ReminderHistory
+
+            ReminderHistory.objects.create(
+                user=user,
+                reminder=reminder,
+                title=title,
+                message=message,
+                notification_methods=["push"],
+                scheduled_time=dj_tz.now() + dj_tz.timedelta(minutes=delay_minutes),
+                reminder_type="repeat",
+                status="pending",
+            )
+        except Exception as e:
+            logger.error(f"创建延迟补发历史失败: {e}")
+
+    def _apply_subscription_response(self, reminder, response_type, delay_minutes: int, history=None):
+        if response_type == "taken":
+            reminder.increment_response_count()
+            return
+        if response_type != "delayed":
+            return
+        user = getattr(reminder, "user", None)
+        if history is not None:
+            title = history.title
+            message = history.message
+        else:
+            title = reminder.title or f"用药提醒 - {reminder.medicine.name}"
+            message = reminder.get_default_message()
+        self._create_delayed_pending_history(user, reminder, title, message, delay_minutes)
 
     def _record_confirm_action_history(
         self, reminder, action_type, notes="", delay_minutes=None
