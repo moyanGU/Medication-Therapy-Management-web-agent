@@ -50,22 +50,24 @@ def _build_sms_text(title: str, message: str) -> str:
     )
 
 
-def _derive_spug_msg_var(title: str, message: str, reminder) -> str:
-    var = ""
+def _extract_reminder_medicine_name(reminder) -> str:
     try:
-        if reminder is not None and getattr(reminder, "medicine", None):
-            med = getattr(reminder, "medicine")
-            med_name = getattr(med, "name", None) or getattr(reminder, "medicine_name", None)
-            var = (med_name or "").strip()
+        if reminder is None:
+            return ""
+        med = getattr(reminder, "medicine", None)
+        if not med:
+            return ""
+        name = getattr(med, "name", None) or getattr(reminder, "medicine_name", None)
+        return str(name or "").strip()
     except Exception:
-        var = ""
+        return ""
 
+
+def _derive_spug_msg_var(title: str, message: str, reminder) -> str:
+    var = _extract_reminder_medicine_name(reminder)
     if not var:
         var = (title or "").strip() or (message or "").strip() or "用药"
-
-    if var.endswith("提醒"):
-        var = var[:-2]
-    return var
+    return var[:-2] if var.endswith("提醒") else var
 
 
 def _truncate_spug_msg_var(var: str, trace_id: str | None) -> str:
