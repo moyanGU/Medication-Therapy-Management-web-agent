@@ -373,35 +373,44 @@ class ReminderScheduler:
         upcoming.sort(key=lambda x: x["datetime"])
         return upcoming
 
-    def _should_remind_on_date(self, reminder, date):
-        """
-        检查指定日期是否应该提醒
-        """
-        # 检查是否在有效期内
+    def _is_within_active_window(self, reminder, date) -> bool:
         if date < reminder.start_date:
             return False
         if reminder.end_date and date > reminder.end_date:
             return False
+        return True
 
-        # 根据频率判断
-        if reminder.frequency == "daily":
-            return True
-        elif reminder.frequency == "every_other_day":
-            days_diff = (date - reminder.start_date).days
-            return days_diff % 2 == 0
-        elif reminder.frequency == "weekly":
-            days_diff = (date - reminder.start_date).days
-            return days_diff % 7 == 0
-        elif reminder.frequency == "custom":
-            weekday = date.weekday() + 1  # 转换为1-7
-            return weekday in reminder.weekdays
-        elif reminder.frequency in [
+    def _days_since_start(self, reminder, date) -> int:
+        try:
+            return int((date - reminder.start_date).days)
+        except Exception:
+            return 0
+
+    def _is_daily_like_frequency(self, frequency: str) -> bool:
+        return frequency in {
+            "daily",
             "twice_daily",
             "three_times_daily",
             "four_times_daily",
-        ]:
-            return True  # 这些频率每天都需要提醒
+        }
 
+    def _should_remind_on_date(self, reminder, date):
+        if not self._is_within_active_window(reminder, date):
+            return False
+
+        frequency = str(getattr(reminder, "frequency", "") or "").strip()
+        if self._is_daily_like_frequency(frequency):
+            return True
+
+        days_diff = self._days_since_start(reminder, date)
+        if frequency == "every_other_day":
+            return days_diff % 2 == 0
+        if frequency == "weekly":
+            return days_diff % 7 == 0
+        if frequency == "custom":
+            weekday = date.weekday() + 1
+            weekdays = getattr(reminder, "weekdays", None) or []
+            return weekday in weekdays
         return False
 
     def cleanup_old_reminders(self, days=30):
