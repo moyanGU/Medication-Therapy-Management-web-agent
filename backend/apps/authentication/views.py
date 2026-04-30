@@ -327,6 +327,38 @@ def _build_register_response(user, refresh, access_token):
     )
 
 
+def _parse_register_payload(data):
+    username = str((data or {}).get("username") or "").strip()
+    phone = str((data or {}).get("phone") or "").strip()
+    password = str((data or {}).get("password") or "").strip()
+    verification_code = str((data or {}).get("verification_code") or "").strip()
+    return username, phone, password, verification_code
+
+
+def _register_user_flow(request, username: str, phone: str, password: str, verification_code: str):
+    error = _validate_register_input(username, phone, password, verification_code)
+    if error is not None:
+        return error
+
+    cache_key, approved_key, error = _verify_registration_code(
+        request, phone, verification_code
+    )
+    if error is not None:
+        return error
+
+    _cache_delete_with_session_fallback(request, cache_key, approved_key)
+
+    error = _ensure_unique_username_phone(username, phone)
+    if error is not None:
+        return error
+
+    user = _create_user(username, phone, password)
+    refresh, access_token = _issue_tokens(user)
+
+    logger.info(f"用户注册成功: user_id={user.id}, username={username}")
+    return _build_register_response(user, refresh, access_token)
+
+
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def register(request):
@@ -349,34 +381,9 @@ def register(request):
         return error_resp
 
     try:
-        username = str((data or {}).get("username") or "").strip()
-        phone = str((data or {}).get("phone") or "").strip()
-        password = str((data or {}).get("password") or "").strip()
-        verification_code = str((data or {}).get("verification_code") or "").strip()
-
+        username, phone, password, verification_code = _parse_register_payload(data)
         logger.info(f"用户注册请求: username={username}, phone={phone}")
-
-        error = _validate_register_input(username, phone, password, verification_code)
-        if error is not None:
-            return error
-
-        cache_key, approved_key, error = _verify_registration_code(
-            request, phone, verification_code
-        )
-        if error is not None:
-            return error
-
-        _cache_delete_with_session_fallback(request, cache_key, approved_key)
-
-        error = _ensure_unique_username_phone(username, phone)
-        if error is not None:
-            return error
-
-        user = _create_user(username, phone, password)
-        refresh, access_token = _issue_tokens(user)
-
-        logger.info(f"用户注册成功: user_id={user.id}, username={username}")
-        return _build_register_response(user, refresh, access_token)
+        return _register_user_flow(request, username, phone, password, verification_code)
     except Exception:
         logger.exception("用户注册失败")
         return _response_error("注册失败，请稍后重试", status.HTTP_500_INTERNAL_SERVER_ERROR)
