@@ -207,6 +207,51 @@ def _is_spug_enabled() -> bool:
     )
 
 
+def _should_echo_verification_code() -> bool:
+    return bool(getattr(settings, "SMS_DEV_ECHO", bool(getattr(settings, "DEBUG", False))))
+
+
+def _build_verification_sms_text(code: str, ttl_seconds: int) -> str:
+    try:
+        minutes = max(1, int(round(int(ttl_seconds) / 60)))
+    except Exception:
+        minutes = 5
+    return (
+        getattr(settings, "SMS_TEMPLATES", {})
+        .get("verification", "【MTM用药助手】您的验证码是 {code}，{ttl} 分钟内有效。")
+        .format(code=code, ttl=minutes)
+    )
+
+
+def _apply_sms_rate_limit(request, phone: str):
+    rate_key = f"sms:rate:{phone}"
+    rate_limit_seconds = int(getattr(settings, "SMS_RATE_LIMIT_SECONDS", 60))
+    added, session_err = _cache_add_with_session_fallback(request, rate_key, 1, rate_limit_seconds)
+    if added is False:
+        return _response_error("发送过于频繁，请稍后再试", status.HTTP_429_TOO_MANY_REQUESTS)
+    if added is None and session_err is None:
+        logger.warning(
+            "验证码限流降级: cache.add 返回 None，跳过本次限流判断",
+            extra={"rate_key": rate_key},
+        )
+    return None
+
+
+def _persist_verification_code(request, phone: str, code: str) -> int:
+    cache_key = f"sms:code:{phone}"
+    ttl = int(getattr(settings, "SMS_CODE_TTL", 300))
+    _cache_set_with_session_fallback(request, cache_key, code, ttl)
+    return ttl
+
+
+def _log_fake_verification_sms(phone: str, code: str, ttl: int):
+    sms_text = _build_verification_sms_text(code, ttl)
+    if getattr(settings, "DEBUG", False) or _should_echo_verification_code():
+        logger.info(f"模拟发送短信验证码: phone={phone}, content={sms_text}")
+    else:
+        logger.info(f"模拟发送短信验证码: phone={phone}, content=[masked]")
+
+
 def _validate_register_input(username: str, phone: str, password: str, code: str):
     if not all([username, phone, password, code]):
         return _response_error("所有字段都是必填的", status.HTTP_400_BAD_REQUEST)
@@ -405,49 +450,21 @@ def send_verification_code(request):
         if not _is_valid_phone(phone):
             return _response_error("手机号格式不正确", status.HTTP_400_BAD_REQUEST)
 
-        rate_key = f"sms:rate:{phone}"
-        rate_limit_seconds = int(getattr(settings, "SMS_RATE_LIMIT_SECONDS", 60))
-        added, session_err = _cache_add_with_session_fallback(
-            request, rate_key, 1, rate_limit_seconds
-        )
-        if added is False:
-            return _response_error("发送过于频繁，请稍后再试", status.HTTP_429_TOO_MANY_REQUESTS)
-        if added is None and session_err is None:
-            logger.warning(
-                "验证码限流降级: cache.add 返回 None，跳过本次限流判断",
-                extra={"rate_key": rate_key},
-            )
-
         verification_code = generate_verification_code(6)
-        cache_key = f"sms:code:{phone}"
-        ttl = int(getattr(settings, "SMS_CODE_TTL", 300))
-        _cache_set_with_session_fallback(request, cache_key, verification_code, ttl)
+        rate_limit_error = _apply_sms_rate_limit(request, phone)
+        if rate_limit_error is not None:
+            return rate_limit_error
+        ttl = _persist_verification_code(request, phone, verification_code)
 
         ok, _ = _send_verification_via_spug(phone, verification_code)
         if not ok:
             return _response_error("短信通道异常，请稍后重试", status.HTTP_503_SERVICE_UNAVAILABLE)
 
         if not _is_spug_enabled():
-            try:
-                minutes = max(1, int(round(ttl / 60)))
-            except Exception:
-                minutes = 5
-            sms_text = (
-                getattr(settings, "SMS_TEMPLATES", {})
-                .get(
-                    "verification",
-                    "【MTM用药助手】您的验证码是 {code}，{ttl} 分钟内有效。",
-                )
-                .format(code=verification_code, ttl=minutes)
-            )
-            if getattr(settings, "DEBUG", False) or getattr(settings, "SMS_DEV_ECHO", False):
-                logger.info(f"模拟发送短信验证码: phone={phone}, content={sms_text}")
-            else:
-                logger.info(f"模拟发送短信验证码: phone={phone}, content=[masked]")
+            _log_fake_verification_sms(phone, verification_code, ttl)
 
         resp_data = {"phone": phone}
-        sms_dev_echo = getattr(settings, "SMS_DEV_ECHO", bool(getattr(settings, "DEBUG", False)))
-        if sms_dev_echo:
+        if _should_echo_verification_code():
             resp_data["code"] = verification_code
 
         return Response(
@@ -504,6 +521,38 @@ def logout(request):
         )
 
 
+def _build_refresh_response_data(new_refresh, access_token):
+    if new_refresh is None:
+        return {"access_token": str(access_token), "access": str(access_token)}
+    return {
+        "access_token": str(access_token),
+        "access": str(access_token),
+        "refresh_token": str(new_refresh),
+        "refresh": str(new_refresh),
+    }
+
+
+def _rotate_refresh_token_if_needed(refresh):
+    rotate_refresh = bool(settings.SIMPLE_JWT.get("ROTATE_REFRESH_TOKENS", False))
+    blacklist_after_rotation = bool(settings.SIMPLE_JWT.get("BLACKLIST_AFTER_ROTATION", False))
+    if not rotate_refresh:
+        return None, refresh.access_token, None
+
+    if blacklist_after_rotation:
+        try:
+            refresh.blacklist()
+        except Exception as token_error:
+            logger.warning(f"刷新令牌加入黑名单失败: {str(token_error)}")
+
+    user_id = refresh.get("user_id")
+    user = User.objects.filter(id=user_id).first()
+    if not user:
+        return None, None, _response_error("用户不存在", status.HTTP_401_UNAUTHORIZED)
+
+    new_refresh = RefreshToken.for_user(user)
+    return new_refresh, new_refresh.access_token, None
+
+
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def refresh_token(request):
@@ -519,69 +568,29 @@ def refresh_token(request):
     - message: 提示信息
     """
     try:
-        refresh_token_str = request.data.get("refresh_token", "").strip()
-
+        refresh_token_str = str((request.data or {}).get("refresh_token") or "").strip()
         if not refresh_token_str:
-            return Response(
-                {"success": False, "message": "刷新令牌不能为空", "data": None},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return _response_error("刷新令牌不能为空", status.HTTP_400_BAD_REQUEST)
 
         try:
             refresh = RefreshToken(refresh_token_str)
-            rotate_refresh = settings.SIMPLE_JWT.get("ROTATE_REFRESH_TOKENS", False)
-            blacklist_after_rotation = settings.SIMPLE_JWT.get(
-                "BLACKLIST_AFTER_ROTATION", False
-            )
-
-            if rotate_refresh:
-                if blacklist_after_rotation:
-                    try:
-                        refresh.blacklist()
-                    except Exception as token_error:
-                        logger.warning(f"刷新令牌加入黑名单失败: {str(token_error)}")
-                user_id = refresh.get("user_id")
-                user = User.objects.filter(id=user_id).first()
-                if not user:
-                    return Response(
-                        {"success": False, "message": "用户不存在", "data": None},
-                        status=status.HTTP_401_UNAUTHORIZED,
-                    )
-                new_refresh = RefreshToken.for_user(user)
-                access_token = new_refresh.access_token
-                response_data = {
-                    "access_token": str(access_token),
-                    "access": str(access_token),
-                    "refresh_token": str(new_refresh),
-                    "refresh": str(new_refresh),
-                }
-            else:
-                access_token = refresh.access_token
-                response_data = {
-                    "access_token": str(access_token),
-                    "access": str(access_token),
-                }
-
-            logger.info(f"令牌刷新成功: user_id={refresh.get('user_id')}")
-
-            return Response(
-                {"success": True, "message": "令牌刷新成功", "data": response_data},
-                status=status.HTTP_200_OK,
-            )
-
         except Exception as token_error:
             logger.warning(f"无效的刷新令牌: {str(token_error)}")
-            return Response(
-                {"success": False, "message": "刷新令牌无效或已过期", "data": None},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
+            return _response_error("刷新令牌无效或已过期", status.HTTP_401_UNAUTHORIZED)
 
+        new_refresh, access_token, error = _rotate_refresh_token_if_needed(refresh)
+        if error is not None:
+            return error
+
+        response_data = _build_refresh_response_data(new_refresh, access_token)
+        logger.info(f"令牌刷新成功: user_id={refresh.get('user_id')}")
+        return Response(
+            {"success": True, "message": "令牌刷新成功", "data": response_data},
+            status=status.HTTP_200_OK,
+        )
     except Exception as e:
         logger.error(f"令牌刷新失败: {str(e)}")
-        return Response(
-            {"success": False, "message": "令牌刷新失败，请重新登录", "data": None},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+        return _response_error("令牌刷新失败，请重新登录", status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(["GET"])
