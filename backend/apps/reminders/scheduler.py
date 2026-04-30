@@ -129,47 +129,58 @@ class ReminderScheduler:
             f"methods={next_methods} retry_time={retry_time}"
         )
 
+    def _mark_history_sent(self, history):
+        history.sent_at = timezone.now()
+        history.status = "sent"
+        history.save(update_fields=["sent_at", "status"])
+        reminder = getattr(history, "reminder", None)
+        if reminder:
+            reminder.increment_reminder_count()
+
+    def _mark_history_failed(self, history, trace_id: str):
+        history.status = "failed"
+        history.save(update_fields=["status"])
+        logger.warning(
+            f"[notify:{trace_id}] pending_send_failed history_id={history.id} "
+            f"prev_methods={list(history.notification_methods or [])} reminder_id={getattr(history.reminder, 'id', None)}"
+        )
+
+    def _maybe_escalate_failed_history(self, history, now, trace_id: str):
+        prev = list(history.notification_methods or [])
+        user_settings = self.notification_service.get_notification_settings(history.user)
+        next_methods = self._build_next_methods(prev, user_settings)
+        if next_methods:
+            self._schedule_escalation_retry(history, next_methods, now, trace_id)
+
+    def _send_pending_history(self, history, now):
+        trace_id = f"his-{history.id}-{int(now.timestamp())}"
+        ok = self.notification_service.send_notification(
+            user=history.user,
+            title=history.title,
+            message=history.message,
+            reminder=history.reminder,
+            history=history,
+            trace_id=trace_id,
+        )
+        if ok:
+            self._mark_history_sent(history)
+            return 1
+        self._mark_history_failed(history, trace_id)
+        self._maybe_escalate_failed_history(history, now, trace_id)
+        return 0
+
     def _process_pending_histories(self, now):
-        sent_count = 0
         pending_qs = (
             ReminderHistory.objects.filter(status="pending", scheduled_time__lte=now)
             .select_related("user", "reminder")
         )
         logger.info(f"待发送历史记录数量: {pending_qs.count()} (<= {now})")
-        for h in pending_qs:
+        sent_count = 0
+        for history in pending_qs:
             try:
-                trace_id = f"his-{h.id}-{int(now.timestamp())}"
-                ok = self.notification_service.send_notification(
-                    user=h.user,
-                    title=h.title,
-                    message=h.message,
-                    reminder=h.reminder,
-                    history=h,
-                    trace_id=trace_id,
-                )
-                if ok:
-                    h.sent_at = timezone.now()
-                    h.status = "sent"
-                    h.save(update_fields=["sent_at", "status"])
-                    if h.reminder:
-                        h.reminder.increment_reminder_count()
-                    sent_count += 1
-                    continue
-
-                h.status = "failed"
-                h.save(update_fields=["status"])
-                logger.warning(
-                    f"[notify:{trace_id}] pending_send_failed history_id={h.id} "
-                    f"prev_methods={list(h.notification_methods or [])} reminder_id={getattr(h.reminder, 'id', None)}"
-                )
-
-                prev = list(h.notification_methods or [])
-                user_settings = self.notification_service.get_notification_settings(h.user)
-                next_methods = self._build_next_methods(prev, user_settings)
-                if next_methods:
-                    self._schedule_escalation_retry(h, next_methods, now, trace_id)
+                sent_count += self._send_pending_history(history, now)
             except Exception as e:
-                logger.error(f"发送待历史提醒失败 history={h.id}: {e}")
+                logger.error(f"发送待历史提醒失败 history={history.id}: {e}")
         return sent_count
 
     def check_and_send_reminders(self):
