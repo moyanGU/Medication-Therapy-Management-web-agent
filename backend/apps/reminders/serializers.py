@@ -257,28 +257,38 @@ class ReminderConfirmSerializer(serializers.Serializer):
         quantity_taken = attrs.get("quantity_taken")
         reminder = self.context.get("reminder")
 
-        if action == "delayed" and not delay_minutes:
-            raise serializers.ValidationError({"delay_minutes": "延迟服药必须提供延迟分钟数"})
-
-        if action == "partial":
-            if not quantity_taken:
-                raise serializers.ValidationError({"quantity_taken": "部分服用必须提供实际服药数量"})
-            if reminder and quantity_taken >= reminder.dosage:
-                raise serializers.ValidationError(
-                    {"quantity_taken": "部分服用数量必须小于提醒剂量，完整服用请使用 taken"}
-                )
-
-        if action == "missed":
-            if quantity_taken is not None:
-                raise serializers.ValidationError({"quantity_taken": "漏服动作不应传入服药数量"})
-            if delay_minutes is not None:
-                raise serializers.ValidationError({"delay_minutes": "漏服动作不应传入延迟时间"})
-
-        if action == "taken":
-            if delay_minutes is not None:
-                raise serializers.ValidationError({"delay_minutes": "已服药动作不应传入延迟时间"})
+        if action == "delayed":
+            self._validate_delayed(delay_minutes)
+        elif action == "partial":
+            self._validate_partial(quantity_taken, reminder)
+        elif action == "missed":
+            self._validate_missed(quantity_taken, delay_minutes)
+        elif action == "taken":
+            self._validate_taken(delay_minutes)
 
         return attrs
+
+    def _validate_delayed(self, delay_minutes):
+        if not delay_minutes:
+            raise serializers.ValidationError({"delay_minutes": "延迟服药必须提供延迟分钟数"})
+
+    def _validate_partial(self, quantity_taken, reminder):
+        if not quantity_taken:
+            raise serializers.ValidationError({"quantity_taken": "部分服用必须提供实际服药数量"})
+        if reminder and quantity_taken >= reminder.dosage:
+            raise serializers.ValidationError(
+                {"quantity_taken": "部分服用数量必须小于提醒剂量，完整服用请使用 taken"}
+            )
+
+    def _validate_missed(self, quantity_taken, delay_minutes):
+        if quantity_taken is not None:
+            raise serializers.ValidationError({"quantity_taken": "漏服动作不应传入服药数量"})
+        if delay_minutes is not None:
+            raise serializers.ValidationError({"delay_minutes": "漏服动作不应传入延迟时间"})
+
+    def _validate_taken(self, delay_minutes):
+        if delay_minutes is not None:
+            raise serializers.ValidationError({"delay_minutes": "已服药动作不应传入延迟时间"})
 
 
 class ReminderListSerializer(serializers.ModelSerializer):
