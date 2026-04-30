@@ -35,33 +35,17 @@ class ReminderScheduler:
     def __init__(self):
         self.notification_service = NotificationService()
 
-    def check_and_send_reminders(self):
-        """
-        检查并发送当前时间需要的提醒
-        """
-        # 统一使用本地时区时间，避免 USE_TZ=True 时出现 UTC 与本地时间不一致导致匹配失败
-        now = timezone.localtime()
-        current_time = now.time()
-        current_date = now.date()
-
-        logger.info(f"开始检查提醒，当前时间: {now}")
-
-        # 获取所有激活的提醒
-        active_reminders = (
+    def _get_active_reminders(self, current_date):
+        return (
             Reminder.objects.filter(is_active=True, start_date__lte=current_date)
             .filter(Q(end_date__isnull=True) | Q(end_date__gte=current_date))
             .select_related("user", "medicine")
         )
 
-        logger.info(
-            f"激活提醒数量: {active_reminders.count()} (date={current_date}, time={current_time})"
-        )
-
+    def _process_active_reminders(self, active_reminders, now):
         sent_count = 0
-
         for reminder in active_reminders:
             try:
-                # Snapshot key fields for visibility when evaluating each reminder
                 last_local = (
                     timezone.localtime(reminder.last_reminded_at)
                     if reminder.last_reminded_at
@@ -78,109 +62,128 @@ class ReminderScheduler:
                     sent_count += 1
             except Exception as e:
                 logger.error(f"发送提醒失败 {reminder.id}: {str(e)}")
+        return sent_count
 
-        # 处理待发送历史（如用户延迟5分钟后的补发）
+    def _build_next_methods(self, prev, user_settings):
+        prev = list(prev or [])
+        next_methods = []
+        if "push" in prev:
+            if user_settings.get("sms_enabled"):
+                next_methods = ["sms"]
+            elif user_settings.get("email_enabled"):
+                next_methods = ["email"]
+        elif "sms" in prev:
+            if user_settings.get("email_enabled"):
+                next_methods = ["email"]
+            elif user_settings.get("push_enabled"):
+                next_methods = ["push"]
+        elif "email" in prev:
+            if user_settings.get("push_enabled"):
+                next_methods = ["push"]
+            elif user_settings.get("sms_enabled"):
+                next_methods = ["sms"]
+        return next_methods
+
+    def _schedule_escalation_retry(self, history, next_methods, now, trace_id: str):
+        retry_time = now + timedelta(minutes=5)
+        exists = (
+            ReminderHistory.objects.filter(
+                user=history.user,
+                reminder=history.reminder,
+                status="pending",
+                reminder_type="repeat",
+                notification_methods=next_methods,
+            )
+            .filter(
+                scheduled_time__gte=now,
+                scheduled_time__lte=retry_time + timedelta(minutes=5),
+            )
+            .exists()
+        )
+
+        if exists:
+            logger.info(
+                f"[notify:{trace_id}] escalation_pending_exists history_id={history.id} "
+                f"methods={next_methods} retry_time={retry_time}"
+            )
+            return
+
+        ReminderHistory.objects.create(
+            user=history.user,
+            reminder=history.reminder,
+            title="补发提醒",
+            message=history.message,
+            notification_methods=next_methods,
+            scheduled_time=retry_time,
+            reminder_type="repeat",
+            status="pending",
+        )
+        logger.info(
+            f"[notify:{trace_id}] escalation_pending_created history_id={history.id} "
+            f"methods={next_methods} retry_time={retry_time}"
+        )
+
+    def _process_pending_histories(self, now):
+        sent_count = 0
+        pending_qs = (
+            ReminderHistory.objects.filter(status="pending", scheduled_time__lte=now)
+            .select_related("user", "reminder")
+        )
+        logger.info(f"待发送历史记录数量: {pending_qs.count()} (<= {now})")
+        for h in pending_qs:
+            try:
+                trace_id = f"his-{h.id}-{int(now.timestamp())}"
+                ok = self.notification_service.send_notification(
+                    user=h.user,
+                    title=h.title,
+                    message=h.message,
+                    reminder=h.reminder,
+                    history=h,
+                    trace_id=trace_id,
+                )
+                if ok:
+                    h.sent_at = timezone.now()
+                    h.status = "sent"
+                    h.save(update_fields=["sent_at", "status"])
+                    if h.reminder:
+                        h.reminder.increment_reminder_count()
+                    sent_count += 1
+                    continue
+
+                h.status = "failed"
+                h.save(update_fields=["status"])
+                logger.warning(
+                    f"[notify:{trace_id}] pending_send_failed history_id={h.id} "
+                    f"prev_methods={list(h.notification_methods or [])} reminder_id={getattr(h.reminder, 'id', None)}"
+                )
+
+                prev = list(h.notification_methods or [])
+                user_settings = self.notification_service.get_notification_settings(h.user)
+                next_methods = self._build_next_methods(prev, user_settings)
+                if next_methods:
+                    self._schedule_escalation_retry(h, next_methods, now, trace_id)
+            except Exception as e:
+                logger.error(f"发送待历史提醒失败 history={h.id}: {e}")
+        return sent_count
+
+    def check_and_send_reminders(self):
+        """
+        检查并发送当前时间需要的提醒
+        """
+        now = timezone.localtime()
+        current_time = now.time()
+        current_date = now.date()
+
+        logger.info(f"开始检查提醒，当前时间: {now}")
+
+        active_reminders = self._get_active_reminders(current_date)
+        logger.info(
+            f"激活提醒数量: {active_reminders.count()} (date={current_date}, time={current_time})"
+        )
+
+        sent_count = self._process_active_reminders(active_reminders, now)
         try:
-            pending_qs = ReminderHistory.objects.filter(
-                status="pending", scheduled_time__lte=now
-            ).select_related("user", "reminder")
-            logger.info(f"待发送历史记录数量: {pending_qs.count()} (<= {now})")
-            for h in pending_qs:
-                try:
-                    trace_id = f"his-{h.id}-{int(now.timestamp())}"
-                    ok = self.notification_service.send_notification(
-                        user=h.user,
-                        title=h.title,
-                        message=h.message,
-                        reminder=h.reminder,
-                        history=h,
-                        trace_id=trace_id,
-                    )
-                    if ok:
-                        h.sent_at = timezone.now()
-                        h.status = "sent"
-                        h.save(update_fields=["sent_at", "status"])
-                        if h.reminder:
-                            h.reminder.increment_reminder_count()
-                        sent_count += 1
-                    else:
-                        h.status = "failed"
-                        h.save(update_fields=["status"])
-                        logger.warning(
-                            f"[notify:{trace_id}] pending_send_failed history_id={h.id} "
-                            f"prev_methods={list(h.notification_methods or [])} reminder_id={getattr(h.reminder, 'id', None)}"
-                        )
-                        # 升级备用通道：根据历史记录的通道与用户设置，创建5分钟后重试的待发送记录
-                        try:
-                            prev = list(h.notification_methods or [])
-                            settings = (
-                                self.notification_service.get_notification_settings(
-                                    h.user
-                                )
-                            )
-                            # 简单升级策略：push->sms->email->push
-                            next_methods = []
-                            if "push" in prev:
-                                if settings.get("sms_enabled"):
-                                    next_methods = ["sms"]
-                                elif settings.get("email_enabled"):
-                                    next_methods = ["email"]
-                            elif "sms" in prev:
-                                if settings.get("email_enabled"):
-                                    next_methods = ["email"]
-                                elif settings.get("push_enabled"):
-                                    next_methods = ["push"]
-                            elif "email" in prev:
-                                if settings.get("push_enabled"):
-                                    next_methods = ["push"]
-                                elif settings.get("sms_enabled"):
-                                    next_methods = ["sms"]
-
-                            if next_methods:
-                                # 避免为同一提醒和通道在短时间内创建多条补发记录
-                                retry_time = now + timedelta(minutes=5)
-                                exists = (
-                                    ReminderHistory.objects.filter(
-                                        user=h.user,
-                                        reminder=h.reminder,
-                                        status="pending",
-                                        reminder_type="repeat",
-                                        notification_methods=next_methods,
-                                    )
-                                    .filter(
-                                        scheduled_time__gte=now,
-                                        scheduled_time__lte=retry_time
-                                        + timedelta(minutes=5),
-                                    )
-                                    .exists()
-                                )
-
-                                if exists:
-                                    logger.info(
-                                        f"[notify:{trace_id}] escalation_pending_exists history_id={h.id} "
-                                        f"methods={next_methods} retry_time={retry_time}"
-                                    )
-                                else:
-                                    ReminderHistory.objects.create(
-                                        user=h.user,
-                                        reminder=h.reminder,
-                                        title="补发提醒",
-                                        message=h.message,
-                                        notification_methods=next_methods,
-                                        scheduled_time=retry_time,
-                                        reminder_type="repeat",
-                                        status="pending",
-                                    )
-                                    logger.info(
-                                        f"[notify:{trace_id}] escalation_pending_created history_id={h.id} "
-                                        f"methods={next_methods} retry_time={retry_time}"
-                                    )
-                        except Exception as ie:
-                            logger.error(
-                                f"[notify:{trace_id}] escalation_error history_id={h.id}: {ie}"
-                            )
-                except Exception as e:
-                    logger.error(f"发送待历史提醒失败 history={h.id}: {e}")
+            sent_count += self._process_pending_histories(now)
         except Exception as e:
             logger.error(f"查询待发送历史失败: {e}")
 

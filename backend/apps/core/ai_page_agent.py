@@ -8,7 +8,7 @@ from django.http import JsonResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
-from .ai_llm import _normalize_openai_base_url, _openai_chat_completion
+from .ai_llm import _normalize_openai_base_url
 
 logger = logging.getLogger("mtm_helper")
 
@@ -174,7 +174,9 @@ def _execute_page_agent_fallback(
     tool_name = str(function.get("name") or "AgentOutput").strip() or "AgentOutput"
     fallback_messages = _build_page_agent_fallback_messages(payload["messages"], tool_spec)
     max_tokens = int(payload.get("max_tokens") or getattr(settings, "BAICHUAN_M3_MAX_OUTPUT_TOKENS", 1024))
-    upstream_text = _openai_chat_completion(
+    from apps.core import views as core_views
+
+    upstream_text = core_views._openai_chat_completion(
         base_url=base_url,
         api_key=api_key,
         model=model,

@@ -1,5 +1,7 @@
 """核心应用视图"""
 
+import requests
+
 from .views_ai import (
     _build_openai_chat_completion_urls,
     _build_page_agent_fallback_messages,
@@ -25,4 +27,3 @@ from .views_ai import (
 )
 from .views_dashboard import dashboard_summary
 from .views_system import api_docs, clear_cache, diagnostics, health_check, ping, system_info
-
