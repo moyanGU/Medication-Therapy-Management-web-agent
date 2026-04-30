@@ -92,109 +92,107 @@ class MedicationRecordViewSet(viewsets.ModelViewSet):
             status_code=status.HTTP_201_CREATED,
         )
 
+    def _parse_stats_date(self, value: str | None, label: str):
+        if not value:
+            return None, None
+        try:
+            return datetime.strptime(value, "%Y-%m-%d").date(), None
+        except ValueError:
+            return None, Response(
+                {"error": f"{label}格式错误，请使用YYYY-MM-DD格式"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    def _empty_statistics(self):
+        return {
+            "total_records": 0,
+            "taken_count": 0,
+            "missed_count": 0,
+            "delayed_count": 0,
+            "adherence_rate": 0.0,
+            "avg_effectiveness": 0.0,
+            "most_used_medicine": "",
+            "daily_average": 0.0,
+        }
+
+    def _apply_statistics_filters(self, queryset, start_date, end_date, medicine_id):
+        if start_date:
+            queryset = queryset.filter(taken_at__date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(taken_at__date__lte=end_date)
+        if medicine_id:
+            queryset = queryset.filter(medicine_id=medicine_id)
+        return queryset
+
+    def _build_statistics(self, queryset, start_date, end_date):
+        total_records = queryset.count()
+        if total_records == 0:
+            return self._empty_statistics()
+
+        status_stats = queryset.values("status").annotate(count=Count("id"))
+        status_dict = {item["status"]: item["count"] for item in status_stats}
+
+        taken_count = status_dict.get("taken", 0)
+        missed_count = status_dict.get("missed", 0)
+        delayed_count = status_dict.get("delayed", 0)
+
+        adherence_rate = (taken_count / total_records) * 100 if total_records > 0 else 0
+
+        avg_effectiveness = (
+            queryset.filter(effectiveness_score__isnull=False).aggregate(
+                avg=Avg("effectiveness_score")
+            )["avg"]
+            or 0
+        )
+
+        most_used = (
+            queryset.values("medicine__name")
+            .annotate(count=Count("id"))
+            .order_by("-count")
+            .first()
+        )
+        most_used_medicine = most_used["medicine__name"] if most_used else ""
+
+        if start_date and end_date:
+            days = (end_date - start_date).days + 1
+            daily_average = total_records / days if days > 0 else 0
+        else:
+            thirty_days_ago = timezone.now().date() - timedelta(days=30)
+            recent_records = queryset.filter(taken_at__date__gte=thirty_days_ago).count()
+            daily_average = recent_records / 30
+
+        return {
+            "total_records": total_records,
+            "taken_count": taken_count,
+            "missed_count": missed_count,
+            "delayed_count": delayed_count,
+            "adherence_rate": round(adherence_rate, 2),
+            "avg_effectiveness": round(avg_effectiveness, 2),
+            "most_used_medicine": most_used_medicine,
+            "daily_average": round(daily_average, 2),
+        }
+
     @action(detail=False, methods=["get"])
     def statistics(self, request):
         """
         获取用药记录统计信息
         """
-        # 获取查询参数
-        start_date = request.query_params.get("start_date")
-        end_date = request.query_params.get("end_date")
+        start_date, err = self._parse_stats_date(
+            request.query_params.get("start_date"), "开始日期"
+        )
+        if err is not None:
+            return err
+        end_date, err = self._parse_stats_date(
+            request.query_params.get("end_date"), "结束日期"
+        )
+        if err is not None:
+            return err
         medicine_id = request.query_params.get("medicine_id")
 
-        # 构建查询条件
-        queryset = self.get_queryset()
-
-        if start_date:
-            try:
-                start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
-                queryset = queryset.filter(taken_at__date__gte=start_date)
-            except ValueError:
-                return Response(
-                    {"error": "开始日期格式错误，请使用YYYY-MM-DD格式"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-        if end_date:
-            try:
-                end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
-                queryset = queryset.filter(taken_at__date__lte=end_date)
-            except ValueError:
-                return Response(
-                    {"error": "结束日期格式错误，请使用YYYY-MM-DD格式"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-        if medicine_id:
-            queryset = queryset.filter(medicine_id=medicine_id)
-
-        # 计算统计数据
-        total_records = queryset.count()
-
-        if total_records == 0:
-            stats_data = {
-                "total_records": 0,
-                "taken_count": 0,
-                "missed_count": 0,
-                "delayed_count": 0,
-                "adherence_rate": 0.0,
-                "avg_effectiveness": 0.0,
-                "most_used_medicine": "",
-                "daily_average": 0.0,
-            }
-        else:
-            # 按状态统计
-            status_stats = queryset.values("status").annotate(count=Count("id"))
-            status_dict = {item["status"]: item["count"] for item in status_stats}
-
-            taken_count = status_dict.get("taken", 0)
-            missed_count = status_dict.get("missed", 0)
-            delayed_count = status_dict.get("delayed", 0)
-
-            # 计算依从性
-            adherence_rate = (
-                (taken_count / total_records) * 100 if total_records > 0 else 0
-            )
-
-            # 计算平均效果评分
-            avg_effectiveness = (
-                queryset.filter(effectiveness_score__isnull=False).aggregate(
-                    avg=Avg("effectiveness_score")
-                )["avg"]
-                or 0
-            )
-
-            # 最常用药品
-            most_used = (
-                queryset.values("medicine__name")
-                .annotate(count=Count("id"))
-                .order_by("-count")
-                .first()
-            )
-            most_used_medicine = most_used["medicine__name"] if most_used else ""
-
-            # 计算日均用药次数
-            if start_date and end_date:
-                days = (end_date - start_date).days + 1
-                daily_average = total_records / days if days > 0 else 0
-            else:
-                # 默认计算最近30天
-                thirty_days_ago = timezone.now().date() - timedelta(days=30)
-                recent_records = queryset.filter(
-                    taken_at__date__gte=thirty_days_ago
-                ).count()
-                daily_average = recent_records / 30
-
-            stats_data = {
-                "total_records": total_records,
-                "taken_count": taken_count,
-                "missed_count": missed_count,
-                "delayed_count": delayed_count,
-                "adherence_rate": round(adherence_rate, 2),
-                "avg_effectiveness": round(avg_effectiveness, 2),
-                "most_used_medicine": most_used_medicine,
-                "daily_average": round(daily_average, 2),
-            }
+        queryset = self._apply_statistics_filters(
+            self.get_queryset(), start_date, end_date, medicine_id
+        )
+        stats_data = self._build_statistics(queryset, start_date, end_date)
 
         serializer = MedicationRecordStatsSerializer(stats_data)
         return Response({"success": True, "data": serializer.data})
