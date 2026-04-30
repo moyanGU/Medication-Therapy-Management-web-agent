@@ -52,6 +52,10 @@ backend/db.sqlite3
 # Generated code health reports (reproducible via scripts/)
 reports/code_health/
 
+# External tools / vendor snapshots (do not commit)
+_external/
+CLAUDE.md
+
 # Certificates/keys (if present)
 *.pem
 *.key
