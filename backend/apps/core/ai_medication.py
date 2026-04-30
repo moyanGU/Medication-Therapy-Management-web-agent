@@ -13,6 +13,110 @@ from .utils import error_response, success_response
 logger = logging.getLogger("mtm_helper")
 
 
+def _parse_medication_guidance_request(request):
+    data = request.data or {}
+    question = str(data.get("question", "")).strip()
+    medicine_id = data.get("medicine_id")
+    stream_requested = str(data.get("stream", "")).lower() == "true"
+    return question, medicine_id, stream_requested
+
+
+def _validate_question(question: str):
+    if not question:
+        return error_response("请提供问题", "VALIDATION_ERROR", 400)
+    if len(question) > 2000:
+        return error_response("问题过长，请精简后再试", "VALIDATION_ERROR", 400)
+    return None
+
+
+def _validate_ai_config():
+    if not getattr(settings, "BAICHUAN_M3_ENABLED", False):
+        return None, None, error_response("AI 服务未启用", "AI_DISABLED", 503)
+    base_url = getattr(settings, "BAICHUAN_M3_API_BASE_URL", "")
+    model = getattr(settings, "BAICHUAN_M3_MODEL", "")
+    if not base_url or not model:
+        return None, None, error_response("AI 服务配置缺失", "AI_CONFIG_MISSING", 503)
+    return base_url, model, None
+
+
+def _load_medicine_context(medicine_id, user):
+    if medicine_id is None or str(medicine_id).strip() == "":
+        return None
+    try:
+        from apps.medicines.models import Medicine
+
+        med = Medicine.objects.filter(id=medicine_id, user=user).first()
+        if not med:
+            return None
+        return {
+            "id": med.id,
+            "name": med.name,
+            "specification": med.specification,
+            "manufacturer": med.manufacturer,
+            "medicine_type": med.medicine_type,
+            "is_prescription": bool(med.is_prescription),
+            "storage_conditions": med.storage_conditions,
+            "description": med.description,
+        }
+    except Exception as e:
+        logger.warning(f"[AI] medicine_context load failed: {e}")
+        return None
+
+
+def _check_medication_intent(question: str, medicine_context: dict | None, user_id):
+    try:
+        from apps.core.agents.medication_agent import MedicationAgent
+
+        agent = MedicationAgent(user_id=user_id)
+        intent = agent.check_intent(question, medicine_context)
+        return bool(intent.get("allowed")), str(intent.get("reason") or "")
+    except Exception as e:
+        logger.warning(f"[AI] classifier failed: {e}")
+        return True, ""
+
+
+def _blocked_payload(reason: str):
+    return {
+        "blocked": True,
+        "reason": reason
+        or "当前仅支持药物信息与用药指导咨询（不支持诊断/检查/疾病治疗方案）。",
+        "answer": "当前仅支持药物信息与用药指导咨询。请将问题改为具体药物的用法用量、注意事项、相互作用、不良反应等。",
+    }
+
+
+def _ndjson_single(payload: dict):
+    def _gen():
+        yield json.dumps(payload, ensure_ascii=False) + "\n"
+
+    return StreamingHttpResponse(_gen(), content_type="application/x-ndjson")
+
+
+def _run_medication_agent_stream(agent, question: str, medicine_context: dict | None):
+    try:
+        for chunk in agent.run_stream(question, medicine_context):
+            yield chunk
+    except Exception as e:
+        logger.error(f"[AI] stream generation failed: {e}")
+        fallback_answer = _fallback_medication_guidance_answer(question, medicine_context)
+        yield (
+            json.dumps(
+                {"error": "generation_failed", "fallback": fallback_answer},
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+
+
+def _run_medication_agent(agent, question: str, medicine_context: dict | None):
+    try:
+        answer = agent.run(question, medicine_context)
+        return answer, False, None
+    except Exception as e:
+        logger.error(f"[AI] generation failed: {e}")
+        answer = _fallback_medication_guidance_answer(question, medicine_context)
+        return answer, True, "模型服务暂不可用，已返回通用用药建议"
+
+
 def _fallback_medication_guidance_answer(question: str, medicine_context: dict | None) -> str:
     drug_name = None
     if isinstance(medicine_context, dict):
@@ -52,102 +156,41 @@ def _fallback_medication_guidance_answer(question: str, medicine_context: dict |
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def medication_guidance(request):
-    question = str((request.data or {}).get("question", "")).strip()
-    medicine_id = (request.data or {}).get("medicine_id")
-    stream_requested = str(request.data.get("stream", "")).lower() == "true"
+    question, medicine_id, stream_requested = _parse_medication_guidance_request(request)
 
-    if not question:
-        return error_response("请提供问题", "VALIDATION_ERROR", 400)
-    if len(question) > 2000:
-        return error_response("问题过长，请精简后再试", "VALIDATION_ERROR", 400)
+    error = _validate_question(question)
+    if error is not None:
+        return error
 
-    if not getattr(settings, "BAICHUAN_M3_ENABLED", False):
-        return error_response("AI 服务未启用", "AI_DISABLED", 503)
+    _, _, error = _validate_ai_config()
+    if error is not None:
+        return error
 
-    base_url = getattr(settings, "BAICHUAN_M3_API_BASE_URL", "")
-    model = getattr(settings, "BAICHUAN_M3_MODEL", "")
-    if not base_url or not model:
-        return error_response("AI 服务配置缺失", "AI_CONFIG_MISSING", 503)
+    medicine_context = _load_medicine_context(medicine_id, request.user)
 
-    medicine_context = None
-    if medicine_id is not None and str(medicine_id).strip() != "":
-        try:
-            from apps.medicines.models import Medicine
-
-            med = Medicine.objects.filter(id=medicine_id, user=request.user).first()
-            if med:
-                medicine_context = {
-                    "id": med.id,
-                    "name": med.name,
-                    "specification": med.specification,
-                    "manufacturer": med.manufacturer,
-                    "medicine_type": med.medicine_type,
-                    "is_prescription": bool(med.is_prescription),
-                    "storage_conditions": med.storage_conditions,
-                    "description": med.description,
-                }
-        except Exception as e:
-            logger.warning(f"[AI] medicine_context load failed: {e}")
-
-    try:
-        from apps.core.agents.medication_agent import MedicationAgent
-
-        agent = MedicationAgent(user_id=getattr(request.user, "id", None))
-        intent = agent.check_intent(question, medicine_context)
-        allowed = intent["allowed"]
-        reason = intent["reason"]
-    except Exception as e:
-        logger.warning(f"[AI] classifier failed: {e}")
-        allowed = True
-        reason = ""
-
+    allowed, reason = _check_medication_intent(
+        question, medicine_context, getattr(request.user, "id", None)
+    )
     if not allowed:
-        resp_data = {
-            "blocked": True,
-            "reason": reason
-            or "当前仅支持药物信息与用药指导咨询（不支持诊断/检查/疾病治疗方案）。",
-            "answer": "当前仅支持药物信息与用药指导咨询。请将问题改为具体药物的用法用量、注意事项、相互作用、不良反应等。",
-        }
+        payload = _blocked_payload(reason)
         if stream_requested:
-            def _gen():
-                yield json.dumps(resp_data, ensure_ascii=False) + "\n"
+            return _ndjson_single(payload)
+        return success_response(payload, "已拦截非用药咨询")
 
-            return StreamingHttpResponse(_gen(), content_type="application/x-ndjson")
-        return success_response(resp_data, "已拦截非用药咨询")
+    from apps.core.agents.medication_agent import MedicationAgent
 
-    fallback_used = False
+    agent = MedicationAgent(user_id=getattr(request.user, "id", None))
+    if stream_requested:
+        return StreamingHttpResponse(
+            _run_medication_agent_stream(agent, question, medicine_context),
+            content_type="application/x-ndjson",
+        )
 
-    try:
-        from apps.core.agents.medication_agent import MedicationAgent
-
-        agent = MedicationAgent(user_id=getattr(request.user, "id", None))
-
-        if stream_requested:
-            def _stream_generator():
-                try:
-                    for chunk in agent.run_stream(question, medicine_context):
-                        yield chunk
-                except Exception as e:
-                    logger.error(f"[AI] stream generation failed: {e}")
-                    fallback_answer = _fallback_medication_guidance_answer(question, medicine_context)
-                    yield (
-                        json.dumps(
-                            {"error": "generation_failed", "fallback": fallback_answer},
-                            ensure_ascii=False,
-                        )
-                        + "\n"
-                    )
-
-            return StreamingHttpResponse(_stream_generator(), content_type="application/x-ndjson")
-
-        answer = agent.run(question, medicine_context)
-    except Exception as e:
-        logger.error(f"[AI] generation failed: {e}")
-        answer = _fallback_medication_guidance_answer(question, medicine_context)
-        fallback_used = True
+    answer, fallback_used, message = _run_medication_agent(agent, question, medicine_context)
+    if fallback_used:
         return success_response(
-            {"blocked": False, "answer": answer, "fallback_used": fallback_used},
-            "模型服务暂不可用，已返回通用用药建议",
+            {"blocked": False, "answer": answer, "fallback_used": True},
+            message or "模型服务暂不可用，已返回通用用药建议",
         )
 
     answer = _normalize_llm_answer(answer)
@@ -158,4 +201,3 @@ def medication_guidance(request):
     return success_response(
         {"blocked": False, "answer": answer, "fallback_used": fallback_used}, "生成成功"
     )
-
