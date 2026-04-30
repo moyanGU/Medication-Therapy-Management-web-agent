@@ -203,66 +203,53 @@ class ReminderHistoryFilter(django_filters.FilterSet):
         """
         过滤预设时间范围
         """
-        now = timezone.now()
-        today = now.date()
+        today = timezone.now().date()
+        bounds = self._time_range_bounds(value, today)
+        if not bounds:
+            return queryset
+        start_date, end_date = bounds
+        if start_date == end_date:
+            return queryset.filter(sent_at__date=start_date)
+        return queryset.filter(sent_at__date__gte=start_date, sent_at__date__lte=end_date)
 
+    def _time_range_bounds(self, value, today):
         if value == "today":
-            return queryset.filter(sent_at__date=today)
-        elif value == "yesterday":
-            yesterday = today - timedelta(days=1)
-            return queryset.filter(sent_at__date=yesterday)
-        elif value == "this_week":
-            # 本周（周一到今天）
-            start_of_week = today - timedelta(days=today.weekday())
-            return queryset.filter(
-                sent_at__date__gte=start_of_week, sent_at__date__lte=today
-            )
-        elif value == "last_week":
-            # 上周（上周一到上周日）
+            return today, today
+        if value == "yesterday":
+            d = today - timedelta(days=1)
+            return d, d
+        if value == "this_week":
+            start = today - timedelta(days=today.weekday())
+            return start, today
+        if value == "last_week":
             start_of_this_week = today - timedelta(days=today.weekday())
-            start_of_last_week = start_of_this_week - timedelta(days=7)
-            end_of_last_week = start_of_this_week - timedelta(days=1)
-            return queryset.filter(
-                sent_at__date__gte=start_of_last_week,
-                sent_at__date__lte=end_of_last_week,
-            )
-        elif value == "this_month":
-            # 本月
-            start_of_month = today.replace(day=1)
-            return queryset.filter(
-                sent_at__date__gte=start_of_month, sent_at__date__lte=today
-            )
-        elif value == "last_month":
-            # 上月
-            if today.month == 1:
-                last_month = today.replace(year=today.year - 1, month=12, day=1)
-            else:
-                last_month = today.replace(month=today.month - 1, day=1)
+            start = start_of_this_week - timedelta(days=7)
+            end = start_of_this_week - timedelta(days=1)
+            return start, end
+        if value == "this_month":
+            start = today.replace(day=1)
+            return start, today
+        if value == "last_month":
+            return self._last_month_bounds(today)
+        if value == "last_7_days":
+            return today - timedelta(days=7), today
+        if value == "last_30_days":
+            return today - timedelta(days=30), today
+        return None
 
-            # 上月的最后一天
-            if today.month == 1:
-                end_of_last_month = today.replace(year=today.year - 1, month=12, day=31)
-            else:
-                import calendar
+    def _last_month_bounds(self, today):
+        import calendar
 
-                end_day = calendar.monthrange(today.year, today.month - 1)[1]
-                end_of_last_month = today.replace(month=today.month - 1, day=end_day)
-
-            return queryset.filter(
-                sent_at__date__gte=last_month, sent_at__date__lte=end_of_last_month
-            )
-        elif value == "last_7_days":
-            start_date = today - timedelta(days=7)
-            return queryset.filter(
-                sent_at__date__gte=start_date, sent_at__date__lte=today
-            )
-        elif value == "last_30_days":
-            start_date = today - timedelta(days=30)
-            return queryset.filter(
-                sent_at__date__gte=start_date, sent_at__date__lte=today
-            )
-
-        return queryset
+        if today.month == 1:
+            year = today.year - 1
+            month = 12
+        else:
+            year = today.year
+            month = today.month - 1
+        start = today.replace(year=year, month=month, day=1)
+        end_day = calendar.monthrange(year, month)[1]
+        end = today.replace(year=year, month=month, day=end_day)
+        return start, end
 
 
 class ReminderStatsFilter(django_filters.FilterSet):
