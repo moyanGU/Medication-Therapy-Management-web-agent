@@ -443,78 +443,13 @@ class MedicalRecordViewSet(viewsets.ModelViewSet):
         高级搜索病历记录
         """
         try:
-            # 获取搜索参数
-            keyword = request.query_params.get("keyword", "")
-            date_from = request.query_params.get("date_from")
-            date_to = request.query_params.get("date_to")
-            hospital = request.query_params.get("hospital", "")
-            department = request.query_params.get("department", "")
-            doctor = request.query_params.get("doctor", "")
-            diagnosis = request.query_params.get("diagnosis", "")
-            visit_type = request.query_params.get("visit_type", "")
-            status_param = request.query_params.get("status", "")
-            urgency = request.query_params.get("urgency", "")
-
             queryset = self.get_queryset()
 
-            # 关键词搜索（在多个字段中搜索）
-            if keyword:
-                queryset = queryset.filter(
-                    Q(hospital__icontains=keyword)
-                    | Q(department__icontains=keyword)
-                    | Q(doctor__icontains=keyword)
-                    | Q(diagnosis__icontains=keyword)
-                    | Q(chief_complaint__icontains=keyword)
-                    | Q(present_illness__icontains=keyword)
-                    | Q(treatment__icontains=keyword)
-                    | Q(medical_orders__icontains=keyword)
-                    | Q(notes__icontains=keyword)
-                )
+            filters, error = self._parse_advanced_search_filters(request)
+            if error is not None:
+                return error
 
-            # 日期范围搜索
-            if date_from:
-                try:
-                    date_from_obj = timezone.datetime.strptime(
-                        date_from, "%Y-%m-%d"
-                    ).date()
-                    queryset = queryset.filter(visit_date__gte=date_from_obj)
-                except ValueError:
-                    return error_response(message="开始日期格式错误，请使用YYYY-MM-DD格式")
-
-            if date_to:
-                try:
-                    date_to_obj = timezone.datetime.strptime(date_to, "%Y-%m-%d").date()
-                    queryset = queryset.filter(visit_date__lte=date_to_obj)
-                except ValueError:
-                    return error_response(message="结束日期格式错误，请使用YYYY-MM-DD格式")
-
-            # 医院搜索
-            if hospital:
-                queryset = queryset.filter(hospital__icontains=hospital)
-
-            # 科室搜索
-            if department:
-                queryset = queryset.filter(department__icontains=department)
-
-            # 医生搜索
-            if doctor:
-                queryset = queryset.filter(doctor__icontains=doctor)
-
-            # 诊断搜索
-            if diagnosis:
-                queryset = queryset.filter(diagnosis__icontains=diagnosis)
-
-            # 就诊类型搜索
-            if visit_type:
-                queryset = queryset.filter(visit_type=visit_type)
-
-            # 状态搜索
-            if status_param:
-                queryset = queryset.filter(status=status_param)
-
-            # 紧急程度搜索
-            if urgency:
-                queryset = queryset.filter(urgency=urgency)
+            queryset = self._apply_advanced_search_filters(queryset, filters)
 
             # 排序
             ordering = request.query_params.get("ordering", "-visit_date")
@@ -532,6 +467,101 @@ class MedicalRecordViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"高级搜索异常: {str(e)}")
             return error_response(message="搜索失败")
+
+    def _parse_date_param(self, value, label: str):
+        if not value:
+            return None, None
+        try:
+            return timezone.datetime.strptime(value, "%Y-%m-%d").date(), None
+        except ValueError:
+            return None, error_response(message=f"{label}格式错误，请使用YYYY-MM-DD格式")
+
+    def _parse_advanced_search_filters(self, request):
+        qp = request.query_params
+        keyword = qp.get("keyword", "")
+        date_from = qp.get("date_from")
+        date_to = qp.get("date_to")
+        hospital = qp.get("hospital", "")
+        department = qp.get("department", "")
+        doctor = qp.get("doctor", "")
+        diagnosis = qp.get("diagnosis", "")
+        visit_type = qp.get("visit_type", "")
+        status_param = qp.get("status", "")
+        urgency = qp.get("urgency", "")
+
+        date_from_obj, err = self._parse_date_param(date_from, "开始日期")
+        if err is not None:
+            return None, err
+        date_to_obj, err = self._parse_date_param(date_to, "结束日期")
+        if err is not None:
+            return None, err
+
+        return (
+            {
+                "keyword": keyword,
+                "date_from": date_from_obj,
+                "date_to": date_to_obj,
+                "hospital": hospital,
+                "department": department,
+                "doctor": doctor,
+                "diagnosis": diagnosis,
+                "visit_type": visit_type,
+                "status": status_param,
+                "urgency": urgency,
+            },
+            None,
+        )
+
+    def _keyword_q(self, keyword: str):
+        return (
+            Q(hospital__icontains=keyword)
+            | Q(department__icontains=keyword)
+            | Q(doctor__icontains=keyword)
+            | Q(diagnosis__icontains=keyword)
+            | Q(chief_complaint__icontains=keyword)
+            | Q(present_illness__icontains=keyword)
+            | Q(treatment__icontains=keyword)
+            | Q(medical_orders__icontains=keyword)
+            | Q(notes__icontains=keyword)
+        )
+
+    def _strip_filter_value(self, filters: dict, key: str) -> str:
+        return str(filters.get(key) or "").strip()
+
+    def _apply_advanced_search_filters(self, queryset, filters: dict):
+        keyword = self._strip_filter_value(filters, "keyword")
+        if keyword:
+            queryset = queryset.filter(self._keyword_q(keyword))
+
+        date_from = filters.get("date_from")
+        if date_from:
+            queryset = queryset.filter(visit_date__gte=date_from)
+        date_to = filters.get("date_to")
+        if date_to:
+            queryset = queryset.filter(visit_date__lte=date_to)
+
+        text_filters = {
+            "hospital": "hospital__icontains",
+            "department": "department__icontains",
+            "doctor": "doctor__icontains",
+            "diagnosis": "diagnosis__icontains",
+        }
+        for key, lookup in text_filters.items():
+            value = self._strip_filter_value(filters, key)
+            if value:
+                queryset = queryset.filter(**{lookup: value})
+
+        exact_filters = {
+            "visit_type": "visit_type",
+            "status": "status",
+            "urgency": "urgency",
+        }
+        for key, lookup in exact_filters.items():
+            value = self._strip_filter_value(filters, key)
+            if value:
+                queryset = queryset.filter(**{lookup: value})
+
+        return queryset
 
     @action(detail=False, methods=["get"])
     def search_suggestions(self, request):
