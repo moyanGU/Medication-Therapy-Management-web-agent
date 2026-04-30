@@ -21,6 +21,130 @@ from .utils import error_response, success_response
 logger = logging.getLogger("mtm_helper")
 
 
+def _set_service_status(health_status: dict, service: str, ok: bool, err: str | None = None):
+    health_status["services"][service] = "healthy" if ok else "unhealthy"
+    if not ok:
+        health_status["status"] = "degraded"
+        if err:
+            logger.error(f"{service} 健康检查失败: {err}")
+
+
+def _db_health_check():
+    db_timeout = min(float(getattr(settings, "DB_CONNECT_TIMEOUT", 5)), 1.0)
+
+    def _db_check():
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        return True
+
+    ok, _, err = _run_with_timeout(_db_check, db_timeout)
+    return ok, err
+
+
+def _cache_health_check():
+    if not _redis_tcp_probe():
+        return False, "tcp probe failed"
+
+    cache_timeout = min(float(getattr(settings, "REDIS_SOCKET_TIMEOUT", 2)), 0.5)
+
+    def _cache_check():
+        cache.set("health_check", "ok", 10)
+        return cache.get("health_check")
+
+    ok, value, err = _run_with_timeout(_cache_check, cache_timeout)
+    return bool(ok and value == "ok"), err
+
+
+def _is_all_services_unhealthy(services: dict) -> bool:
+    return all(service == "unhealthy" for service in services.values())
+
+
+def _safe_get_module_version(importer, module_name: str, default=None):
+    try:
+        mod = importer(module_name)
+        return getattr(mod, "__version__", "available")
+    except Exception:
+        return default
+
+
+def _safe_get_django_version(importer):
+    try:
+        dj = importer("django")
+        return dj.get_version()
+    except Exception:
+        return None
+
+
+def _build_diagnostics_env(_sys, _settings):
+    return {
+        "python_version": _sys.version,
+        "debug": bool(getattr(_settings, "DEBUG", False)),
+        "django_settings_module": getattr(_sys.modules.get("os"), "environ", {}).get(
+            "DJANGO_SETTINGS_MODULE", "mtm_helper.settings"
+        ),
+    }
+
+
+def _collect_dependency_versions(importer, problems: list[str]):
+    dependencies = {}
+    django_version = _safe_get_django_version(importer)
+    if django_version is None:
+        problems.append("Django 未安装或版本不可用")
+    else:
+        dependencies["django"] = django_version
+
+    drf_version = _safe_get_module_version(importer, "rest_framework")
+    if drf_version is None:
+        problems.append("Django REST Framework 未安装")
+    else:
+        dependencies["drf"] = drf_version
+
+    cors_version = _safe_get_module_version(importer, "corsheaders")
+    if cors_version is None:
+        problems.append("django-cors-headers 未安装")
+    else:
+        dependencies["corsheaders"] = cors_version
+
+    dependencies["pywebpush"] = (
+        _safe_get_module_version(importer, "pywebpush", default="missing") or "missing"
+    )
+    return dependencies
+
+
+def _collect_database_diagnostics(problems: list[str]):
+    db_ok, db_err = _db_health_check()
+    if db_ok:
+        return {"status": "healthy"}
+    problems.append("数据库连接失败")
+    return {"status": "unhealthy", "error": db_err}
+
+
+def _collect_cache_diagnostics(problems: list[str]):
+    try:
+        cache_ok = _redis_tcp_probe()
+        payload = {"status": "healthy" if cache_ok else "unhealthy"}
+        if not cache_ok:
+            payload["error"] = "tcp probe failed"
+            problems.append("Redis 不可达")
+        return payload
+    except Exception as e:
+        problems.append("Redis 探活异常")
+        return {"status": "unhealthy", "error": str(e)}
+
+
+def _collect_notification_diagnostics(problems: list[str]):
+    notifications = {}
+    if getattr(settings, "VAPID_PRIVATE_KEY", None):
+        notifications["webpush"] = "configured"
+    else:
+        notifications["webpush"] = "missing"
+        problems.append("WebPush 未配置 VAPID_PRIVATE_KEY")
+
+    spug_enabled = bool(getattr(settings, "SPUG_PUSH_ENABLED", False))
+    notifications["sms"] = "configured" if spug_enabled else "disabled"
+    return notifications
+
+
 def _run_with_timeout(func, timeout_seconds: float):
     result = {"ok": False, "value": None, "error": None}
 
@@ -86,53 +210,13 @@ def health_check(request):
     try:
         health_status["timestamp"] = datetime.now().isoformat()
 
-        try:
-            db_timeout = min(float(getattr(settings, "DB_CONNECT_TIMEOUT", 5)), 1.0)
+        db_ok, db_err = _db_health_check()
+        _set_service_status(health_status, "database", db_ok, db_err)
 
-            def _db_check():
-                with connection.cursor() as cursor:
-                    cursor.execute("SELECT 1")
-                return True
+        cache_ok, cache_err = _cache_health_check()
+        _set_service_status(health_status, "cache", cache_ok, cache_err)
 
-            ok, _, err = _run_with_timeout(_db_check, db_timeout)
-            if ok:
-                health_status["services"]["database"] = "healthy"
-            else:
-                health_status["services"]["database"] = "unhealthy"
-                health_status["status"] = "degraded"
-                logger.error(f"数据库健康检查失败: {err}")
-        except Exception as e:
-            health_status["services"]["database"] = "unhealthy"
-            health_status["status"] = "degraded"
-            logger.error(f"数据库健康检查异常: {e}")
-
-        try:
-            if not _redis_tcp_probe():
-                health_status["services"]["cache"] = "unhealthy"
-                health_status["status"] = "degraded"
-            else:
-                cache_timeout = min(
-                    float(getattr(settings, "REDIS_SOCKET_TIMEOUT", 2)), 0.5
-                )
-
-                def _cache_check():
-                    cache.set("health_check", "ok", 10)
-                    return cache.get("health_check")
-
-                ok, value, err = _run_with_timeout(_cache_check, cache_timeout)
-                if ok and value == "ok":
-                    health_status["services"]["cache"] = "healthy"
-                else:
-                    health_status["services"]["cache"] = "unhealthy"
-                    health_status["status"] = "degraded"
-                    if err:
-                        logger.error(f"缓存健康检查失败: {err}")
-        except Exception as e:
-            logger.error(f"缓存健康检查异常: {e}")
-            health_status["services"]["cache"] = "unhealthy"
-            health_status["status"] = "degraded"
-
-        if all(service == "unhealthy" for service in health_status["services"].values()):
+        if _is_all_services_unhealthy(health_status["services"]):
             health_status["status"] = "unhealthy"
 
         status_code = 200 if health_status["status"] == "healthy" else 503
@@ -169,81 +253,13 @@ def diagnostics(request):
         import sys as _sys
 
         from django.conf import settings as _settings
+        importer = __import__
 
-        details["env"] = {
-            "python_version": _sys.version,
-            "debug": bool(getattr(_settings, "DEBUG", False)),
-            "django_settings_module": getattr(_sys.modules.get("os"), "environ", {}).get(
-                "DJANGO_SETTINGS_MODULE", "mtm_helper.settings"
-            ),
-        }
-
-        try:
-            import django as _dj
-
-            details["dependencies"]["django"] = _dj.get_version()
-        except Exception:
-            problems.append("Django 未安装或版本不可用")
-
-        try:
-            import rest_framework as _drf
-
-            details["dependencies"]["drf"] = getattr(_drf, "__version__", "available")
-        except Exception:
-            problems.append("Django REST Framework 未安装")
-
-        try:
-            import corsheaders as _ch
-
-            details["dependencies"]["corsheaders"] = getattr(_ch, "__version__", "available")
-        except Exception:
-            problems.append("django-cors-headers 未安装")
-
-        try:
-            import pywebpush as _pwp
-
-            details["dependencies"]["pywebpush"] = getattr(_pwp, "__version__", "available")
-        except Exception:
-            details["dependencies"]["pywebpush"] = "missing"
-
-        try:
-            db_timeout = min(float(getattr(settings, "DB_CONNECT_TIMEOUT", 5)), 1.0)
-
-            def _db_check():
-                with connection.cursor() as cursor:
-                    cursor.execute("SELECT 1")
-                return True
-
-            ok, _, err = _run_with_timeout(_db_check, db_timeout)
-            if ok:
-                details["database"] = {"status": "healthy"}
-            else:
-                details["database"] = {"status": "unhealthy", "error": err}
-                problems.append("数据库连接失败")
-        except Exception as e:
-            details["database"] = {"status": "unhealthy", "error": str(e)}
-            problems.append("数据库连接异常")
-
-        try:
-            if not _redis_tcp_probe():
-                details["cache"] = {"status": "unhealthy", "error": "tcp probe failed"}
-                problems.append("Redis 不可达")
-            else:
-                details["cache"] = {"status": "healthy"}
-        except Exception as e:
-            details["cache"] = {"status": "unhealthy", "error": str(e)}
-            problems.append("Redis 探活异常")
-
-        notifications = {}
-        if getattr(settings, "VAPID_PRIVATE_KEY", None):
-            notifications["webpush"] = "configured"
-        else:
-            notifications["webpush"] = "missing"
-            problems.append("WebPush 未配置 VAPID_PRIVATE_KEY")
-
-        spug_enabled = bool(getattr(settings, "SPUG_PUSH_ENABLED", False))
-        notifications["sms"] = "configured" if spug_enabled else "disabled"
-        details["notifications"] = notifications
+        details["env"] = _build_diagnostics_env(_sys, _settings)
+        details["dependencies"] = _collect_dependency_versions(importer, problems)
+        details["database"] = _collect_database_diagnostics(problems)
+        details["cache"] = _collect_cache_diagnostics(problems)
+        details["notifications"] = _collect_notification_diagnostics(problems)
 
         return Response(
             {
@@ -396,4 +412,3 @@ def clear_cache(request):
     except Exception as e:
         logger.error(f"清除缓存失败: {e}")
         return error_response("缓存清除失败", "CACHE_CLEAR_ERROR", 500)
-
