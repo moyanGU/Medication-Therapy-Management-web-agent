@@ -66,23 +66,29 @@ class ReminderScheduler:
 
     def _build_next_methods(self, prev, user_settings):
         prev = list(prev or [])
-        next_methods = []
-        if "push" in prev:
-            if user_settings.get("sms_enabled"):
-                next_methods = ["sms"]
-            elif user_settings.get("email_enabled"):
-                next_methods = ["email"]
-        elif "sms" in prev:
-            if user_settings.get("email_enabled"):
-                next_methods = ["email"]
-            elif user_settings.get("push_enabled"):
-                next_methods = ["push"]
-        elif "email" in prev:
-            if user_settings.get("push_enabled"):
-                next_methods = ["push"]
-            elif user_settings.get("sms_enabled"):
-                next_methods = ["sms"]
-        return next_methods
+        if not prev:
+            return []
+
+        order_map = {
+            "push": ["sms", "email"],
+            "sms": ["email", "push"],
+            "email": ["push", "sms"],
+        }
+
+        enabled_map = {
+            "push": bool(user_settings.get("push_enabled")),
+            "sms": bool(user_settings.get("sms_enabled")),
+            "email": bool(user_settings.get("email_enabled")),
+        }
+
+        for method in ("push", "sms", "email"):
+            if method in prev:
+                for candidate in order_map.get(method, []):
+                    if enabled_map.get(candidate):
+                        return [candidate]
+                return []
+
+        return []
 
     def _schedule_escalation_retry(self, history, next_methods, now, trace_id: str):
         retry_time = now + timedelta(minutes=5)
@@ -190,6 +196,35 @@ class ReminderScheduler:
         logger.info(f"提醒检查完成，发送了 {sent_count} 个提醒")
         return sent_count
 
+    def _compute_adjusted_reminder_time(self, reminder, current_date):
+        reminder_time = reminder.reminder_time
+        if reminder.advance_minutes > 0:
+            reminder_datetime = timezone.datetime.combine(current_date, reminder_time)
+            reminder_datetime = timezone.localtime(timezone.make_aware(reminder_datetime))
+            reminder_datetime -= timedelta(minutes=reminder.advance_minutes)
+            reminder_time = reminder_datetime.time()
+        return reminder_time
+
+    def _compute_time_diff_minutes(self, current_time, reminder_time) -> int:
+        return abs(
+            (current_time.hour * 60 + current_time.minute)
+            - (reminder_time.hour * 60 + reminder_time.minute)
+        )
+
+    def _should_repeat_today(self, reminder, now_local, current_date, last_reminded_local):
+        if reminder.repeat_interval <= 0 or reminder.max_repeats <= 0:
+            return False
+
+        time_since_last = now_local - last_reminded_local
+        if time_since_last.total_seconds() < reminder.repeat_interval * 60:
+            return False
+
+        today_count = self._get_today_reminder_count(reminder, current_date)
+        logger.info(
+            f"[repeat:{reminder.id}] last={last_reminded_local}, since={int(time_since_last.total_seconds())}s, today_count={today_count}/{reminder.max_repeats}"
+        )
+        return today_count < reminder.max_repeats
+
     def _should_send_reminder(self, reminder, now):
         """
         判断是否应该发送提醒
@@ -209,25 +244,12 @@ class ReminderScheduler:
             )
             return False
 
-        # 计算提醒时间（考虑提前提醒）
-        reminder_time = reminder.reminder_time
-        if reminder.advance_minutes > 0:
-            reminder_datetime = timezone.datetime.combine(current_date, reminder_time)
-            # 转为本地时区的 aware datetime 再进行提前分钟处理
-            reminder_datetime = timezone.localtime(
-                timezone.make_aware(reminder_datetime)
-            )
-            reminder_datetime -= timedelta(minutes=reminder.advance_minutes)
-            reminder_time = reminder_datetime.time()
+        reminder_time = self._compute_adjusted_reminder_time(reminder, current_date)
         logger.debug(
             f"[adjusted_time:{reminder.id}] current={current_time} reminder={reminder_time} advance={reminder.advance_minutes}"
         )
 
-        # 检查时间是否匹配（允许1分钟误差）
-        time_diff = abs(
-            (current_time.hour * 60 + current_time.minute)
-            - (reminder_time.hour * 60 + reminder_time.minute)
-        )
+        time_diff = self._compute_time_diff_minutes(current_time, reminder_time)
 
         if time_diff > 1:  # 超过1分钟误差
             logger.info(
@@ -244,19 +266,10 @@ class ReminderScheduler:
             last_reminded_local = timezone.localtime(reminder.last_reminded_at)
             last_reminded_date = last_reminded_local.date()
             if last_reminded_date == current_date:
-                # 如果设置了重复提醒，检查重复间隔
-                if reminder.repeat_interval > 0 and reminder.max_repeats > 0:
-                    time_since_last = now_local - last_reminded_local
-                    if time_since_last.total_seconds() >= reminder.repeat_interval * 60:
-                        # 检查今天的重复次数
-                        today_count = self._get_today_reminder_count(
-                            reminder, current_date
-                        )
-                        logger.info(
-                            f"[repeat:{reminder.id}] last={last_reminded_local}, since={int(time_since_last.total_seconds())}s, today_count={today_count}/{reminder.max_repeats}"
-                        )
-                        if today_count < reminder.max_repeats:
-                            return True
+                if self._should_repeat_today(
+                    reminder, now_local, current_date, last_reminded_local
+                ):
+                    return True
                 logger.info(
                     f"[skip:{reminder.id}] 今天已提醒过 (last={last_reminded_local}, repeat_interval={reminder.repeat_interval}, max_repeats={reminder.max_repeats})"
                 )
