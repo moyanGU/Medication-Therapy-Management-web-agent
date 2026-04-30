@@ -436,6 +436,121 @@ class NotificationService:
             logger.warning(f"[notify:{trace_id}] unsupported_type={notification_type}")
             return False
 
+    def _get_webpush_client(self, trace_id: Optional[str] = None):
+        webpush, webpush_exception = _load_webpush()
+        if webpush is None:
+            logger.error(f"[notify:{trace_id}] pywebpush_missing")
+            return None, None
+        return webpush, webpush_exception
+
+    def _get_vapid_config(self, trace_id: Optional[str] = None):
+        vapid_private: Optional[str] = getattr(settings, "VAPID_PRIVATE_KEY", None)
+        vapid_subject: Optional[str] = (
+            getattr(settings, "VAPID_SUBJECT", None) or "mailto:noreply@example.com"
+        )
+        if not vapid_private:
+            logger.error(f"[notify:{trace_id}] vapid_private_key_missing")
+            return None, None
+        return vapid_private, vapid_subject
+
+    def _ensure_push_history(self, user, title, message, reminder, history):
+        if history is not None or reminder is None:
+            return history
+        try:
+            from .history_models import ReminderHistory
+
+            return ReminderHistory.objects.create(
+                user=user,
+                reminder=reminder,
+                title=title,
+                message=message,
+                notification_methods=["push"],
+                scheduled_time=timezone.now(),
+                reminder_type="scheduled",
+                status="pending",
+            )
+        except Exception:
+            return None
+
+    def _build_push_payload(self, title, message, reminder, history):
+        return json.dumps(
+            {
+                "title": title,
+                "body": message,
+                "tag": f"mtm-reminder-{getattr(reminder, 'id', 'general')}",
+                "data": {
+                    "url": "/",
+                    "reminderId": getattr(reminder, "id", None),
+                    "historyId": getattr(history, "id", None),
+                },
+            },
+            ensure_ascii=False,
+        )
+
+    def _build_subscription_info(self, sub):
+        return {
+            "endpoint": sub.endpoint,
+            "keys": {
+                "p256dh": sub.keys.get("p256dh"),
+                "auth": sub.keys.get("auth"),
+            },
+        }
+
+    def _send_push_to_subscription(
+        self,
+        *,
+        webpush,
+        webpush_exception,
+        sub,
+        payload: str,
+        vapid_private: str,
+        vapid_subject: str,
+        user_id,
+        trace_id: Optional[str] = None,
+    ) -> bool:
+        try:
+            webpush(
+                subscription_info=self._build_subscription_info(sub),
+                data=payload,
+                vapid_private_key=vapid_private,
+                vapid_claims={"sub": vapid_subject},
+            )
+            sub.touch_sent()
+            logger.info(
+                f"[notify:{trace_id}] push_sent user_id={user_id} endpoint={sub.endpoint[:32]}..."
+            )
+            return True
+        except webpush_exception as e:
+            status_code = getattr(getattr(e, "response", None), "status_code", None)
+            logger.warning(
+                f"[notify:{trace_id}] push_exception user_id={user_id} endpoint={sub.endpoint[:32]}... "
+                f"status={status_code} error={e}"
+            )
+            if status_code in (404, 410):
+                sub.mark_inactive()
+            return False
+        except Exception as e:
+            logger.error(
+                f"[notify:{trace_id}] push_send_failed user_id={user_id} endpoint={sub.endpoint[:32]}... error={e}"
+            )
+            return False
+
+    def _update_push_history(self, history, success_any: bool):
+        if history is None:
+            return
+        try:
+            if success_any:
+                history.sent_at = timezone.now()
+                history.status = "sent"
+                history.notification_methods = ["push"]
+                history.save(update_fields=["sent_at", "status", "notification_methods"])
+            else:
+                history.status = "failed"
+                history.notification_methods = ["push"]
+                history.save(update_fields=["status", "notification_methods"])
+        except Exception:
+            return
+
     def _send_push_notification(
         self,
         user,
@@ -453,19 +568,12 @@ class NotificationService:
         """
         from apps.users.models import PushSubscription
 
-        webpush, webpush_exception = _load_webpush()
-
-        # 校验依赖
+        webpush, webpush_exception = self._get_webpush_client(trace_id=trace_id)
         if webpush is None:
-            logger.error(f"[notify:{trace_id}] pywebpush_missing")
             return False
 
-        vapid_private: Optional[str] = getattr(settings, "VAPID_PRIVATE_KEY", None)
-        vapid_subject: Optional[str] = (
-            getattr(settings, "VAPID_SUBJECT", None) or "mailto:noreply@example.com"
-        )
-        if not vapid_private:
-            logger.error(f"[notify:{trace_id}] vapid_private_key_missing")
+        vapid_private, vapid_subject = self._get_vapid_config(trace_id=trace_id)
+        if not vapid_private or not vapid_subject:
             return False
 
         subs = PushSubscription.objects.filter(user=user, is_active=True)
@@ -473,86 +581,24 @@ class NotificationService:
             logger.info(f"[notify:{trace_id}] push_no_subscription user_id={user.id}")
             return False
 
-        if history is None and reminder is not None:
-            try:
-                from .history_models import ReminderHistory
-
-                history = ReminderHistory.objects.create(
-                    user=user,
-                    reminder=reminder,
-                    title=title,
-                    message=message,
-                    notification_methods=["push"],
-                    scheduled_time=timezone.now(),
-                    reminder_type="scheduled",
-                    status="pending",
-                )
-            except Exception:
-                history = None
-
-        payload = json.dumps(
-            {
-                "title": title,
-                "body": message,
-                "tag": f"mtm-reminder-{getattr(reminder, 'id', 'general')}",
-                "data": {
-                    "url": "/",
-                    "reminderId": getattr(reminder, "id", None),
-                    "historyId": getattr(history, "id", None),
-                },
-            },
-            ensure_ascii=False,
-        )
+        history = self._ensure_push_history(user, title, message, reminder, history)
+        payload = self._build_push_payload(title, message, reminder, history)
 
         success_any = False
         for sub in subs:
-            try:
-                webpush(
-                    subscription_info={
-                        "endpoint": sub.endpoint,
-                        "keys": {
-                            "p256dh": sub.keys.get("p256dh"),
-                            "auth": sub.keys.get("auth"),
-                        },
-                    },
-                    data=payload,
-                    vapid_private_key=vapid_private,
-                    vapid_claims={"sub": vapid_subject},
-                )
-                sub.touch_sent()
+            if self._send_push_to_subscription(
+                webpush=webpush,
+                webpush_exception=webpush_exception,
+                sub=sub,
+                payload=payload,
+                vapid_private=vapid_private,
+                vapid_subject=vapid_subject,
+                user_id=user.id,
+                trace_id=trace_id,
+            ):
                 success_any = True
-                logger.info(
-                    f"[notify:{trace_id}] push_sent user_id={user.id} endpoint={sub.endpoint[:32]}..."
-                )
-            except webpush_exception as e:
-                # 404/410 表示订阅失效
-                status_code = getattr(getattr(e, "response", None), "status_code", None)
-                logger.warning(
-                    f"[notify:{trace_id}] push_exception user_id={user.id} endpoint={sub.endpoint[:32]}... "
-                    f"status={status_code} error={e}"
-                )
-                if status_code in (404, 410):
-                    sub.mark_inactive()
-            except Exception as e:
-                logger.error(
-                    f"[notify:{trace_id}] push_send_failed user_id={user.id} endpoint={sub.endpoint[:32]}... error={e}"
-                )
 
-        if history is not None:
-            try:
-                if success_any:
-                    history.sent_at = timezone.now()
-                    history.status = "sent"
-                    history.notification_methods = ["push"]
-                    history.save(
-                        update_fields=["sent_at", "status", "notification_methods"]
-                    )
-                else:
-                    history.status = "failed"
-                    history.notification_methods = ["push"]
-                    history.save(update_fields=["status", "notification_methods"])
-            except Exception:
-                pass
+        self._update_push_history(history, success_any)
 
         return success_any
 
