@@ -1,8 +1,38 @@
 """核心应用配置"""
 
 import importlib
+import logging
+import socket
+from urllib.parse import urlparse
 
 from django.apps import AppConfig
+
+
+logger = logging.getLogger("mtm_helper")
+
+
+def _extract_redis_host_port():
+    from django.conf import settings
+
+    loc = getattr(settings, "CACHES", {}).get("default", {}).get("LOCATION")
+    if isinstance(loc, (list, tuple)):
+        loc = loc[0] if loc else None
+    if not isinstance(loc, str) or not loc:
+        return None
+    parsed = urlparse(loc)
+    host = parsed.hostname
+    port = parsed.port
+    if not host or not port:
+        return None
+    return host, int(port)
+
+
+def _probe_socket(host: str, port: int) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=0.2):
+            return True
+    except Exception:
+        return False
 
 
 class CoreConfig(AppConfig):
@@ -49,41 +79,17 @@ class CoreConfig(AppConfig):
         检查缓存连接
         """
         try:
-            import socket
-            from urllib.parse import urlparse
-
             from django.conf import settings
             from django.core.cache import cache
 
-            backend = (
-                getattr(settings, "CACHES", {}).get("default", {}).get("BACKEND", "")
-            )
+            backend = getattr(settings, "CACHES", {}).get("default", {}).get("BACKEND", "")
             if "django_redis" in str(backend):
-                loc = getattr(settings, "CACHES", {}).get("default", {}).get("LOCATION")
-                if isinstance(loc, (list, tuple)):
-                    loc = loc[0] if loc else None
-                parsed = urlparse(loc) if isinstance(loc, str) else None
-                host = parsed.hostname if parsed else None
-                port = parsed.port if parsed else None
-                if host and port:
-                    try:
-                        with socket.create_connection((host, int(port)), timeout=0.2):
-                            pass
-                    except Exception:
-                        import logging
-
-                        logger = logging.getLogger("mtm_helper")
-                        logger.warning("Redis缓存连接异常: Redis 不可用，启动阶段跳过连通性检查")
-                        return
+                hp = _extract_redis_host_port()
+                if hp and not _probe_socket(hp[0], hp[1]):
+                    logger.warning("Redis缓存连接异常: Redis 不可用，启动阶段跳过连通性检查")
+                    return
 
             cache.get("test_key")
-
-            import logging
-
-            logger = logging.getLogger("mtm_helper")
             logger.info("Redis缓存连接正常")
         except Exception as e:
-            import logging
-
-            logger = logging.getLogger("mtm_helper")
             logger.warning(f"Redis缓存连接异常: {e}")
