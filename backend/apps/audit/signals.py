@@ -1,4 +1,5 @@
 import json
+import logging
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
@@ -16,6 +17,8 @@ WATCHED_MODELS = [
     Reminder,
     get_user_model(),
 ]
+
+logger = logging.getLogger(__name__)
 
 
 def _get_client_ip(request):
@@ -42,6 +45,54 @@ def _serialize_instance(instance):
         return json.dumps(d, default=str)
     except Exception:
         return str(instance)
+
+
+def _resolve_audit_user(sender, instance, user):
+    if not user or not getattr(user, "is_authenticated", False):
+        return None
+    try:
+        user_model = get_user_model()
+        if sender == user_model and instance.pk == user.pk:
+            return None
+        if user.pk and user_model.objects.filter(pk=user.pk).exists():
+            return user
+    except Exception:
+        return None
+    return None
+
+
+def _build_delete_details(sender, instance, user, audit_user):
+    details = {"model": sender.__name__, "pk": instance.pk}
+    if user and not audit_user:
+        details["operator_username"] = getattr(user, "username", "unknown")
+    return details
+
+
+def _create_delete_audit_log(sender, instance, request, audit_user, details):
+    try:
+        AuditLog.objects.create(
+            user=audit_user,
+            action="DELETE",
+            resource_type=str(sender._meta.verbose_name),
+            resource_id=str(instance.pk),
+            details=details,
+            ip_address=_get_client_ip(request),
+            user_agent=request.META.get("HTTP_USER_AGENT", "")[:500],
+        )
+        return
+    except Exception as e:
+        if "foreign key constraint" in str(e).lower():
+            AuditLog.objects.create(
+                user=None,
+                action="DELETE",
+                resource_type=str(sender._meta.verbose_name),
+                resource_id=str(instance.pk),
+                details=details,
+                ip_address=_get_client_ip(request),
+                user_agent=request.META.get("HTTP_USER_AGENT", "")[:500],
+            )
+            return
+        logger.error(f"Failed to create audit log for DELETE: {e}")
 
 
 @receiver(post_save)
@@ -92,54 +143,7 @@ def audit_log_delete(sender, instance, **kwargs):
         return
 
     user = getattr(request, 'user', None)
-    
-    # 检查操作用户是否有效
-    audit_user = None
-    if user and user.is_authenticated:
-        try:
-            # 1. 检查 user 实例本身是否就是被删除的对象
-            if sender == get_user_model() and instance.pk == user.pk:
-                audit_user = None
-            # 2. 检查 user 是否存在于数据库 (避免外键错误)
-            # 注意：如果 user 已经被删除，User.objects.filter(pk=user.pk).exists() 会返回 False
-            elif user.pk and get_user_model().objects.filter(pk=user.pk).exists():
-                audit_user = user
-        except Exception:
-            pass
 
-    # 如果此时 audit_user 为 None，但 request.user 是存在的（说明是已登录用户操作，但用户可能刚被删，或者是删除自己的操作）
-    # 我们可以选择记录 user_id=None 的审计日志，或者记录在 details 中
-    
-    details = {'model': sender.__name__, 'pk': instance.pk}
-    if user and not audit_user:
-         details['operator_username'] = getattr(user, 'username', 'unknown')
-
-    try:
-        # 当删除操作发生时，如果外键约束导致无法保存 user，我们尝试将 user 置为 None
-        # 或者在创建时捕获 IntegrityError 并重试
-        AuditLog.objects.create(
-            user=audit_user,
-            action='DELETE',
-            resource_type=str(sender._meta.verbose_name),
-            resource_id=str(instance.pk),
-            details=details,
-            ip_address=_get_client_ip(request),
-            user_agent=request.META.get('HTTP_USER_AGENT', '')[:500]
-        )
-    except Exception as e:
-        # 如果是因为外键约束失败（例如 audit_user 刚被删），尝试以 user=None 再次记录
-        if "foreign key constraint" in str(e).lower():
-             AuditLog.objects.create(
-                user=None,
-                action='DELETE',
-                resource_type=str(sender._meta.verbose_name),
-                resource_id=str(instance.pk),
-                details=details,
-                ip_address=_get_client_ip(request),
-                user_agent=request.META.get('HTTP_USER_AGENT', '')[:500]
-            )
-        else:
-            # 其他错误则记录日志
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Failed to create audit log for DELETE: {e}")
+    audit_user = _resolve_audit_user(sender, instance, user)
+    details = _build_delete_details(sender, instance, user, audit_user)
+    _create_delete_audit_log(sender, instance, request, audit_user, details)
