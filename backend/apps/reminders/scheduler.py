@@ -32,6 +32,12 @@ class ReminderScheduler:
     负责检查和发送提醒通知
     """
 
+    _NEXT_METHOD_ORDER = {
+        "push": ("sms", "email"),
+        "sms": ("email", "push"),
+        "email": ("push", "sms"),
+    }
+
     def __init__(self):
         self.notification_service = NotificationService()
 
@@ -69,24 +75,25 @@ class ReminderScheduler:
         if not prev:
             return []
 
-        order_map = {
-            "push": ["sms", "email"],
-            "sms": ["email", "push"],
-            "email": ["push", "sms"],
-        }
-
         enabled_map = {
             "push": bool(user_settings.get("push_enabled")),
             "sms": bool(user_settings.get("sms_enabled")),
             "email": bool(user_settings.get("email_enabled")),
         }
 
+        prev_set = set(prev)
+
+        def _first_enabled(candidates):
+            for candidate in candidates:
+                if enabled_map.get(candidate):
+                    return candidate
+            return None
+
         for method in ("push", "sms", "email"):
-            if method in prev:
-                for candidate in order_map.get(method, []):
-                    if enabled_map.get(candidate):
-                        return [candidate]
-                return []
+            if method not in prev_set:
+                continue
+            selected = _first_enabled(self._NEXT_METHOD_ORDER.get(method, ()))
+            return [selected] if selected else []
 
         return []
 
