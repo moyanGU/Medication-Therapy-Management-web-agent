@@ -223,52 +223,79 @@ class RequestLoggingMiddleware(MiddlewareMixin):
         request.force_debug_cursor = False
         request.request_id = self._resolve_request_id(request)
 
-        if getattr(settings, "DB_LOG_SLOW_QUERY", False):
-            try:
-                from django.db import connection
+        self._maybe_enable_debug_cursor(request)
+        has_auth_header, token_type, token_preview, token_value = self._parse_auth_header(
+            request
+        )
+        jwt_auth_result, jwt_user = self._attempt_jwt_auth(
+            has_auth_header, token_type, token_value
+        )
+        self._log_request_start(
+            request,
+            has_auth_header,
+            token_type,
+            token_preview,
+            jwt_auth_result,
+            jwt_user,
+        )
 
-                connection.force_debug_cursor = True
-                request.force_debug_cursor = True
-            except Exception:
-                request.force_debug_cursor = False
+    def _maybe_enable_debug_cursor(self, request):
+        if not getattr(settings, "DB_LOG_SLOW_QUERY", False):
+            return
+        try:
+            from django.db import connection
 
-        # 获取Authorization头
+            connection.force_debug_cursor = True
+            request.force_debug_cursor = True
+        except Exception:
+            request.force_debug_cursor = False
+
+    def _parse_auth_header(self, request):
         auth_header = request.META.get("HTTP_AUTHORIZATION", "")
-        has_auth_header = bool(auth_header)
-        token_type = ""
+        if not auth_header:
+            return False, "", "", ""
+
+        parts = auth_header.split(" ")
+        if len(parts) != 2:
+            return True, "", "", ""
+
+        token_type = parts[0]
+        token_value = parts[1]
         token_preview = ""
+        if getattr(settings, "LOG_AUTH_TOKEN_PREVIEW", False):
+            token_preview = token_value[:6] + "..." if len(token_value) > 6 else token_value
+        return True, token_type, token_preview, token_value
 
-        if auth_header:
-            parts = auth_header.split(" ")
-            if len(parts) == 2:
-                token_type = parts[0]
-                if getattr(settings, "LOG_AUTH_TOKEN_PREVIEW", False):
-                    token_preview = (
-                        parts[1][:6] + "..." if len(parts[1]) > 6 else parts[1]
-                    )
-
-        # 尝试进行JWT认证验证
+    def _attempt_jwt_auth(self, has_auth_header: bool, token_type: str, token_value: str):
         jwt_auth_result = "Not attempted"
         jwt_user = "Unknown"
+        if not (has_auth_header and token_type.lower() == "bearer" and token_value):
+            return jwt_auth_result, jwt_user
 
-        if has_auth_header and token_type.lower() == "bearer":
-            try:
-                jwt_auth = JWTAuthentication()
-                validated_token = jwt_auth.get_validated_token(
-                    auth_header.split(" ")[1]
-                )
-                user = jwt_auth.get_user(validated_token)
-                jwt_auth_result = "Success"
-                jwt_user = user.username if user else "None"
-                logger.info(f"🟢 [Auth Middleware] JWT认证成功 - 用户: {jwt_user}")
-            except (InvalidToken, TokenError) as e:
-                jwt_auth_result = f"Failed: {str(e)}"
-                logger.error(f"🔴 [Auth Middleware] JWT认证失败: {str(e)}")
-            except Exception as e:
-                jwt_auth_result = f"Error: {str(e)}"
-                logger.error(f"🔴 [Auth Middleware] JWT认证异常: {str(e)}")
+        try:
+            jwt_auth = JWTAuthentication()
+            validated_token = jwt_auth.get_validated_token(token_value)
+            user = jwt_auth.get_user(validated_token)
+            jwt_auth_result = "Success"
+            jwt_user = user.username if user else "None"
+            logger.info(f"🟢 [Auth Middleware] JWT认证成功 - 用户: {jwt_user}")
+        except (InvalidToken, TokenError) as e:
+            jwt_auth_result = f"Failed: {str(e)}"
+            logger.error(f"🔴 [Auth Middleware] JWT认证失败: {str(e)}")
+        except Exception as e:
+            jwt_auth_result = f"Error: {str(e)}"
+            logger.error(f"🔴 [Auth Middleware] JWT认证异常: {str(e)}")
+        return jwt_auth_result, jwt_user
 
-        # 记录详细的请求信息
+    def _log_request_start(
+        self,
+        request,
+        has_auth_header: bool,
+        token_type: str,
+        token_preview: str,
+        jwt_auth_result: str,
+        jwt_user: str,
+    ):
         logger.info(
             f"🔵 [Request] API请求开始: {request.method} {request.get_full_path()} - "
             f"Request ID: {request.request_id} - "
@@ -310,41 +337,52 @@ class RequestLoggingMiddleware(MiddlewareMixin):
     def _log_slow_queries(self, request):
         if not getattr(settings, "DB_LOG_SLOW_QUERY", False):
             return
+        connection = None
         try:
-            from django.db import connection
+            from django.db import connection as dj_connection
 
+            connection = dj_connection
             slow_query_seconds = float(getattr(settings, "DB_SLOW_QUERY_SECONDS", 0))
             max_items = int(getattr(settings, "DB_SLOW_QUERY_MAX", 20))
             max_len = int(getattr(settings, "DB_SLOW_QUERY_SQL_MAX_LEN", 500))
             if slow_query_seconds <= 0:
                 return
-            slow_queries = []
-            for q in getattr(connection, "queries", []) or []:
-                try:
-                    q_time = float(q.get("time", 0))
-                except Exception:
-                    q_time = 0
-                if q_time >= slow_query_seconds:
-                    sql = q.get("sql", "")
-                    if max_len > 0 and len(sql) > max_len:
-                        sql = f"{sql[:max_len]}..."
-                    slow_queries.append((q_time, sql))
-            if slow_queries:
-                slow_queries.sort(key=lambda x: x[0], reverse=True)
-                for q_time, sql in slow_queries[:max_items]:
-                    logger.warning(
-                        f"🟠 [SlowQuery] {q_time:.3f}s {request.method} "
-                        f"{request.get_full_path()} - {sql}"
-                    )
+
+            slow_queries = self._collect_slow_queries(
+                getattr(connection, "queries", []) or [], slow_query_seconds, max_len
+            )
+            self._log_slow_query_items(request, slow_queries, max_items)
         except Exception as e:
             logger.warning(f"🟠 [SlowQuery] 记录慢查询失败: {e}")
         finally:
             try:
-                from django.db import connection
-
-                connection.force_debug_cursor = False
+                if connection is not None:
+                    connection.force_debug_cursor = False
             except Exception:
                 pass
+
+    def _collect_slow_queries(self, queries, slow_query_seconds: float, max_len: int):
+        slow_queries = []
+        for q in queries:
+            try:
+                q_time = float(q.get("time", 0))
+            except Exception:
+                q_time = 0
+            if q_time < slow_query_seconds:
+                continue
+            sql = q.get("sql", "")
+            if max_len > 0 and len(sql) > max_len:
+                sql = f"{sql[:max_len]}..."
+            slow_queries.append((q_time, sql))
+        slow_queries.sort(key=lambda x: x[0], reverse=True)
+        return slow_queries
+
+    def _log_slow_query_items(self, request, slow_queries, max_items: int):
+        for q_time, sql in (slow_queries or [])[:max_items]:
+            logger.warning(
+                f"🟠 [SlowQuery] {q_time:.3f}s {request.method} "
+                f"{request.get_full_path()} - {sql}"
+            )
 
     def process_response(self, request, response):
         """
