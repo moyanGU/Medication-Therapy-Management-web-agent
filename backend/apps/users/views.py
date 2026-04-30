@@ -12,6 +12,16 @@ from .serializers import PushSubscriptionSerializer, UserProfileSerializer
 logger = logging.getLogger(__name__)
 
 
+def _coalesce(*values, default=None):
+    for v in values:
+        if v is None:
+            continue
+        if isinstance(v, str) and not v.strip():
+            continue
+        return v
+    return default
+
+
 def _success(data, message, status_code=status.HTTP_200_OK):
     return Response({"success": True, "data": data, "message": message}, status=status_code)
 
@@ -21,15 +31,17 @@ def _error(message, status_code):
 
 
 def _build_push_subscription_payload(request):
+    data = request.data or {}
     payload = {
-        "endpoint": (request.data or {}).get("endpoint"),
-        "keys": (request.data or {}).get("keys"),
-        "user_agent": (request.data or {}).get("ua") or request.META.get("HTTP_USER_AGENT", ""),
-        "time_zone": (request.data or {}).get("timeZone"),
-        "app": (request.data or {}).get("app") or "mtm-helper",
+        "endpoint": data.get("endpoint"),
+        "keys": data.get("keys"),
+        "user_agent": _coalesce(data.get("ua"), request.META.get("HTTP_USER_AGENT", ""), default=""),
+        "time_zone": data.get("timeZone"),
+        "app": _coalesce(data.get("app"), default="mtm-helper"),
     }
-    if (request.data or {}).get("expirationTime"):
-        payload["expiration_time"] = (request.data or {}).get("expirationTime")
+    expiration_time = data.get("expirationTime")
+    if expiration_time:
+        payload["expiration_time"] = expiration_time
     return payload
 
 
