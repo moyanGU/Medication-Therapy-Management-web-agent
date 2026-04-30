@@ -203,105 +203,13 @@ class ReminderHistoryViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def metrics(self, request):
         try:
-            days = int(request.query_params.get("days", 7))
+            from .metrics_utils import build_history_metrics, history_metrics_to_dict, parse_days
+
+            days = parse_days(request.query_params.get("days", 7), default=7)
             start_dt = timezone.now() - timedelta(days=days)
             qs = list(self.get_queryset().filter(sent_at__gte=start_dt))
-
-            total = len(qs)
-            sent_qs = [h for h in qs if h.status == "sent"]
-            failed = sum(1 for h in qs if h.status == "failed")
-            pending = sum(1 for h in qs if h.status == "pending")
-
-            delays = []
-            for h in sent_qs:
-                if h.sent_at and h.scheduled_time:
-                    delays.append((h.sent_at - h.scheduled_time).total_seconds() / 60.0)
-            avg_delay = sum(delays) / len(delays) if delays else 0.0
-
-            push_sent = sum(
-                1 for h in sent_qs if "push" in (h.notification_methods or [])
-            )
-            sms_sent = sum(
-                1 for h in sent_qs if "sms" in (h.notification_methods or [])
-            )
-            email_sent = sum(
-                1 for h in sent_qs if "email" in (h.notification_methods or [])
-            )
-
-            responded_count = sum(
-                1
-                for h in sent_qs
-                if h.response_type and h.response_type != "no_response"
-            )
-            response_rate = (
-                round((responded_count / len(sent_qs) * 100.0), 2) if sent_qs else 0.0
-            )
-
-            channel_failed = {
-                "push_failed": sum(
-                    1
-                    for h in qs
-                    if h.status == "failed" and "push" in (h.notification_methods or [])
-                ),
-                "sms_failed": sum(
-                    1
-                    for h in qs
-                    if h.status == "failed" and "sms" in (h.notification_methods or [])
-                ),
-                "email_failed": sum(
-                    1
-                    for h in qs
-                    if h.status == "failed"
-                    and "email" in (h.notification_methods or [])
-                ),
-            }
-
-            escalated_items = [h for h in qs if (h.title or "").strip() == "补发提醒"]
-            escalated_total = len(escalated_items)
-            escalated_sent = sum(1 for h in escalated_items if h.status == "sent")
-            escalation_success_rate = (
-                round((escalated_sent / escalated_total * 100.0), 2)
-                if escalated_total
-                else 0.0
-            )
-
-            warnings: list[str] = []
-            try:
-                if response_rate < 60.0:
-                    warnings.append(f"响应率偏低：{response_rate}%")
-                if sent_qs:
-                    fail_rate = round((failed / len(sent_qs)) * 100.0, 2)
-                    if fail_rate > 20.0:
-                        warnings.append(f"失败率偏高：{fail_rate}%")
-                else:
-                    if failed > 0:
-                        warnings.append("存在失败记录且无成功发送")
-            except Exception:
-                pass
-
-            data = {
-                "period_days": days,
-                "total": total,
-                "sent": len(sent_qs),
-                "failed": failed,
-                "pending": pending,
-                "avg_response_delay_minutes": round(avg_delay or 0, 2),
-                "channel": {
-                    "push_sent": push_sent,
-                    "sms_sent": sms_sent,
-                    "email_sent": email_sent,
-                    **channel_failed,
-                },
-                "response_rate": response_rate,
-                "escalation": {
-                    "escalated_total": escalated_total,
-                    "escalated_sent": escalated_sent,
-                    "escalation_success_rate": escalation_success_rate,
-                },
-                "warnings": warnings,
-            }
-
-            return Response({"success": True, "data": data})
+            metrics = build_history_metrics(qs, days=days)
+            return Response({"success": True, "data": history_metrics_to_dict(metrics)})
         except Exception as e:
             return Response(
                 {"success": False, "message": str(e), "data": {}},
