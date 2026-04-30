@@ -8,7 +8,7 @@ from django.http import JsonResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
-from .ai_llm import _normalize_openai_base_url
+from .ai_llm import _build_openai_chat_completion_urls, _normalize_openai_base_url
 
 logger = logging.getLogger("mtm_helper")
 
@@ -268,18 +268,41 @@ def _handle_page_agent_tools_fallback(*, base_url: str, api_key: str, model: str
         return _json_error(str(exc), "invalid_response_error", 502)
 
 
-def _proxy_page_agent_upstream(*, url: str, headers: dict, payload: dict, timeout_seconds: float):
-    try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=timeout_seconds)
-    except requests.RequestException:
-        return _json_error("上游模型服务请求失败", "upstream_error", 502)
+def _proxy_page_agent_upstream(*, base_url: str, headers: dict, payload: dict, timeout_seconds: float):
+    from apps.core import views as core_views
 
-    try:
-        body = resp.json()
-    except ValueError:
-        return _json_error("上游模型响应格式错误", "bad_gateway", 502)
+    urls = _build_openai_chat_completion_urls(base_url)
+    if not urls:
+        return _json_error("AI 服务配置缺失", "config_error", 503)
 
-    return JsonResponse(body, status=resp.status_code, safe=isinstance(body, dict))
+    last_body = None
+    last_status = 502
+    for index, url in enumerate(urls):
+        try:
+            resp = core_views.requests.post(
+                url, headers=headers, json=payload, timeout=timeout_seconds
+            )
+        except requests.RequestException:
+            last_body = {"error": {"message": "上游模型服务请求失败", "type": "upstream_error"}}
+            last_status = 502
+            continue
+
+        try:
+            body = resp.json()
+        except ValueError:
+            last_body = {"error": {"message": "上游模型响应格式错误", "type": "bad_gateway"}}
+            last_status = 502
+            continue
+
+        last_body = body
+        last_status = resp.status_code
+        if isinstance(body, dict) and isinstance(body.get("choices"), list) and body.get("choices"):
+            return JsonResponse(body, status=resp.status_code, safe=True)
+        if index < len(urls) - 1:
+            continue
+        return JsonResponse(body, status=resp.status_code, safe=isinstance(body, dict))
+
+    return JsonResponse(last_body or {"error": {"message": "上游模型服务请求失败", "type": "upstream_error"}}, status=last_status, safe=isinstance(last_body, dict))
 
 
 @api_view(["POST"])
@@ -295,7 +318,6 @@ def page_agent_chat_completions(request):
         return _json_error(str(exc), "invalid_request_error", 400)
 
     headers = _build_page_agent_headers(api_key)
-    url = _get_page_agent_url(base_url)
     if payload.get("tools"):
         return _handle_page_agent_tools_fallback(
             base_url=base_url,
@@ -306,5 +328,5 @@ def page_agent_chat_completions(request):
         )
 
     return _proxy_page_agent_upstream(
-        url=url, headers=headers, payload=payload, timeout_seconds=timeout_seconds
+        base_url=base_url, headers=headers, payload=payload, timeout_seconds=timeout_seconds
     )

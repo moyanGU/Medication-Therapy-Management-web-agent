@@ -141,7 +141,21 @@ def _collect_notification_diagnostics(problems: list[str]):
         problems.append("WebPush 未配置 VAPID_PRIVATE_KEY")
 
     spug_enabled = bool(getattr(settings, "SPUG_PUSH_ENABLED", False))
-    notifications["sms"] = "configured" if spug_enabled else "disabled"
+    template_id = str(getattr(settings, "SPUG_TEMPLATE_ID", "") or "").strip()
+    spug_url = str(getattr(settings, "SPUG_PUSH_URL", "") or "").strip()
+    spug_token = str(getattr(settings, "SPUG_PUSH_TOKEN", "") or "").strip()
+    timeout_seconds = int(getattr(settings, "SPUG_PUSH_TIMEOUT_SECONDS", 3) or 3)
+
+    if spug_enabled and not template_id:
+        problems.append("SPUG_PUSH_ENABLED 已开启但缺少 SPUG_TEMPLATE_ID")
+
+    notifications["sms_spug"] = {
+        "enabled": spug_enabled,
+        "template_configured": bool(template_id),
+        "url": spug_url,
+        "token_configured": bool(spug_token),
+        "timeout_seconds": timeout_seconds,
+    }
     return notifications
 
 
@@ -261,12 +275,26 @@ def diagnostics(request):
         details["cache"] = _collect_cache_diagnostics(problems)
         details["notifications"] = _collect_notification_diagnostics(problems)
 
+        diagnostics_payload = {
+            "env": details.get("env") or {},
+            "dependencies": details.get("dependencies") or {},
+            "database": details.get("database") or {},
+            "cache": details.get("cache") or {},
+            "notifications": details.get("notifications") or {},
+        }
+
+        status_code = 206 if problems else 200
         return Response(
             {
                 "success": True,
                 "message": "ok",
-                "data": {"problems": problems, "details": details},
-            }
+                "data": {
+                    "diagnostics": diagnostics_payload,
+                    "problems": problems,
+                    "details": details,
+                },
+            },
+            status=status_code,
         )
     except Exception as e:
         logger.error(f"系统诊断异常: {e}")
