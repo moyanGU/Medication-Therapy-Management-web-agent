@@ -509,3 +509,59 @@ class MTMServiceCaseTransitionSerializer(serializers.Serializer):
             )
 
         return attrs
+
+class MTMPlanDraftSerializer(serializers.Serializer):
+    """
+    干预计划草稿保存序列化器
+    """
+    interventions = serializers.JSONField(required=False)
+    priority = serializers.ChoiceField(
+        choices=MTMPlan.PRIORITY_CHOICES, required=False
+    )
+    patient_confirmation_status = serializers.ChoiceField(
+        choices=MTMPlan.PATIENT_CONFIRMATION_CHOICES, required=False
+    )
+    patient_confirmation_notes = serializers.CharField(
+        allow_blank=True, allow_null=True, required=False
+    )
+
+    def validate_interventions(self, value):
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError("干预措施必须是列表格式")
+        return value
+
+    def validate_patient_confirmation_notes(self, value):
+        if value is None:
+            return value
+        return value.strip()
+
+
+class MTMPlanCompleteSerializer(MTMPlanDraftSerializer):
+    """
+    完成干预计划填写的序列化器
+    """
+    def validate(self, attrs):
+        if not attrs.get("interventions"):
+            raise serializers.ValidationError("干预措施列表不能为空")
+        return attrs
+
+
+class MTMFollowUpFormSerializer(serializers.ModelSerializer):
+    """
+    随访记录创建/更新序列化器
+    """
+    class Meta:
+        model = MTMFollowUp
+        fields = [
+            "id",
+            "follow_up_time",
+            "follow_up_method",
+            "execution_status",
+            "risk_change",
+            "summary",
+            "next_follow_up_time",
+            "notes",
+        ]
+

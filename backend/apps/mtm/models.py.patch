@@ -1,0 +1,23 @@
+import re
+
+with open("backend/apps/mtm/models.py", "r") as f:
+    content = f.read()
+
+# Add soap_notes field to MTMServiceCase
+soap_field = """    service_goal = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="服务目标",
+        help_text="本次 MTM 服务的主要目标",
+    )
+    soap_notes = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="SOAP 药历",
+        help_text="结构化的 SOAP 药历记录",
+    )"""
+
+if "soap_notes" not in content:
+    content = content.replace("    service_goal = models.TextField(\n        blank=True,\n        null=True,\n        verbose_name=\"服务目标\",\n        help_text=\"本次 MTM 服务的主要目标\",\n    )", soap_field)
+    with open("backend/apps/mtm/models.py", "w") as f:
+        f.write(content)

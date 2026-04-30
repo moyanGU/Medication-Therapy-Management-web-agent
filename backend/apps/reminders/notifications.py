@@ -36,6 +36,206 @@ def _load_webpush():
     return _webpush_loader["webpush"], _webpush_loader["exception"]
 
 
+def _mask_phone(phone: str) -> str:
+    if isinstance(phone, str) and len(phone) == 11:
+        return phone[:3] + "****" + phone[-4:]
+    return "[masked]"
+
+
+def _build_sms_text(title: str, message: str) -> str:
+    return (
+        getattr(settings, "SMS_TEMPLATES", {})
+        .get("reminder", "{title}: {message}")
+        .format(title=title, message=message)
+    )
+
+
+def _derive_spug_msg_var(title: str, message: str, reminder) -> str:
+    var = ""
+    try:
+        if reminder is not None and getattr(reminder, "medicine", None):
+            med = getattr(reminder, "medicine")
+            med_name = getattr(med, "name", None) or getattr(reminder, "medicine_name", None)
+            var = (med_name or "").strip()
+    except Exception:
+        var = ""
+
+    if not var:
+        var = (title or "").strip() or (message or "").strip() or "用药"
+
+    if var.endswith("提醒"):
+        var = var[:-2]
+    return var
+
+
+def _truncate_spug_msg_var(var: str, trace_id: str | None) -> str:
+    max_len = int(getattr(settings, "SPUG_SMS_MESSAGE_MAX_LEN", 10))
+    if max_len <= 0:
+        max_len = 10
+    original_len = len(var)
+    if original_len > max_len:
+        logger.warning(
+            f"[notify:{trace_id}] spug_msg_truncated original_len={original_len} max_len={max_len}"
+        )
+        return var[:max_len]
+    return var
+
+
+def _is_test_or_debug() -> bool:
+    is_pytest = (os.getenv("PYTEST_CURRENT_TEST") is not None) or ("pytest" in sys.modules)
+    is_debug = bool(getattr(settings, "DEBUG", False))
+    return is_debug or is_pytest
+
+
+def _should_short_circuit_sms(spug_enabled: bool, base_url: str) -> bool:
+    is_pytest = (os.getenv("PYTEST_CURRENT_TEST") is not None) or ("pytest" in sys.modules)
+    if (not spug_enabled and _is_test_or_debug()) or (
+        is_pytest and spug_enabled and "spug.test" not in str(base_url)
+    ):
+        return True
+    return False
+
+
+def _write_history_sent_or_create(user, title, sms_text, reminder, history):
+    try:
+        if history is not None:
+            history.sent_at = timezone.now()
+            history.status = "sent"
+            history.notification_methods = ["sms"]
+            history.save(update_fields=["sent_at", "status", "notification_methods"])
+            return
+        if reminder is not None:
+            from .history_models import ReminderHistory
+
+            ReminderHistory.objects.create(
+                user=user,
+                reminder=reminder,
+                title=title,
+                message=sms_text,
+                notification_methods=["sms"],
+                scheduled_time=timezone.now(),
+                reminder_type="scheduled",
+                status="sent",
+            )
+    except Exception:
+        return
+
+
+def _build_spug_request(user, title: str, spug_msg_var: str, base_url: str, template_id: str):
+    use_sms = bool(getattr(settings, "SPUG_REMINDER_USE_SMS_ENDPOINT", False))
+    timeout = int(getattr(settings, "SPUG_PUSH_TIMEOUT_SECONDS", 3))
+    token = getattr(settings, "SPUG_PUSH_TOKEN", "")
+
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    if use_sms:
+        url = f"{base_url.rstrip('/')}/sms/{template_id}"
+        params = {
+            getattr(settings, "SPUG_SMS_PARAM_TO", "to"): user.phone,
+            getattr(settings, "SPUG_SMS_PARAM_MESSAGE", "message"): spug_msg_var,
+        }
+        payload = None
+    else:
+        url = f"{base_url.rstrip('/')}/send/{template_id}"
+        payload = {
+            "name": getattr(settings, "SPUG_APP_NAME", "MTM用药助手"),
+            "title": title,
+            "message": spug_msg_var,
+            "targets": user.phone,
+        }
+        params = None
+
+    try:
+        extra_json = getattr(settings, "SPUG_EXTRA_PARAMS_JSON", "")
+        if extra_json:
+            import json as _json
+
+            extra = _json.loads(extra_json)
+            if isinstance(extra, dict):
+                if use_sms:
+                    params.update(extra)
+                else:
+                    payload.update(extra)
+    except Exception:
+        pass
+
+    return {
+        "use_sms": use_sms,
+        "url": url,
+        "params": params,
+        "payload": payload,
+        "headers": headers,
+        "timeout": timeout,
+        "token": token,
+    }
+
+
+def _validate_spug_response_json(parsed, trace_id: str | None) -> bool:
+    if not isinstance(parsed, dict):
+        return True
+    code_val = parsed.get("code")
+    msg_val = str(parsed.get("msg", ""))
+    if code_val not in (200, "200"):
+        logger.error(f"[notify:{trace_id}] spug_sms_api_error code={code_val} msg={msg_val}")
+        return False
+    if "不能为空" in msg_val or "失败" in msg_val:
+        logger.error(f"[notify:{trace_id}] spug_sms_api_failed msg={msg_val}")
+        return False
+    return True
+
+
+def _send_spug_request(request_spec: dict, trace_id: str | None, masked_phone: str):
+    if requests is None:
+        logger.error(f"[notify:{trace_id}] requests_missing")
+        return False
+
+    use_sms = bool(request_spec["use_sms"])
+    url = request_spec["url"]
+    headers = request_spec["headers"]
+    timeout = request_spec["timeout"]
+    token = request_spec["token"]
+
+    if use_sms:
+        params = request_spec["params"] or {}
+        masked_params = {
+            **params,
+            getattr(settings, "SPUG_SMS_PARAM_MESSAGE", "message"): "[masked]",
+            getattr(settings, "SPUG_SMS_PARAM_TO", "to"): masked_phone,
+        }
+        logger.info(
+            f"[notify:{trace_id}] spug_sms_request url={url} params={masked_params} timeout={timeout} auth={'yes' if token else 'no'}"
+        )
+        r = requests.get(url, params=params, headers=headers, timeout=timeout)
+    else:
+        payload = request_spec["payload"] or {}
+        masked_payload = {**payload, "message": "[masked]", "targets": masked_phone}
+        logger.info(
+            f"[notify:{trace_id}] spug_sms_request url={url} payload={masked_payload} timeout={timeout} auth={'yes' if token else 'no'}"
+        )
+        r = requests.post(url, data=payload, headers=headers, timeout=timeout)
+
+    resp_text = str(getattr(r, "text", ""))
+    logger.info(
+        f"[notify:{trace_id}] spug_sms_response status={getattr(r, 'status_code', None)} text={resp_text[:200]}"
+    )
+    try:
+        r.raise_for_status()
+    except Exception as e:
+        logger.error(f"[notify:{trace_id}] spug_sms_http_error: {e}")
+        return False
+
+    try:
+        parsed = r.json()
+        if not _validate_spug_response_json(parsed, trace_id):
+            return False
+    except Exception:
+        pass
+
+    return True
+
+
 class NotificationService:
     """
     通知服务
@@ -44,6 +244,88 @@ class NotificationService:
 
     def __init__(self):
         self.enabled_types = ["push", "email", "sms"]  # 可用的通知类型
+
+    def _resolve_preferred_channels(self, user_settings, reminder, history):
+        from_history = False
+        if history and getattr(history, "notification_methods", None):
+            preferred = [
+                item
+                for item in list(history.notification_methods or [])
+                if item in self.enabled_types
+            ]
+            from_history = True
+        elif reminder and getattr(reminder, "notification_types", None):
+            preferred = [
+                item
+                for item in list(reminder.notification_types or [])
+                if item in self.enabled_types
+            ]
+        else:
+            preferred = []
+            if user_settings.get("push_enabled"):
+                preferred = ["push"]
+            elif user_settings.get("sms_enabled"):
+                preferred = ["sms"]
+            elif user_settings.get("email_enabled"):
+                preferred = ["email"]
+
+        return preferred, from_history
+
+    def _schedule_fallback_pending(self, user, title, message, reminder, user_settings, trace_id: str):
+        if reminder is None:
+            return
+        try:
+            from .history_models import ReminderHistory
+
+            fallback_time = timezone.now() + timedelta(minutes=5)
+            methods = []
+            if user_settings.get("sms_enabled"):
+                methods = ["sms"]
+            elif user_settings.get("email_enabled"):
+                methods = ["email"]
+
+            if not methods:
+                logger.warning(
+                    f"[notify:{trace_id}] fallback_pending_skipped_no_channel reminder={getattr(reminder, 'id', None)}"
+                )
+                return
+
+            exists = (
+                ReminderHistory.objects.filter(
+                    user=user,
+                    reminder=reminder,
+                    status="pending",
+                    reminder_type="repeat",
+                    notification_methods=methods,
+                )
+                .filter(
+                    scheduled_time__gte=timezone.now(),
+                    scheduled_time__lte=fallback_time + timedelta(minutes=5),
+                )
+                .exists()
+            )
+
+            if exists:
+                logger.warning(
+                    f"[notify:{trace_id}] fallback_pending_exists reminder={getattr(reminder, 'id', None)} methods={methods}"
+                )
+                return
+
+            ReminderHistory.objects.create(
+                user=user,
+                reminder=reminder,
+                title=title,
+                message=message,
+                notification_methods=methods,
+                scheduled_time=fallback_time,
+                reminder_type="repeat",
+                status="pending",
+            )
+            logger.warning(
+                f"[notify:{trace_id}] fallback_pending_created reminder={getattr(reminder, 'id', None)} methods={methods} scheduled_time={fallback_time}"
+            )
+        except Exception as ie:
+            logger.error(f"[notify:{trace_id}] fallback_pending_create_error: {ie}")
 
     def send_notification(
         self,
@@ -57,29 +339,9 @@ class NotificationService:
         try:
             trace_id = trace_id or uuid.uuid4().hex[:10]
             user_settings = self.get_notification_settings(user)
-            # 优先尊重历史记录指定的通道顺序，其次使用提醒的偏好，否则按用户设置推断
-            from_history = False
-            if history and getattr(history, "notification_methods", None):
-                preferred = [
-                    item
-                    for item in list(history.notification_methods or [])
-                    if item in self.enabled_types
-                ]
-                from_history = True
-            elif reminder and getattr(reminder, "notification_types", None):
-                preferred = [
-                    item
-                    for item in list(reminder.notification_types or [])
-                    if item in self.enabled_types
-                ]
-            else:
-                preferred = []
-                if user_settings.get("push_enabled"):
-                    preferred = ["push"]
-                elif user_settings.get("sms_enabled"):
-                    preferred = ["sms"]
-                elif user_settings.get("email_enabled"):
-                    preferred = ["email"]
+            preferred, from_history = self._resolve_preferred_channels(
+                user_settings=user_settings, reminder=reminder, history=history
+            )
 
             logger.info(
                 f"[notify:{trace_id}] start user_id={getattr(user, 'id', None)} "
@@ -128,62 +390,14 @@ class NotificationService:
                         )
 
             if not sent and reminder is not None and not from_history:
-                try:
-                    from .history_models import ReminderHistory
-
-                    fallback_time = timezone.now() + timedelta(minutes=5)
-                    methods = []
-                    if user_settings.get("sms_enabled"):
-                        methods = ["sms"]
-                    elif user_settings.get("email_enabled"):
-                        methods = ["email"]
-
-                    if methods:
-                        exists = (
-                            ReminderHistory.objects.filter(
-                                user=user,
-                                reminder=reminder,
-                                status="pending",
-                                reminder_type="repeat",
-                                notification_methods=methods,
-                            )
-                            .filter(
-                                scheduled_time__gte=timezone.now(),
-                                scheduled_time__lte=fallback_time
-                                + timedelta(minutes=5),
-                            )
-                            .exists()
-                        )
-
-                        if exists:
-                            logger.warning(
-                                f"[notify:{trace_id}] fallback_pending_exists "
-                                f"reminder={getattr(reminder, 'id', None)} methods={methods}"
-                            )
-                        else:
-                            ReminderHistory.objects.create(
-                                user=user,
-                                reminder=reminder,
-                                title=title,
-                                message=message,
-                                notification_methods=methods,
-                                scheduled_time=fallback_time,
-                                reminder_type="repeat",
-                                status="pending",
-                            )
-                            logger.warning(
-                                f"[notify:{trace_id}] fallback_pending_created "
-                                f"reminder={getattr(reminder, 'id', None)} methods={methods} scheduled_time={fallback_time}"
-                            )
-                    else:
-                        logger.warning(
-                            f"[notify:{trace_id}] fallback_pending_skipped_no_channel "
-                            f"reminder={getattr(reminder, 'id', None)}"
-                        )
-                except Exception as ie:
-                    logger.error(
-                        f"[notify:{trace_id}] fallback_pending_create_error: {ie}"
-                    )
+                self._schedule_fallback_pending(
+                    user=user,
+                    title=title,
+                    message=message,
+                    reminder=reminder,
+                    user_settings=user_settings,
+                    trace_id=trace_id,
+                )
 
             logger.info(
                 f"[notify:{trace_id}] done sent={sent} attempts={json.dumps(attempts, ensure_ascii=False)} "
@@ -435,216 +649,66 @@ class NotificationService:
                 )
                 return False
 
-            sms_text = (
-                getattr(settings, "SMS_TEMPLATES", {})
-                .get("reminder", "{title}: {message}")
-                .format(title=title, message=message)
+            sms_text = _build_sms_text(title, message)
+            spug_msg_var = _truncate_spug_msg_var(
+                _derive_spug_msg_var(title, message, reminder),
+                trace_id=trace_id,
             )
-            spug_msg_var = ""
-            try:
-                if reminder is not None and getattr(reminder, "medicine", None):
-                    med = getattr(reminder, "medicine")
-                    med_name = getattr(med, "name", None) or getattr(
-                        reminder, "medicine_name", None
-                    )
-                    spug_msg_var = (med_name or "").strip()
-            except Exception:
-                spug_msg_var = ""
-
-            if not spug_msg_var:
-                spug_msg_var = (title or "").strip() or (message or "").strip() or "用药"
-
-            if spug_msg_var.endswith("提醒"):
-                spug_msg_var = spug_msg_var[:-2]
-
-            max_len = int(getattr(settings, "SPUG_SMS_MESSAGE_MAX_LEN", 10))
-            if max_len <= 0:
-                max_len = 10
-            original_len = len(spug_msg_var)
-            if original_len > max_len:
-                logger.warning(
-                    f"[notify:{trace_id}] spug_msg_truncated original_len={original_len} max_len={max_len}"
-                )
-                spug_msg_var = spug_msg_var[:max_len]
-            spug_enabled = getattr(settings, "SPUG_PUSH_ENABLED", False)
-
-            masked_phone = (
-                (user.phone[:3] + "****" + user.phone[-4:])
-                if isinstance(user.phone, str) and len(user.phone) == 11
-                else "[masked]"
-            )
-            is_pytest = (os.getenv("PYTEST_CURRENT_TEST") is not None) or (
-                "pytest" in sys.modules
-            )
-            is_debug = bool(getattr(settings, "DEBUG", False))
-            is_test_or_debug = is_debug or is_pytest
+            spug_enabled = bool(getattr(settings, "SPUG_PUSH_ENABLED", False))
             base_url = getattr(settings, "SPUG_PUSH_URL", "https://push.spug.cc")
-            if (not spug_enabled and is_test_or_debug) or (
-                is_pytest and spug_enabled and "spug.test" not in str(base_url)
-            ):
+            masked_phone = _mask_phone(user.phone)
+
+            if _should_short_circuit_sms(spug_enabled=spug_enabled, base_url=base_url):
                 logger.info(
                     f"[notify:{trace_id}] sms_dev_mode_sent user_id={getattr(user, 'id', None)} phone={masked_phone}"
                 )
-                try:
-                    if history is not None:
-                        history.sent_at = timezone.now()
-                        history.status = "sent"
-                        history.notification_methods = ["sms"]
-                        history.save(
-                            update_fields=["sent_at", "status", "notification_methods"]
-                        )
-                    elif reminder is not None:
-                        from .history_models import ReminderHistory
-
-                        ReminderHistory.objects.create(
-                            user=user,
-                            reminder=reminder,
-                            title=title,
-                            message=sms_text,
-                            notification_methods=["sms"],
-                            scheduled_time=timezone.now(),
-                            reminder_type="scheduled",
-                            status="sent",
-                        )
-                except Exception:
-                    pass
+                _write_history_sent_or_create(
+                    user=user,
+                    title=title,
+                    sms_text=sms_text,
+                    reminder=reminder,
+                    history=history,
+                )
                 return True
 
-            if spug_enabled:
-                template_id = (
-                    getattr(settings, "SPUG_TEMPLATE_ID_REMINDER", "")
-                    or getattr(settings, "SPUG_TEMPLATE_ID", "")
-                    or ""
-                ).strip()
-                app_name = getattr(settings, "SPUG_APP_NAME", "MTM用药助手")
-                token = getattr(settings, "SPUG_PUSH_TOKEN", "")
-                timeout = int(getattr(settings, "SPUG_PUSH_TIMEOUT_SECONDS", 3))
-
-                if requests is None:
-                    logger.error(f"[notify:{trace_id}] requests_missing")
-                    return False
-                if not template_id:
-                    logger.error(f"[notify:{trace_id}] spug_template_id_missing")
-                    return False
-
-                use_sms = bool(
-                    getattr(settings, "SPUG_REMINDER_USE_SMS_ENDPOINT", False)
-                )
-                if use_sms:
-                    url = f"{base_url.rstrip('/')}/sms/{template_id}"
-                    params = {
-                        getattr(settings, "SPUG_SMS_PARAM_TO", "to"): user.phone,
-                        getattr(
-                            settings, "SPUG_SMS_PARAM_MESSAGE", "message"
-                        ): spug_msg_var,
-                    }
-                else:
-                    url = f"{base_url.rstrip('/')}/send/{template_id}"
-                    payload = {
-                        "name": app_name,
-                        "title": title,
-                        "message": spug_msg_var,
-                        "targets": user.phone,
-                    }
-                try:
-                    extra_json = getattr(settings, "SPUG_EXTRA_PARAMS_JSON", "")
-                    if extra_json:
-                        import json as _json
-
-                        extra = _json.loads(extra_json)
-                        if isinstance(extra, dict):
-                            if use_sms:
-                                params.update(extra)
-                            else:
-                                payload.update(extra)
-                except Exception:
-                    pass
-                headers = {"Content-Type": "application/x-www-form-urlencoded"}
-                if token:
-                    headers["Authorization"] = f"Bearer {token}"
-                if use_sms:
-                    masked_params = {
-                        **params,
-                        getattr(
-                            settings, "SPUG_SMS_PARAM_MESSAGE", "message"
-                        ): "[masked]",
-                        getattr(settings, "SPUG_SMS_PARAM_TO", "to"): masked_phone,
-                    }
-                    logger.info(
-                        f"[notify:{trace_id}] spug_sms_request url={url} params={masked_params} timeout={timeout} auth={'yes' if token else 'no'}"
-                    )
-                    r = requests.get(
-                        url, params=params, headers=headers, timeout=timeout
-                    )
-                else:
-                    masked_payload = {
-                        **payload,
-                        "message": "[masked]",
-                        "targets": masked_phone,
-                    }
-                    logger.info(
-                        f"[notify:{trace_id}] spug_sms_request url={url} payload={masked_payload} timeout={timeout} auth={'yes' if token else 'no'}"
-                    )
-                    r = requests.post(
-                        url, data=payload, headers=headers, timeout=timeout
-                    )
-                resp_text = str(getattr(r, "text", ""))
-                logger.info(
-                    f"[notify:{trace_id}] spug_sms_response status={getattr(r, 'status_code', None)} text={resp_text[:200]}"
-                )
-                try:
-                    r.raise_for_status()
-                except Exception as e:
-                    logger.error(f"[notify:{trace_id}] spug_sms_http_error: {e}")
-                    return False
-                try:
-                    parsed = r.json()
-                    if isinstance(parsed, dict):
-                        code_val = parsed.get("code")
-                        msg_val = str(parsed.get("msg", ""))
-                        if code_val not in (200, "200"):
-                            logger.error(
-                                f"[notify:{trace_id}] spug_sms_api_error code={code_val} msg={msg_val}"
-                            )
-                            return False
-                        if "不能为空" in msg_val or "失败" in msg_val:
-                            logger.error(
-                                f"[notify:{trace_id}] spug_sms_api_failed msg={msg_val}"
-                            )
-                            return False
-                except Exception:
-                    pass
-
-                try:
-                    if history is not None:
-                        history.sent_at = timezone.now()
-                        history.status = "sent"
-                        history.notification_methods = ["sms"]
-                        history.save(
-                            update_fields=["sent_at", "status", "notification_methods"]
-                        )
-                    elif reminder is not None:
-                        from .history_models import ReminderHistory
-
-                        ReminderHistory.objects.create(
-                            user=user,
-                            reminder=reminder,
-                            title=title,
-                            message=sms_text,
-                            notification_methods=["sms"],
-                            scheduled_time=timezone.now(),
-                            reminder_type="scheduled",
-                            status="sent",
-                        )
-                except Exception:
-                    pass
-
-                return True
-            else:
+            if not spug_enabled:
                 logger.error(
                     f"[notify:{trace_id}] spug_disabled_sms_not_sent user_id={getattr(user, 'id', None)}"
                 )
                 return False
+
+            template_id = (
+                getattr(settings, "SPUG_TEMPLATE_ID_REMINDER", "")
+                or getattr(settings, "SPUG_TEMPLATE_ID", "")
+                or ""
+            ).strip()
+            if not template_id:
+                logger.error(f"[notify:{trace_id}] spug_template_id_missing")
+                return False
+
+            request_spec = _build_spug_request(
+                user=user,
+                title=title,
+                spug_msg_var=spug_msg_var,
+                base_url=base_url,
+                template_id=template_id,
+            )
+            ok = _send_spug_request(
+                request_spec=request_spec,
+                trace_id=trace_id,
+                masked_phone=masked_phone,
+            )
+            if not ok:
+                return False
+
+            _write_history_sent_or_create(
+                user=user,
+                title=title,
+                sms_text=sms_text,
+                reminder=reminder,
+                history=history,
+            )
+            return True
 
         except Exception as e:
             logger.error(f"[notify:{trace_id}] sms_send_failed: {str(e)}")

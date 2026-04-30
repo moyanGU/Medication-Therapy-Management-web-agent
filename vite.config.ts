@@ -108,5 +108,23 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'), // ✅ 定义 @ = src
     },
   },
+  optimizeDeps: {
+    exclude: [
+      'wouter',
+      'lucide-react',
+      'simple-icons',
+      'motion/react',
+      'page-agent',
+      'rough-notation'
+    ]
+  },
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    strictPort: true,
+    watch: {
+      ignored: ['**/backend/venv/**', '**/backend/.venv/**', '**/page-agent-main/**']
+    }
+  }
   // 已移除 server.proxy，避免使用代理，所有请求应直接指向后端基地址
 })

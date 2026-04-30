@@ -27,6 +27,14 @@
             </span>
             <button
               type="button"
+              class="inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-white/30 backdrop-blur-sm"
+              @click="restartGuide"
+            >
+              <Sparkles class="h-4 w-4" />
+              重启 AI 向导
+            </button>
+            <button
+              type="button"
               class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-sky-700 shadow-sm transition hover:bg-sky-50"
               :disabled="loading"
               @click="fetchDashboardSummary"
@@ -697,12 +705,12 @@ import {
   RefreshCw,
   ShieldAlert,
   Stethoscope,
+  Sparkles,
 } from 'lucide-vue-next'
 import { dashboardApi } from '@/api/dashboard'
 import { mtmApi } from '@/api/mtm'
 import { useToast } from '@/composables/useToast'
 import type {
-  DashboardRiskAlert,
   DashboardRiskLevel,
   DashboardRiskType,
   DashboardSummaryData,
@@ -712,6 +720,7 @@ import type {
   MtmServiceCase,
   MtmTriggerSource,
 } from '@/types/mtm'
+import { useRoute, useRouter } from 'vue-router'
 import { isRequestCancelledError } from '@/utils/api'
 import {
   buildMtmListPresetEntries,
@@ -722,6 +731,7 @@ import {
   getMtmTriggerText,
   isMtmCaseActive,
 } from '@/utils/mtm'
+import { useAuthStore } from '@/stores/auth'
 
 const isDebug = import.meta.env.MODE !== 'production'
 const log = (...args: unknown[]) => {
@@ -823,6 +833,10 @@ const createEmptyDashboardData = (): DashboardSummaryData => ({
 })
 
 const { success: showSuccess, error: showError, info: showInfo } = useToast()
+const authStore = useAuthStore()
+const isPharmacist = computed(() => authStore.user?.role === 'pharmacist')
+const router = useRouter()
+const route = useRoute()
 const dashboard = ref<DashboardSummaryData>(createEmptyDashboardData())
 const loading = ref(false)
 const loadError = ref('')
@@ -977,6 +991,7 @@ const quickActions = computed(() => [
     description: '查看复诊安排和历史就诊信息。',
     to: '/medical-records',
     icon: Stethoscope,
+  Sparkles,
     iconWrapperClass: 'bg-indigo-100',
     iconClass: 'text-indigo-700',
   },
@@ -1268,8 +1283,54 @@ const followupText = (daysUntilFollowUp: number | null) => {
   return `${daysUntilFollowUp} 天后复诊`
 }
 
+
+// Check if we should trigger the proactive guide
+
+// Restart the proactive guide with a confirmation prompt
+const restartGuide = () => {
+  if (confirm('是否需要让 AI 机器人重新为您介绍一次系统功能？')) {
+    localStorage.removeItem('mtm_proactive_guide_done')
+    checkProactiveGuide()
+  }
+}
+
+// Check if we should trigger the proactive guide
+const checkProactiveGuide = () => {
+  // Use localStorage to only guide once per device/browser
+  const hasGuided = localStorage.getItem('mtm_proactive_guide_done')
+  
+  // Also check if we are already opening it from url to avoid loops
+  if (route.query.assistant === 'open') return
+  
+  if (!hasGuided && !loading.value) {
+    localStorage.setItem('mtm_proactive_guide_done', 'true')
+    
+    // Add a small delay to let the user see the dashboard first
+    setTimeout(() => {
+      let task = ''
+      if (isPharmacist.value) {
+        task = '您好！我是您的 AI 助理。这里是 MTM 工作台。您可以从【服务单】开始接单，并进行患者的五维用药评估，随后我会协助您一键生成 SOAP 药历和 PMR/MAP 报告。有什么我可以帮您的吗？'
+      } else {
+        task = '爷爷奶奶您好！我是您的专属用药助手。看您有很多药要吃，别担心，我会按时提醒您。您可以先去【用药记录】添加您正在吃的药，或者直接对我说“我要添加药品”哦。'
+      }
+      
+      // Trigger the AiAssistant via route query
+      router.replace({
+        query: {
+          ...route.query,
+          assistant: 'open',
+          assistantMode: 'page-agent',
+          assistantTask: task
+        }
+      })
+    }, 1500)
+  }
+}
+
+
 onMounted(() => {
   fetchDashboardSummary()
   fetchMtmServiceCases()
+  checkProactiveGuide()
 })
 </script>

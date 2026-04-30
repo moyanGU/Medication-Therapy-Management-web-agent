@@ -34,15 +34,35 @@
             </div>
           </div>
 
-          <button
-            type="button"
-            class="inline-flex items-center gap-2 self-start rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
-            :disabled="loading || transitioning"
-            @click="fetchServiceCaseDetail"
-          >
-            <RefreshCw class="h-4 w-4" :class="loading ? 'animate-spin' : ''" />
-            刷新详情
-          </button>
+          <div class="flex flex-wrap items-center gap-3 self-start">
+            <button
+              v-if="serviceCase?.status === 'completed' || serviceCase?.status === 'intervening' || serviceCase?.status === 'following_up'"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-amber-700 shadow-sm ring-1 ring-inset ring-amber-200 transition hover:bg-amber-50"
+              @click="goToSoapNotes"
+            >
+              <Sparkles class="h-4 w-4" />
+              撰写/查看 SOAP 药历
+            </button>
+            <button
+              v-if="serviceCase?.status === 'completed'"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-violet-700 shadow-sm ring-1 ring-inset ring-violet-200 transition hover:bg-violet-50"
+              @click="goToReport"
+            >
+              <FileText class="h-4 w-4" />
+              查看专业报告 (PMR/MAP)
+            </button>
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
+              :disabled="loading || transitioning"
+              @click="fetchServiceCaseDetail"
+            >
+              <RefreshCw class="h-4 w-4" :class="loading ? 'animate-spin' : ''" />
+              刷新详情
+            </button>
+          </div>
         </div>
       </section>
 
@@ -208,6 +228,25 @@
                   {{ serviceCase.assigned_pharmacist?.phone || '当前还没有药师联系方式' }}
                 </p>
               </div>
+            </div>
+          </article>
+
+          <!-- AI Session Memory Card -->
+          <article v-if="sessionMemory" class="rounded-3xl border border-indigo-100 bg-white p-6 shadow-sm xl:col-span-3">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div class="flex items-center gap-2">
+                <Sparkles class="h-5 w-5 text-indigo-600" />
+                <h2 class="text-lg font-semibold text-slate-900">AI 会话摘要 (Session Memory)</h2>
+              </div>
+              <span class="inline-flex items-center self-start rounded-full bg-indigo-100 px-3 py-1 text-xs font-medium text-indigo-700">
+                更新时间：{{ formatDateTime(sessionMemory.updated_at) }}
+              </span>
+            </div>
+            <div class="mt-5 rounded-2xl bg-indigo-50/50 p-5">
+              <h3 class="text-sm font-medium text-indigo-900 mb-3">摘要总结</h3>
+              <p class="text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">
+                {{ sessionMemory.summary || '暂无摘要' }}
+              </p>
             </div>
           </article>
         </section>
@@ -404,12 +443,47 @@
           </article>
 
           <article class="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-            <div class="flex items-center gap-2">
-              <Stethoscope class="h-5 w-5 text-emerald-600" />
-              <h2 class="text-lg font-semibold text-slate-900">干预计划</h2>
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div class="flex items-center gap-2">
+                <Stethoscope class="h-5 w-5 text-emerald-600" />
+                <h2 class="text-lg font-semibold text-slate-900">干预计划</h2>
+              </div>
+              <span
+                class="inline-flex items-center self-start rounded-full px-3 py-1 text-xs font-medium"
+                :class="planEntryMeta.badgeClass"
+              >
+                {{ planEntryMeta.badgeText }}
+              </span>
+            </div>
+
+            <div class="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p class="text-sm font-medium text-slate-900">干预计划入口</p>
+                  <p class="mt-2 text-sm leading-6 text-slate-600">
+                    {{ planEntryMeta.description }}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-2 self-start rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                  :disabled="loading || transitioning || planEntryMeta.disabled"
+                  @click="goToPlanForm"
+                >
+                  <ArrowRight class="h-4 w-4" />
+                  {{ planEntryMeta.buttonText }}
+                </button>
+              </div>
             </div>
 
             <template v-if="serviceCase.plan">
+              <p
+                v-if="serviceCase.plan.confirmed_at"
+                class="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+              >
+                计划已于 {{ formatDateTime(serviceCase.plan.confirmed_at) }} 完成制定。
+              </p>
+
               <div class="mt-5 space-y-3">
                 <div class="rounded-2xl bg-slate-50 p-4">
                   <p class="text-sm text-slate-500">优先级</p>
@@ -440,20 +514,24 @@
                 {{ serviceCase.plan.patient_confirmation_notes || '当前还没有补充患者确认说明。' }}
               </p>
             </template>
-
-            <div
-              v-else
-              class="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500"
-            >
-              当前还没有干预计划摘要。
-            </div>
           </article>
         </section>
 
         <section class="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-          <div class="flex items-center gap-2">
-            <CalendarClock class="h-5 w-5 text-indigo-600" />
-            <h2 class="text-lg font-semibold text-slate-900">随访记录</h2>
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex items-center gap-2">
+              <CalendarClock class="h-5 w-5 text-indigo-600" />
+              <h2 class="text-lg font-semibold text-slate-900">随访记录</h2>
+            </div>
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 self-start rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
+              :disabled="loading || transitioning"
+              @click="showFollowUpModal = true"
+            >
+              <span class="h-4 w-4 flex items-center justify-center font-bold text-lg leading-none">+</span>
+              新增随访记录
+            </button>
           </div>
 
           <div v-if="followUpCards.length" class="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -493,7 +571,13 @@
           </div>
         </section>
       </template>
+
     </main>
+    <MtmFollowUpModal
+      v-model="showFollowUpModal"
+      :service-case-id="serviceCaseId"
+      @success="fetchServiceCaseDetail"
+    />
   </div>
 </template>
 
@@ -506,13 +590,16 @@ import {
   ArrowLeft,
   CalendarClock,
   ClipboardList,
+  FileText,
   HeartPulse,
   RefreshCw,
+  Sparkles,
   Stethoscope,
   User,
 } from 'lucide-vue-next'
 import { mtmApi } from '@/api/mtm'
 import { useToast } from '@/composables/useToast'
+import MtmFollowUpModal from '@/components/mtm/MtmFollowUpModal.vue'
 import type {
   MtmFollowUpSummary,
   MtmServiceCase,
@@ -533,6 +620,8 @@ import {
   isMtmCaseActive,
 } from '@/utils/mtm'
 
+import { getSessionMemory, type SessionMemoryPayload } from '@/services/sessionMemory'
+
 const isDebug = import.meta.env.MODE !== 'production'
 const log = (...args: unknown[]) => {
   if (isDebug) console.log(...args)
@@ -547,9 +636,11 @@ const router = useRouter()
 const { success: showSuccess, error: showError } = useToast()
 
 const serviceCase = ref<MtmServiceCase | null>(null)
+const sessionMemory = ref<SessionMemoryPayload | null>(null)
 const loading = ref(false)
 const transitioning = ref(false)
 const loadError = ref('')
+const showFollowUpModal = ref(false)
 
 const serviceCaseId = computed(() => {
   const rawId = props.id || String(route.params.id || '')
@@ -829,8 +920,23 @@ const fetchServiceCaseDetail = async () => {
     log('🔵 [MtmServiceCaseDetailPage] 开始获取服务详情', {
       serviceCaseId: serviceCaseId.value,
     })
-    const detail = await mtmApi.getServiceCaseDetail(serviceCaseId.value)
+    
+    // 并行拉取详情和AI记忆
+    const [detail, memory] = await Promise.all([
+      mtmApi.getServiceCaseDetail(serviceCaseId.value),
+      getSessionMemory(`mtm:${serviceCaseId.value}:page-agent`).catch(err => {
+        log('🟡 [MtmServiceCaseDetailPage] 获取AI会话记忆失败', err)
+        return null
+      })
+    ])
+    
     serviceCase.value = detail
+    if (memory && (memory.summary || memory.messages?.length)) {
+      sessionMemory.value = memory
+    } else {
+      sessionMemory.value = null
+    }
+    
     log('🟢 [MtmServiceCaseDetailPage] 服务详情获取成功', detail)
   } catch (error) {
     if (isRequestCancelledError(error)) {
@@ -882,6 +988,26 @@ const handleTransition = async (targetStatus: MtmServiceStatus) => {
 /**
  * 返回上一页；如果没有可回退历史，则回到首页仪表板。
  */
+
+
+const goToSoapNotes = () => {
+  if (!serviceCase.value) return
+  router.push({
+    name: 'MtmSoapNotes',
+    params: { id: serviceCase.value.id.toString() },
+  })
+}
+
+const goToReport = () => {
+  if (!serviceCase.value) return
+  router.push({
+    name: 'MtmReportPreview',
+    params: { id: serviceCase.value.id.toString() },
+  })
+}
+
+
+
 const goBack = () => {
   if (cameFromMtmList.value) {
     const query = buildListReturnQuery()
@@ -917,6 +1043,58 @@ const goToInterviewForm = () => {
 /**
  * 进入评估表单页，并尽量保留当前详情页上下文。
  */
+
+const planEntryMeta = computed(() => {
+  const currentAssessment = serviceCase.value?.assessment
+  const currentPlan = serviceCase.value?.plan
+
+  if (!currentAssessment?.completed_at) {
+    return {
+      badgeText: '待评估完成',
+      badgeClass: 'bg-slate-100 text-slate-700',
+      buttonText: '暂不能制定计划',
+      description: '建议先完成评估，再进入计划页制定具体的干预措施。',
+      disabled: true,
+    }
+  }
+
+  if (!currentPlan) {
+    return {
+      badgeText: '未开始',
+      badgeClass: 'bg-slate-100 text-slate-700',
+      buttonText: '开始制定计划',
+      description: '评估已经完成，可以进入计划页制定干预措施和行动计划。',
+      disabled: false,
+    }
+  }
+
+  if (!currentPlan.confirmed_at) {
+    return {
+      badgeText: '草稿',
+      badgeClass: 'bg-amber-100 text-amber-700',
+      buttonText: '继续制定计划',
+      description: '干预计划草稿已保存，可以继续编辑或完成确认。',
+      disabled: false,
+    }
+  }
+
+  return {
+    badgeText: '已完成',
+    badgeClass: 'bg-emerald-100 text-emerald-700',
+    buttonText: '查看计划',
+    description: '干预计划已完成制定，可以随时回看详情。',
+    disabled: false,
+  }
+})
+
+const goToPlanForm = () => {
+  if (!serviceCase.value) return
+  router.push({
+    name: 'MtmPlanForm',
+    params: { id: serviceCase.value.id.toString() },
+  })
+}
+
 const goToAssessmentForm = () => {
   if (!serviceCaseId.value || assessmentEntryMeta.value.disabled) {
     return

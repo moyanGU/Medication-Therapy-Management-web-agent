@@ -14,7 +14,7 @@
       @touchstart="startDrag"
       @mouseenter="handleMouseEnter"
       @mouseleave="handleMouseLeave"
-      @dblclick="openChat"
+      @click="openChat"
     >
       <!-- 问候气泡 -->
       <div
@@ -22,7 +22,7 @@
         class="absolute -top-16 left-1/2 -translate-x-1/2 w-48 bg-white rounded-xl shadow-lg p-3 text-xs text-gray-700 border border-blue-100 animate-bounce-in pointer-events-none"
       >
         <div class="relative text-center font-medium">
-          双击一下我，我能给你专业的用药指导哦~
+          点一下我，我能给你专业的用药指导哦~
           <div
             class="absolute -bottom-5 left-1/2 -translate-x-1/2 border-8 border-transparent border-t-white"
           ></div>
@@ -424,14 +424,27 @@
           <!-- Input Area -->
           <div class="p-4 bg-white border-t border-slate-100">
             <div class="flex gap-2">
-              <input
-                v-model="inputText"
-                @keyup.enter="sendMessage"
-                type="text"
-                :placeholder="inputPlaceholder"
-                class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                :disabled="isLoading"
-              />
+              <div class="relative flex-1 flex items-center">
+                <input
+                  v-model="inputText"
+                  @keyup.enter="sendMessage"
+                  type="text"
+                  :placeholder="isRecording ? '正在倾听...' : inputPlaceholder"
+                  class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-4 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  :class="{'ring-2 ring-rose-500 bg-rose-50 placeholder-rose-500 text-rose-700': isRecording}"
+                  :disabled="isLoading || isRecording"
+                />
+                <button
+                  type="button"
+                  class="absolute right-2 p-1.5 rounded-lg transition-colors flex items-center justify-center"
+                  :class="isRecording ? 'bg-rose-100 text-rose-600 animate-pulse' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'"
+                  @click="toggleRecording"
+                  title="语音输入"
+                >
+                  <svg v-if="isRecording" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2" ry="2"></rect></svg>
+                  <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
+                </button>
+              </div>
               <button
                 @click="sendMessage"
                 :disabled="!inputText.trim() || isLoading"
@@ -486,7 +499,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
+import { watch, ref, reactive, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   executePageAgentTask,
@@ -498,6 +511,13 @@ import {
 import { useSpeech } from '@/composables/useSpeech'
 import { useToast } from '@/composables/useToast'
 import { api, logApiErrorEvent } from '@/utils/api'
+import { createAssistantEngine } from '@/services/assistantEngine'
+import type { SessionMemoryMessage } from '@/services/sessionMemory'
+import {
+  getProposalPermissionState,
+} from '@/services/agentPermissions'
+import { globalToolRegistry } from '@/services/toolRegistry'
+import { z } from 'zod/v4'
 
 type ChatMessage = {
   role: 'user' | 'ai'
@@ -526,6 +546,73 @@ const modeMessages = reactive<Record<PageAgentMode, ChatMessage[]>>({
 const currentMessages = computed(() => modeMessages[currentMode.value])
 const chatContainer = ref<HTMLElement | null>(null)
 const { isSpeechEnabled, isSpeechSupported, speak } = useSpeech()
+
+// STT (Speech to Text) variables
+const isRecording = ref(false)
+let recognition: any = null
+
+const initSpeechRecognition = () => {
+  if (typeof window === 'undefined') return
+  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  if (!SpeechRecognition) return
+
+  recognition = new SpeechRecognition()
+  recognition.lang = 'zh-CN'
+  recognition.interimResults = true
+  recognition.continuous = false
+
+  let finalTranscript = ''
+
+  recognition.onstart = () => {
+    isRecording.value = true
+    finalTranscript = inputText.value ? inputText.value + ' ' : ''
+  }
+
+  recognition.onresult = (event: any) => {
+    let interimTranscript = ''
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+      if (event.results[i].isFinal) {
+        finalTranscript += event.results[i][0].transcript
+      } else {
+        interimTranscript += event.results[i][0].transcript
+      }
+    }
+    inputText.value = finalTranscript + interimTranscript
+  }
+
+  recognition.onerror = (event: any) => {
+    console.error('[STT] Speech recognition error', event.error)
+    isRecording.value = false
+  }
+
+  recognition.onend = () => {
+    isRecording.value = false
+    // 语音结束后自动发送（针对老年人更友好）
+    if (inputText.value.trim() && isOpen.value) {
+      setTimeout(() => {
+        if (!isRecording.value) sendMessage()
+      }, 1000)
+    }
+  }
+}
+
+const toggleRecording = () => {
+  if (!recognition) {
+    initSpeechRecognition()
+  }
+  
+  if (!recognition) {
+    showError('当前浏览器不支持语音识别')
+    return
+  }
+
+  if (isRecording.value) {
+    recognition.stop()
+  } else {
+    recognition.start()
+  }
+}
+
 const currentModeTitle = computed(() =>
   currentMode.value === 'page-agent' ? '页面助手' : '百川医疗助手'
 )
@@ -576,6 +663,64 @@ onMounted(() => {
   // 初始位置吸附
   snapToEdge()
   void runQaScenarioFromRoute()
+
+  // 注册前端 UI 操作工具到全局注册表 (Tool Registry)
+  globalToolRegistry.register({
+    name: 'switch_assistant_mode',
+    description: '切换AI助手的模式。当用户要求切换到用药问答或页面助手时调用。',
+    inputSchema: z.object({
+      mode: z.enum(['medication', 'page-agent']).describe('目标模式：medication (用药问答), page-agent (页面助手)')
+    }),
+    execute: ({ mode }) => {
+      switchMode(mode)
+      return `已成功为您切换到${mode === 'medication' ? '用药问答' : '页面助手'}模式。`
+    }
+  })
+
+  globalToolRegistry.register({
+    name: 'clear_chat_history',
+    description: '清空当前AI助手的聊天记录。当用户说“清空记录”、“重置对话”、“重新开始”时调用。',
+    inputSchema: z.object({}),
+    execute: () => {
+      clearCurrentModeMessages()
+      return '对话记录已为您清空。'
+    }
+  })
+
+  globalToolRegistry.register({
+    name: 'close_assistant_panel',
+    description: '关闭AI助手聊天窗口。当用户说“退下”、“关闭面板”、“关掉窗口”时调用。',
+    inputSchema: z.object({}),
+    execute: () => {
+      closeChat()
+      return '即将关闭助手面板...'
+    }
+  })
+
+  globalToolRegistry.register({
+    name: 'read_aloud_text',
+    description: '使用系统语音播报（TTS）朗读一段文本内容。当用户说“帮我读一下”、“念出来”时调用。',
+    inputSchema: z.object({
+      text: z.string().describe('需要朗读的纯文本内容')
+    }),
+    execute: ({ text }) => {
+      if (!isSpeechSupported.value) {
+        return '当前设备不支持语音播报功能。'
+      }
+      speakAssistantMessage(text)
+      return '正在为您语音播报该内容。'
+    }
+  })
+
+  globalToolRegistry.register({
+    name: 'toggle_voice_recording',
+    description: '开启或关闭语音输入（麦克风）。当用户想用语音输入时调用。',
+    inputSchema: z.object({}),
+    execute: () => {
+      toggleRecording()
+      return isRecording.value ? '语音输入已开启，请说话...' : '语音输入已关闭。'
+    }
+  })
 })
 
 onUnmounted(() => {
@@ -587,6 +732,24 @@ watch(
   () => route.fullPath,
   () => {
     void runQaScenarioFromRoute()
+  }
+)
+
+// 当路由变化时，主动同步当前页面的 Session Memory 作为全局跨路由记忆
+watch(
+  () => route.path,
+  async (newPath) => {
+    if (newPath && currentMode.value === 'page-agent') {
+      const sessionId = assistantEngine.buildSessionId(newPath, 'page-agent')
+      try {
+        const summary = await assistantEngine.ensureSummary(sessionId)
+        if (summary) {
+          assistantEngine.syncGlobalContext(summary)
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
   }
 )
 
@@ -705,6 +868,7 @@ const handleMouseLeave = () => {
 
 // --- 聊天逻辑 ---
 const openChat = () => {
+  if (isDragging.value) return
   isOpen.value = true
   showGreeting.value = false
   isIdle.value = false
@@ -724,10 +888,6 @@ const switchMode = (mode: PageAgentMode) => {
  * 解析开发模式下的页面助手 QA 查询参数。
  */
 function getQaScenarioFromRoute() {
-  if (!import.meta.env.DEV) {
-    return null
-  }
-
   const openFlag = route.query.assistant === 'open'
   const task =
     typeof route.query.assistantTask === 'string'
@@ -778,6 +938,21 @@ async function runQaScenarioFromRoute() {
 const quickAsk = (text: string) => {
   inputText.value = text
   sendMessage()
+}
+
+const assistantEngine = createAssistantEngine()
+
+const buildMemoryMessages = (mode: PageAgentMode): SessionMemoryMessage[] => {
+  const scoped = modeMessages[mode]
+  return scoped
+    .filter((msg) => msg && (msg.role === 'user' || msg.role === 'ai'))
+    .filter((msg) => !msg.loading && !msg.error)
+    .slice(-40)
+    .map((msg) => ({
+      role: msg.role,
+      content: String(msg.content || '').trim(),
+    }))
+    .filter((msg) => msg.content.length > 0)
 }
 
 const isLikelyMedicationQuestion = (text: string) => {
@@ -1025,59 +1200,79 @@ const buildPageAgentErrorMessage = (error: any) => {
 
 const sendMedicationGuidanceMessage = async (text: string, aiMsgIndex: number) => {
   const scopedMessages = modeMessages.medication
-  console.log('[AI] Sending request to /ai/medication-guidance/', {
-    question: text,
-  })
+  const pathname = route.path || window.location.pathname || '/'
+  const memSessionId = assistantEngine.buildSessionId(pathname, 'medication')
+  const summary = await assistantEngine.ensureSummary(memSessionId)
+  const question = assistantEngine.augmentUserText('medication', text, summary)
+  console.log('[AI] Sending stream request to /ai/medication-guidance/', { question })
+
+  let answerText = ''
+  let fallbackUsed = false
+  let blocked = false
+  let reason = ''
+  let hasReceivedFirstChunk = false
 
   try {
-    const resp = await api.post<MedicationGuidancePayload>(
+    await api.stream(
       '/ai/medication-guidance/',
       {
-        question: text,
-        // 全局助手不带 medicine_id，或者后续可扩展传递当前页面上下文
+        question,
+        stream: true,
       },
-      {
-        timeout: 70000,
-      }
+      (chunkText, isJson, data) => {
+        if (!hasReceivedFirstChunk) {
+          scopedMessages[aiMsgIndex].loading = false
+          hasReceivedFirstChunk = true
+        }
+
+        if (isJson && data) {
+          if (data.chunk) {
+            answerText += data.chunk
+            scopedMessages[aiMsgIndex].content = answerText
+          } else if (data.error) {
+             // Handle stream error
+             if (data.fallback) {
+               answerText = data.fallback
+               fallbackUsed = true
+               scopedMessages[aiMsgIndex].content = answerText
+               scopedMessages[aiMsgIndex].fallbackUsed = true
+             }
+          } else if (data.blocked !== undefined) {
+             // Blocked response
+             blocked = true
+             reason = data.reason
+             answerText = data.answer || ''
+             scopedMessages[aiMsgIndex].content = answerText
+          } else if (data.answer !== undefined) {
+             // non-streamed response fallback
+             answerText = data.answer
+             fallbackUsed = Boolean(data.fallback_used)
+             scopedMessages[aiMsgIndex].content = answerText
+             scopedMessages[aiMsgIndex].fallbackUsed = fallbackUsed
+          }
+        }
+        scrollToBottom()
+      },
+      { timeout: 70000 }
     )
 
-    console.log('[AI] medication-guidance response', resp)
-
-    if (resp.success) {
-      const data = resolveMedicationGuidancePayload(resp)
-      console.log('[AI] medication-guidance payload', data)
-
-      if (!data.blocked && !data.answer) {
-        throw new Error('AI 暂时没有返回可用内容，请稍后重试。')
-      }
-
-      if (data.blocked) {
-        if (isLikelyMedicationQuestion(text)) {
-          scopedMessages[aiMsgIndex] = {
-            role: 'ai',
-            mode: 'medication',
-            content:
-              '你问的是用药相关问题。我可以继续给出通用用药指导：请补充药品规格（如 0.1g/片）、使用者年龄/体重、是否怀孕/哺乳及合并用药，我会按说明书要点给出更准确建议。',
-            fallbackUsed: true,
-          }
-          return
-        }
-        scopedMessages[aiMsgIndex] = {
-          role: 'ai',
-          mode: 'medication',
-          content: `⚠️ ${data.reason || '抱歉，我只能回答用药相关的问题。'}\n\n请尝试询问具体药品的用法、用量或禁忌。`,
-        }
+    if (blocked) {
+      if (isLikelyMedicationQuestion(text)) {
+        scopedMessages[aiMsgIndex].content = '你问的是用药相关问题。我可以继续给出通用用药指导：请补充药品规格（如 0.1g/片）、使用者年龄/体重、是否怀孕/哺乳及合并用药，我会按说明书要点给出更准确建议。'
+        scopedMessages[aiMsgIndex].fallbackUsed = true
       } else {
-        scopedMessages[aiMsgIndex] = {
-          role: 'ai',
-          mode: 'medication',
-          content: data.answer,
-          fallbackUsed: !!data.fallback_used,
-        }
+        scopedMessages[aiMsgIndex].content = `⚠️ ${reason || '抱歉，我只能回答用药相关的问题。'}\n\n请尝试询问具体药品的用法、用量或禁忌。`
       }
+    } else if (!answerText) {
+      throw new Error('AI 暂时没有返回可用内容，请稍后重试。')
     } else {
-      throw new Error(resp.message || '请求失败')
+      scopedMessages[aiMsgIndex].fallbackUsed = fallbackUsed
+      if (isSpeechEnabled.value) {
+        speakAssistantMessage(answerText)
+      }
     }
+
+    await assistantEngine.persist(memSessionId, buildMemoryMessages('medication'))
   } catch (e: any) {
     logApiErrorEvent('AiAssistant.medication-guidance', e, {
       questionLength: text.length,
@@ -1090,29 +1285,61 @@ const sendMedicationGuidanceMessage = async (text: string, aiMsgIndex: number) =
       mode: 'medication',
       content: msg,
       error: true,
+      loading: false,
     }
+    await assistantEngine.persist(memSessionId, buildMemoryMessages('medication'))
   }
 }
 
 const sendPageAgentMessage = async (text: string, aiMsgIndex: number) => {
   const scopedMessages = modeMessages['page-agent']
+  const pathname = route.path || window.location.pathname || '/'
+  const memSessionId = assistantEngine.buildSessionId(pathname, 'page-agent')
+  const summary = await assistantEngine.ensureSummary(memSessionId)
+  const task = assistantEngine.augmentUserText('page-agent', text, summary)
   console.log('[PageAgent] Sending page analysis request', {
-    task: text,
+    task,
     pathname: window.location.pathname,
   })
 
   try {
-    const result = await executePageAgentTask(text)
+    const result = await executePageAgentTask(task, (steps: string[]) => {
+      // Update UI with latest steps in real-time
+      if (steps && steps.length > 0) {
+        scopedMessages[aiMsgIndex].loading = false
+        scopedMessages[aiMsgIndex].content = steps.join('\n') + '\n\n*(思考中...)*'
+        scrollToBottom()
+      }
+    })
+    
+    let finalProposal = result.proposal || null
+    let finalAnswer = result.answer
+    let permissionState = 'ask'
+    
+    if (finalProposal) {
+      permissionState = getProposalPermissionState(finalProposal)
+      if (permissionState === 'deny') {
+        finalProposal = null
+        finalAnswer += '\n\n*(注意：根据当前角色权限配置，此操作已被自动拒绝)*'
+      }
+    }
+
     scopedMessages[aiMsgIndex] = {
       role: 'ai',
       mode: 'page-agent',
-      content: result.answer,
-      proposal: result.proposal || null,
-      actionState: result.proposal ? 'pending' : undefined,
+      content: finalAnswer,
+      proposal: finalProposal,
+      actionState: finalProposal ? 'pending' : undefined,
+    }
+    
+    if (finalProposal && permissionState === 'allow') {
+      await nextTick()
+      await confirmProposal(aiMsgIndex)
     }
     if (isSpeechEnabled.value) {
-      speakAssistantMessage(result.answer)
+      speakAssistantMessage(finalAnswer)
     }
+    await assistantEngine.persist(memSessionId, buildMemoryMessages('page-agent'))
   } catch (e: any) {
     logApiErrorEvent('AiAssistant.page-agent', e, {
       taskLength: text.length,
@@ -1128,6 +1355,7 @@ const sendPageAgentMessage = async (text: string, aiMsgIndex: number) => {
       error: true,
       proposal: null,
     }
+    await assistantEngine.persist(memSessionId, buildMemoryMessages('page-agent'))
   }
 }
 

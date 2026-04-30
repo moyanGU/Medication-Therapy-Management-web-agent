@@ -2,6 +2,8 @@ import { api } from '@/utils/api'
 import type {
   MtmAssessmentDraftPayload,
   MtmAssessmentSummary,
+  MtmPlanSummary,
+  MtmFollowUpSummary,
   MtmInterviewDraftPayload,
   MtmInterviewSummary,
   MtmServiceCase,
@@ -182,6 +184,122 @@ export const mtmApi = {
       payload
     )
     log('🟢 [mtmApi] completeAssessment response =', response.data)
+    return response.data
+  },
+
+
+  // ============================
+  // 干预计划 (Plan)
+  // ============================
+
+  async getPlan(serviceCaseId: number | string): Promise<MtmPlanSummary> {
+    log('🔵 [mtmApi] getPlan called with id =', serviceCaseId)
+    const response = await api.get<MtmPlanSummary>(`/mtm/service-cases/${serviceCaseId}/plan/`)
+    log('🟢 [mtmApi] getPlan response =', response.data)
+    return response.data
+  },
+
+  async savePlanDraft(
+    serviceCaseId: number | string,
+    payload: Partial<MtmPlanSummary>
+  ): Promise<MtmPlanSummary> {
+    log('🔵 [mtmApi] savePlanDraft payload =', { serviceCaseId, ...payload })
+    const response = await api.put<MtmPlanSummary>(
+      `/mtm/service-cases/${serviceCaseId}/plan/`,
+      payload
+    )
+    log('🟢 [mtmApi] savePlanDraft response =', response.data)
+    return response.data
+  },
+
+  async completePlan(
+    serviceCaseId: number | string,
+    payload: Partial<MtmPlanSummary>
+  ): Promise<MtmPlanSummary> {
+    log('🔵 [mtmApi] completePlan payload =', { serviceCaseId, ...payload })
+    const response = await api.post<MtmPlanSummary>(
+      `/mtm/service-cases/${serviceCaseId}/plan/complete/`,
+      payload
+    )
+    log('🟢 [mtmApi] completePlan response =', response.data)
+    return response.data
+  },
+
+  // ============================
+  // 随访记录 (Follow-up)
+  // ============================
+
+  async getFollowUps(serviceCaseId: number | string): Promise<MtmFollowUpSummary[]> {
+    log('🔵 [mtmApi] getFollowUps called with id =', serviceCaseId)
+    const response = await api.get<MtmFollowUpSummary[]>(`/mtm/service-cases/${serviceCaseId}/follow-ups/`)
+    log('🟢 [mtmApi] getFollowUps response =', response.data)
+    return response.data
+  },
+
+  async addFollowUp(
+    serviceCaseId: number | string,
+    payload: Partial<MtmFollowUpSummary>
+  ): Promise<MtmFollowUpSummary> {
+    log('🔵 [mtmApi] addFollowUp payload =', { serviceCaseId, ...payload })
+    const response = await api.post<MtmFollowUpSummary>(
+      `/mtm/service-cases/${serviceCaseId}/follow-ups/`,
+      payload
+    )
+    log('🟢 [mtmApi] addFollowUp response =', response.data)
+    return response.data
+  },
+
+
+  // ============================
+  // PMR / MAP 报告 (Report)
+  // ============================
+
+  async getReport(serviceCaseId: number | string): Promise<any> {
+    log('🔵 [mtmApi] getReport called with id =', serviceCaseId)
+    const response = await api.get<any>(`/mtm/service-cases/${serviceCaseId}/report/`)
+    log('🟢 [mtmApi] getReport response =', response.data)
+    return response.data
+  },
+
+
+  // ============================
+  // SOAP 药历 (SOAP Notes)
+  // ============================
+
+  async getSoapNotes(serviceCaseId: number | string): Promise<any> {
+    log('🔵 [mtmApi] getSoapNotes called with id =', serviceCaseId)
+    const response = await api.get<any>(`/mtm/service-cases/${serviceCaseId}/soap/`)
+    log('🟢 [mtmApi] getSoapNotes response =', response.data)
+    return response.data
+  },
+
+  async saveSoapNotes(
+    serviceCaseId: number | string,
+    payload: any
+  ): Promise<any> {
+    log('🔵 [mtmApi] saveSoapNotes payload =', { serviceCaseId, payload })
+    const response = await api.put<any>(
+      `/mtm/service-cases/${serviceCaseId}/soap/`,
+      payload
+    )
+    log('🟢 [mtmApi] saveSoapNotes response =', response.data)
+    return response.data
+  },
+
+  async generateSoapNotesByAi(serviceCaseId: number | string): Promise<any> {
+    log('🔵 [mtmApi] generateSoapNotesByAi called with id =', serviceCaseId)
+    const response = await api.post<any>(`/mtm/service-cases/${serviceCaseId}/soap/generate/`)
+    log('🟢 [mtmApi] generateSoapNotesByAi response =', response.data)
+    return response.data
+  },
+
+  /**
+   * 认领服务单 (仅药师)
+   */
+  async claimServiceCase(id: number | string): Promise<MtmServiceCase> {
+    log('🔵 [mtmApi] claimServiceCase called with id =', id)
+    const response = await api.post<MtmServiceCase>(`/mtm/service-cases/${id}/claim/`)
+    log('🟢 [mtmApi] claimServiceCase response =', response.data)
     return response.data
   },
 }
