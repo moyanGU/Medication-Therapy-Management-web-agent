@@ -281,6 +281,71 @@ class RequestLoggingMiddleware(MiddlewareMixin):
             f"JWT User: {jwt_user}"
         )
 
+    def _set_request_id_header(self, request, response):
+        request_id = getattr(request, "request_id", None)
+        if request_id:
+            response["X-Request-ID"] = request_id
+        return request_id
+
+    def _log_request_complete(self, request, response, request_id: str | None, duration: float):
+        logger.info(
+            f"API请求完成: {request.method} {request.get_full_path()} - "
+            f"Request ID: {request_id or 'unknown'} - "
+            f"Status: {response.status_code} - "
+            f"Duration: {duration:.3f}s - "
+            f"User: {getattr(request.user, 'username', 'Anonymous')}"
+        )
+
+    def _log_slow_request(self, request, response, request_id: str | None, duration: float):
+        slow_threshold = float(getattr(settings, "API_SLOW_REQUEST_SECONDS", 0))
+        if slow_threshold > 0 and duration >= slow_threshold:
+            logger.warning(
+                f"🟠 [SlowRequest] {request.method} {request.get_full_path()} - "
+                f"Request ID: {request_id or 'unknown'} - "
+                f"Status: {response.status_code} - "
+                f"Duration: {duration:.3f}s - "
+                f"User: {getattr(request.user, 'username', 'Anonymous')}"
+            )
+
+    def _log_slow_queries(self, request):
+        if not getattr(settings, "DB_LOG_SLOW_QUERY", False):
+            return
+        try:
+            from django.db import connection
+
+            slow_query_seconds = float(getattr(settings, "DB_SLOW_QUERY_SECONDS", 0))
+            max_items = int(getattr(settings, "DB_SLOW_QUERY_MAX", 20))
+            max_len = int(getattr(settings, "DB_SLOW_QUERY_SQL_MAX_LEN", 500))
+            if slow_query_seconds <= 0:
+                return
+            slow_queries = []
+            for q in getattr(connection, "queries", []) or []:
+                try:
+                    q_time = float(q.get("time", 0))
+                except Exception:
+                    q_time = 0
+                if q_time >= slow_query_seconds:
+                    sql = q.get("sql", "")
+                    if max_len > 0 and len(sql) > max_len:
+                        sql = f"{sql[:max_len]}..."
+                    slow_queries.append((q_time, sql))
+            if slow_queries:
+                slow_queries.sort(key=lambda x: x[0], reverse=True)
+                for q_time, sql in slow_queries[:max_items]:
+                    logger.warning(
+                        f"🟠 [SlowQuery] {q_time:.3f}s {request.method} "
+                        f"{request.get_full_path()} - {sql}"
+                    )
+        except Exception as e:
+            logger.warning(f"🟠 [SlowQuery] 记录慢查询失败: {e}")
+        finally:
+            try:
+                from django.db import connection
+
+                connection.force_debug_cursor = False
+            except Exception:
+                pass
+
     def process_response(self, request, response):
         """
         处理响应时的逻辑
@@ -292,68 +357,15 @@ class RequestLoggingMiddleware(MiddlewareMixin):
         Returns:
             HttpResponse: 响应对象
         """
-        request_id = getattr(request, "request_id", None)
-        if request_id:
-            response["X-Request-ID"] = request_id
+        request_id = self._set_request_id_header(request, response)
+        start_time = getattr(request, "start_time", None)
+        if not start_time:
+            return response
 
-        if hasattr(request, "start_time"):
-            duration = time.time() - request.start_time
-
-            # 记录响应信息
-            logger.info(
-                f"API请求完成: {request.method} {request.get_full_path()} - "
-                f"Request ID: {request_id or 'unknown'} - "
-                f"Status: {response.status_code} - "
-                f"Duration: {duration:.3f}s - "
-                f"User: {getattr(request.user, 'username', 'Anonymous')}"
-            )
-
-            slow_threshold = float(getattr(settings, "API_SLOW_REQUEST_SECONDS", 0))
-            if slow_threshold > 0 and duration >= slow_threshold:
-                logger.warning(
-                    f"🟠 [SlowRequest] {request.method} {request.get_full_path()} - "
-                    f"Request ID: {request_id or 'unknown'} - "
-                    f"Status: {response.status_code} - "
-                    f"Duration: {duration:.3f}s - "
-                    f"User: {getattr(request.user, 'username', 'Anonymous')}"
-                )
-
-            if getattr(settings, "DB_LOG_SLOW_QUERY", False):
-                try:
-                    from django.db import connection
-
-                    slow_query_seconds = float(
-                        getattr(settings, "DB_SLOW_QUERY_SECONDS", 0)
-                    )
-                    max_items = int(getattr(settings, "DB_SLOW_QUERY_MAX", 20))
-                    max_len = int(getattr(settings, "DB_SLOW_QUERY_SQL_MAX_LEN", 500))
-                    if slow_query_seconds > 0:
-                        slow_queries = []
-                        for q in connection.queries:
-                            try:
-                                q_time = float(q.get("time", 0))
-                            except Exception:
-                                q_time = 0
-                            if q_time >= slow_query_seconds:
-                                sql = q.get("sql", "")
-                                if max_len > 0 and len(sql) > max_len:
-                                    sql = f"{sql[:max_len]}..."
-                                slow_queries.append((q_time, sql))
-                        if slow_queries:
-                            slow_queries.sort(key=lambda x: x[0], reverse=True)
-                            for q_time, sql in slow_queries[:max_items]:
-                                logger.warning(
-                                    f"🟠 [SlowQuery] {q_time:.3f}s {request.method} "
-                                    f"{request.get_full_path()} - {sql}"
-                                )
-                except Exception as e:
-                    logger.warning(f"🟠 [SlowQuery] 记录慢查询失败: {e}")
-                finally:
-                    try:
-                        connection.force_debug_cursor = False
-                    except Exception:
-                        pass
-
+        duration = time.time() - start_time
+        self._log_request_complete(request, response, request_id, duration)
+        self._log_slow_request(request, response, request_id, duration)
+        self._log_slow_queries(request)
         return response
 
     def _resolve_request_id(self, request):
