@@ -429,39 +429,34 @@ class MedicationRecordViewSet(viewsets.ModelViewSet):
         """
         解析依从性统计区间
         """
-        start_date = request.query_params.get("start_date")
-        end_date = request.query_params.get("end_date")
-        days = int(request.query_params.get("days", 30))
+        qp = request.query_params
+        days = int(qp.get("days", 30))
+        start_date = self._parse_period_date(qp.get("start_date"), "开始日期")
+        end_date = self._parse_period_date(qp.get("end_date"), "结束日期")
+        start_date, end_date = self._resolve_period_range(start_date, end_date, days)
+        return {"start_date": start_date, "end_date": end_date, "days": (end_date - start_date).days + 1}
 
-        if start_date:
-            try:
-                start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
-            except ValueError as exc:
-                raise ValueError("开始日期格式错误，请使用YYYY-MM-DD格式") from exc
-        if end_date:
-            try:
-                end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
-            except ValueError as exc:
-                raise ValueError("结束日期格式错误，请使用YYYY-MM-DD格式") from exc
+    def _parse_period_date(self, value, label: str):
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value, "%Y-%m-%d").date()
+        except ValueError as exc:
+            raise ValueError(f"{label}格式错误，请使用YYYY-MM-DD格式") from exc
 
+    def _resolve_period_range(self, start_date, end_date, days: int):
+        today = timezone.now().date()
+        days = max(int(days or 30), 1)
         if start_date and not end_date:
-            end_date = timezone.now().date()
+            end_date = today
         if end_date and not start_date:
-            start_date = end_date - timedelta(days=max(days - 1, 0))
-
+            start_date = end_date - timedelta(days=days - 1)
         if not start_date and not end_date:
-            end_date = timezone.now().date()
-            start_date = end_date - timedelta(days=max(days - 1, 0))
-
+            end_date = today
+            start_date = end_date - timedelta(days=days - 1)
         if start_date > end_date:
             raise ValueError("开始日期不能晚于结束日期")
-
-        actual_days = (end_date - start_date).days + 1
-        return {
-            "start_date": start_date,
-            "end_date": end_date,
-            "days": actual_days,
-        }
+        return start_date, end_date
 
     def _get_adherence_records_queryset(self, start_date, end_date, medicine_id=None):
         """
