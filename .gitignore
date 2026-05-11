@@ -48,13 +48,21 @@ backend/!.env.example
 *.sql
 *.tar
 backend/db.sqlite3
+backup/
+ts-errors.txt
+vapid_keys.json
+start_redis.bat
 
 # Generated code health reports (reproducible via scripts/)
 reports/code_health/
+graphify-out/cache/
 
 # External tools / vendor snapshots (do not commit)
 _external/
 CLAUDE.md
+andrej-karpathy-skills-main/
+claude_code_src-master/
+graphify-5/
 
 # Certificates/keys (if present)
 *.pem

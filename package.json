@@ -11,7 +11,9 @@
     "postbuild": "node ./scripts/ci/copy-icons.mjs",
     "guard:dist:linux": "bash ./scripts/ci/check-dist-no-localhost.sh dist",
     "guard:dist:win": "powershell -ExecutionPolicy Bypass -File ./scripts/windows/check-dist-no-localhost.ps1 dist",
-    "lint": "eslint \"src/**/*.{ts,vue}\" --max-warnings=0"
+    "lint": "eslint \"src/**/*.{ts,vue}\" --max-warnings=0",
+    "test:backend": "powershell -ExecutionPolicy Bypass -File ./scripts/windows/run_backend_tests.ps1",
+    "verify": "npm run lint && npm run build && npm run test:backend"
   },
   "dependencies": {
     "@page-agent/core": "^1.6.2",

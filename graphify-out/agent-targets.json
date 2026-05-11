@@ -1,0 +1,17 @@
+[
+  "src\\services\\assistantEngine.ts",
+  "src\\services\\pageAgentRuntime.ts",
+  "src\\services\\pageAgentService.ts",
+  "src\\services\\pageAgentShared.ts",
+  "src\\services\\sessionMemory.ts",
+  "src\\services\\toolRegistry.ts",
+  "src\\services\\restrictedPageController.ts",
+  "backend\\apps\\core\\ai_page_agent.py",
+  "backend\\apps\\core\\ai_session_memory.py",
+  "backend\\apps\\core\\ai_medication.py",
+  "backend\\apps\\core\\views_ai.py",
+  "backend\\apps\\core\\agents\\base.py",
+  "backend\\apps\\core\\agents\\memory_agent.py",
+  "backend\\apps\\core\\agents\\medication_agent.py",
+  "backend\\apps\\core\\agents\\soap_agent.py"
+]

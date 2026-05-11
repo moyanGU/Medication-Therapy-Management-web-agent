@@ -18,7 +18,7 @@ logger = logging.getLogger("mtm_helper")
 def _build_dashboard_adherence_summary(request):
     return build_dashboard_adherence_summary(
         user=request.user,
-        today=timezone.now().date(),
+        today=timezone.localtime().date(),
     )
 
 
@@ -293,4 +293,3 @@ def dashboard_summary(request):
     except Exception as exc:
         logger.error(f"获取首页聚合摘要失败: {exc}")
         return error_response("获取首页聚合摘要失败", "DASHBOARD_SUMMARY_ERROR", 500)
-

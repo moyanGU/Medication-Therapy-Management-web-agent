@@ -1,109 +1,226 @@
 <div align="center">
   <img src="public/images/mtm-cover-logo.svg" alt="MTM-Helper Logo" width="120" height="120" />
-  <h1>💊 MTM-Helper 3.0：基于 Agent 架构的智能用药生态池</h1>
-  <p>一个以“龙虾（AI Agent）与养虾池（业务底座）”为核心架构理念的双轨制药物治疗管理平台</p>
+  <h1>MTM-Helper</h1>
+  <p>面向日常用药管理与最小 MTM 服务链路的前后端一体化项目</p>
 </div>
 
-## 📖 项目定位：从“套壳 LLM”到“Agent 生态”
+## 项目现状
 
-MTM-Helper 3.0 是一次彻底的架构蜕变。我们摒弃了传统的“对话框式”大模型接入，将 AI 拆解为多个具备感知、分析、行动能力的领域专家（Sub-Agents），并将它们无缝植入到真实的医疗业务流水线中。
-- **面向大众用户**：提供用药打卡、过期预警、语音播报等日常健康守护（链路A）。
-- **面向专业药师**：提供全流程的 MTM（药物治疗管理）服务，包括自动问诊、五维度评估、SOAP 药历生成与 PMR/MAP 医疗文书导出（链路B）。
+MTM-Helper 当前不是 README 旧口径里“已经完成的智能用药生态池”，而是一个已经具备以下能力的单体项目：
 
----
+- 日常用药管理基础链路
+  - 药品管理
+  - 用药提醒
+  - 用药记录
+  - 用药计划
+  - 就医记录
+- MTM 最小专业链路
+  - 服务单
+  - 问诊表单
+  - 评估表单
+  - 干预计划
+  - SOAP 药历草稿
+  - PMR / MAP 报告预览
+- 保守型 AI 辅助能力
+  - 用药问答
+  - 页面助手
+  - 会话记忆总结
 
-## ✨ 3.0 架构核心特性 (The "Lobster" Engine)
+当前仓库中的 AI 更接近“受限工具化助手”，而不是 Claude Code 那种完整多 Agent Harness。
 
-### 1. 🦞 多领域子代理集群 (Sub-Agent Orchestration)
-不再依赖臃肿的单一 Prompt。我们将 MTM 业务流拆解，在后端实现了专职的 `BaseAgent` 专家群：
-- **`MedicationAgent`**：专攻药物相互作用、禁忌症与五维度适宜性评估。
-- **`SoapAgent`**：负责将离散的问诊和评估数据，自动聚合为医疗标准的 SOAP 药历。
-- **`MemoryAgent`**：负责提取、压缩和持久化患者的长期记忆。
+## 已验证能力
 
-### 2. 🌊 跨路由上下文串联 (Cross-Route Context Reasoning)
-彻底治愈 AI 的“页面失忆症”。前端 `assistantEngine.ts` 与 Vue Router 深度绑定，当用户在 MTM 列表页进行筛选、排序或进入详情页时，系统会实时将这些环境数据捕获为 `globalContextMemory`。AI 的感知触角真正扎入了业务流的活水中。
+### 工程验证
 
-### 3. ⚡ 流式输出与步骤回显 (Streaming & Steps)
-从阻塞式 API 全面升级为基于 Server-Sent Events (SSE) 的 NDJSON 块流式传输。结合前端的 `onStep` 钩子，AI “思考、调用、生成”的每一步都在用户面前透明回显，彻底消除等待焦虑。
+仓库内已经有统一验证入口：
 
-### 4. 🔊 适老化与无障碍原生支持 (Elderly-Friendly)
-- **全局语音交互 (TTS & STT)**：前端原生打通 Web Speech API。用户说话即可提问，系统原生语音播报回复，实现真正的“零打字”。
-- **高对比度大字模式**：遵循 WCAG 标准，专为老年人与视障人群设计。
-
-### 5. 🛡️ 离线优先与 Air-gapped 部署
-专为医院内网与数据敏感场景设计：
-- **大模型私有化接入**：完全兼容 OpenAI 接口规范，一键接入本地部署的 Ollama / vLLM（如 Qwen2-7B、百川医疗大模型）。
-- **纯本地 TTS/STT**：语音合成不依赖云端 API。
-- **离线轮询兜底**：当 APNs/FCM 消息推送因断网失败时，前端 Service Worker 配合本地轮询触发浏览器原生弹窗提醒。
-
----
-
-## 🛠 技术栈 (Tech Stack)
-
-**前端生态 (Frontend)**
-- Vue 3.4+ (Composition API) + TypeScript 5.0+ + Vite 5.0+
-- 状态管理：Pinia + Vue Router
-- 流式解析：Fetch API + TextDecoder (原生支持 SSE 规范)
-- 样式组件：TailwindCSS 3.4+ + Lucide Icons
-- 文书渲染：jspdf + html2canvas
-
-**后端生态 (Backend)**
-- 框架：Django 4.2+ & Django REST Framework (DRF)
-- Agent 调度：纯 Python 原生生成器 (`yield`) 实现非阻塞流式编排
-- 数据库：MySQL 8.0+ (核心业务) & Redis 7.0+ (缓存与 Celery 任务队列)
-
----
-
-## 🚀 开发者指南 (Quick Start)
-
-### 环境依赖
-- Node.js 20.0+
-- Python 3.11+
-- MySQL 8.0+ / Redis 7.0+ (推荐使用 Docker 部署基础设施)
-
-### 1. 前端服务启动
 ```bash
-# 1. 安装依赖并排除冲突的三方子模块
-npm install
-
-# 2. 启动 Vite 开发服务器 (已配置 host 暴露与依赖优化)
-npm run dev
+npm run verify
 ```
 
-### 2. 后端服务启动
+本轮已验证通过：
+
+- 前端 `lint`
+- 前端 `build`
+- 后端测试 `84 passed`
+
+### 本地依赖检查入口
+
+Windows 本地检查入口：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\check_local_stack.ps1
+```
+
+它会按顺序检查：
+
+- MySQL CLI
+- Redis CLI
+- MySQL 连接
+- Redis PING
+- `python manage.py check`
+- Django 数据库 / 缓存 smoke check
+
+### 本轮本机现实结果
+
+基于你当前机器状态，本轮已经确认：
+
+- `backend/.env` 对应的本地数据库 `mtm_helper` 已创建
+- `devuser@localhost` 已授予 `mtm_helper.*` 权限
+- Redis 已可通过仓库脚本启动，并返回 `PONG`
+- Django `manage.py check` 可通过
+- Django 数据库与缓存 smoke check 可通过
+- `python manage.py migrate` 已成功跑通本地 MySQL
+
+## 本地开发基线
+
+### 必需环境
+
+- Node.js 20+
+- Python 3.11+
+- MySQL
+- Redis
+
+### 数据库路线
+
+本项目当前正式收口路线是：
+
+- 本地开发标准数据库：**MySQL**
+- 本地缓存：**Redis**
+- 后端测试环境：**SQLite 内存库**
+- **不提供 PostgreSQL 本地运行支持**
+
+这不是技术偏好问题，而是当前项目现实：
+
+- Django 运行时默认使用 MySQL
+- `backend/mtm_helper/__init__.py` 会在非测试环境安装 PyMySQL 驱动
+- `docker-compose.yml`、生产配置、运维脚本都围绕 MySQL 展开
+
+## 快速开始
+
+### 1. 安装前端依赖
+
 ```bash
+npm install
+```
+
+### 2. 准备后端虚拟环境
+
+```powershell
 cd backend
-# 1. 创建并激活虚拟环境
-python3 -m venv .venv
-source .venv/bin/activate  # Windows 运行 .\.venv\Scripts\Activate.ps1
-
-# 2. 安装依赖
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+```
 
-# 3. 初始化数据库配置
-cp .env.example .env
-# 必须在 .env 中配置 DB 连接和 BAICHUAN_M3_API_KEY (或本地模型 URL)
+### 3. 初始化本地 MySQL
 
-# 4. 迁移与启动
-python manage.py makemigrations
+首次在新机器上启动前，请先创建本地开发数据库和账号。下面的 SQL 与仓库当前 `backend/.env` 保持一致：
+
+```sql
+CREATE DATABASE IF NOT EXISTS mtm_helper CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'devuser'@'localhost' IDENTIFIED BY 'Ghp880218';
+ALTER USER 'devuser'@'localhost' IDENTIFIED BY 'Ghp880218';
+GRANT ALL PRIVILEGES ON mtm_helper.* TO 'devuser'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+Windows 示例：
+
+```powershell
+mysql -uroot -p
+```
+
+如果 `mysql` 不在 `PATH`，请改用实际安装路径。
+
+### 4. 启动本地 Redis
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\start_redis_secure.ps1
+```
+
+如果 Redis 不在默认路径，也可以显式传入：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\start_redis_secure.ps1 -RedisExe "C:\path\to\redis-server.exe"
+```
+
+### 5. 检查本地栈状态
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\check_local_stack.ps1
+```
+
+如果 MySQL 或 Redis CLI 不在默认路径，也可以显式传入：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\check_local_stack.ps1 -MySqlExe "C:\path\to\mysql.exe" -RedisCli "C:\path\to\redis-cli.exe"
+```
+
+### 6. 前端与测试验证
+
+```bash
+npm run lint
+npm run build
+npm run test:backend
+```
+
+或直接运行：
+
+```bash
+npm run verify
+```
+
+### 7. 启动完整后端
+
+```powershell
+cd backend
 python manage.py migrate
 python manage.py runserver 0.0.0.0:8000
 ```
 
-### 3. Docker 生产级部署 (Production)
-项目内置了生产级部署方案（涵盖 Nginx 反代与静态资源挂载）：
-```bash
-docker compose -f docker-compose.production.yml up -d --build
-```
+首次迁移时会看到一个 MySQL 警告：`users.PushSubscription.endpoint` 的唯一 `CharField` 长度超过 255。它不会阻塞本轮本地启动，但应作为后续模型收敛项保留。
 
----
+## auto_agent 现实定义
 
-## 🤝 参与贡献
-MTM-Helper 目前处于 Phase 3（AI 深度增强）冲刺阶段，正在探索基于 MCP (Model Context Protocol) 的工具链解耦。
-欢迎对**医疗 Agent 架构**、**适老化设计**感兴趣的开发者提交 PR 或 Issue。
+本项目里没有独立名为 `auto_agent` 的模块。
 
-## 📄 许可证
+当前更符合“auto_agent 实际实现体”的是这组代码：
+
+- 前端
+  - `src/services/assistantEngine.ts`
+  - `src/services/pageAgentRuntime.ts`
+  - `src/services/pageAgentService.ts`
+  - `src/services/pageAgentShared.ts`
+  - `src/services/sessionMemory.ts`
+  - `src/services/toolRegistry.ts`
+  - `src/services/restrictedPageController.ts`
+- 后端
+  - `backend/apps/core/ai_page_agent.py`
+  - `backend/apps/core/ai_session_memory.py`
+  - `backend/apps/core/ai_medication.py`
+  - `backend/apps/core/agents/*.py`
+
+本轮已基于 `graphify-5` 生成最小图谱产物：
+
+- `graphify-out/GRAPH_REPORT.md`
+- `graphify-out/graph.json`
+
+对应评估文档见：
+
+- `docs/AUTO_AGENT_REALITY_ASSESSMENT.md`
+
+## 当前边界
+
+以下内容仍然不应被视为“已完全收口”：
+
+- 统一的多 Agent 业务编排层
+- Claude Code 风格的完整 Harness
+- 上下文三级压缩系统
+- ToolSearch / 工具发现与大输出存储体系
+- 权限分类器与双层审查器
+- PostgreSQL 本地运行支持
+
+## 许可
+
 本项目基于 [MIT License](LICENSE) 开源。
-
----
-*MTM-Helper — 科技让关爱更智能。*
