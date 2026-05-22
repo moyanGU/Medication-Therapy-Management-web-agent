@@ -2,12 +2,14 @@ import logging
 
 from django.core.exceptions import ValidationError
 from django.db.models import Q
+from django.db import transaction
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 
+from apps.core.ai_runtime import build_ai_failure_response, get_ai_runtime_config
 from apps.core.pagination import StandardResultsSetPagination
 from apps.core.response import error_response, success_response
 
@@ -92,7 +94,7 @@ class MTMServiceCaseViewSet(
         )
         if created:
             logger.info(
-                "🟢 [MTM] interview draft initialized - case=%s interview=%s",
+                "[MTM] interview draft initialized - case=%s interview=%s",
                 service_case.id,
                 interview.id,
             )
@@ -124,7 +126,7 @@ class MTMServiceCaseViewSet(
         )
         if created:
             logger.info(
-                "🟢 [MTM] assessment draft initialized - case=%s assessment=%s",
+                "[MTM] assessment draft initialized - case=%s assessment=%s",
                 service_case.id,
                 assessment.id,
             )
@@ -209,7 +211,7 @@ class MTMServiceCaseViewSet(
         )
         if created:
             logger.info(
-                "🟢 [MTM] plan draft initialized - case=%s plan=%s",
+                "[MTM] plan draft initialized - case=%s plan=%s",
                 service_case.id,
                 plan.id,
             )
@@ -269,15 +271,15 @@ class MTMServiceCaseViewSet(
         """
         创建 MTM 服务单
         """
-        logger.info("🔵 [MTM] create service case - user=%s", request.user.id)
+        logger.info("[MTM] create service case - user=%s", request.user.id)
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
-            logger.warning("🟡 [MTM] create invalid - errors=%s", serializer.errors)
+            logger.warning("[MTM] create invalid - errors=%s", serializer.errors)
             return error_response(message="数据验证失败", errors=serializer.errors)
 
         service_case = serializer.save()
         logger.info(
-            "🟢 [MTM] service case created - id=%s case_number=%s",
+            "[MTM] service case created - id=%s case_number=%s",
             service_case.id,
             service_case.case_number,
         )
@@ -328,7 +330,7 @@ class MTMServiceCaseViewSet(
         service_case.save(update_fields=["assigned_pharmacist", "updated_at"])
         
         logger.info(
-            "🟢 [MTM] service case claimed - case=%s pharmacist=%s",
+            "[MTM] service case claimed - case=%s pharmacist=%s",
             service_case.id,
             request.user.id,
         )
@@ -349,7 +351,7 @@ class MTMServiceCaseViewSet(
 
         if not serializer.is_valid():
             logger.warning(
-                "🟡 [MTM] transition invalid - case=%s errors=%s",
+                "[MTM] transition invalid - case=%s errors=%s",
                 service_case.id,
                 serializer.errors,
             )
@@ -361,14 +363,14 @@ class MTMServiceCaseViewSet(
 
         try:
             logger.info(
-                "🔵 [MTM] transition start - case=%s from=%s to=%s",
+                "[MTM] transition start - case=%s from=%s to=%s",
                 service_case.id,
                 service_case.status,
                 target_status,
             )
             service_case.transition_to(target_status=target_status, note=notes)
             logger.info(
-                "🟢 [MTM] transition success - case=%s current=%s",
+                "[MTM] transition success - case=%s current=%s",
                 service_case.id,
                 service_case.status,
             )
@@ -378,7 +380,7 @@ class MTMServiceCaseViewSet(
             )
         except ValidationError as exc:
             logger.warning(
-                "🟡 [MTM] transition rejected - case=%s error=%s",
+                "[MTM] transition rejected - case=%s error=%s",
                 service_case.id,
                 exc,
             )
@@ -394,7 +396,7 @@ class MTMServiceCaseViewSet(
 
         if request.method == "GET":
             logger.info(
-                "🔵 [MTM] interview fetch - case=%s interview=%s",
+                "[MTM] interview fetch - case=%s interview=%s",
                 service_case.id,
                 interview.id,
             )
@@ -404,14 +406,14 @@ class MTMServiceCaseViewSet(
             )
 
         logger.info(
-            "🔵 [MTM] interview draft save start - case=%s interview=%s",
+            "[MTM] interview draft save start - case=%s interview=%s",
             service_case.id,
             interview.id,
         )
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
             logger.warning(
-                "🟡 [MTM] interview draft invalid - case=%s errors=%s",
+                "[MTM] interview draft invalid - case=%s errors=%s",
                 service_case.id,
                 serializer.errors,
             )
@@ -419,7 +421,7 @@ class MTMServiceCaseViewSet(
 
         interview = self._save_interview_payload(interview, serializer.validated_data)
         logger.info(
-            "🟢 [MTM] interview draft saved - case=%s interview=%s",
+            "[MTM] interview draft saved - case=%s interview=%s",
             service_case.id,
             interview.id,
         )
@@ -436,14 +438,14 @@ class MTMServiceCaseViewSet(
         service_case = self.get_object()
         interview = self._get_or_create_interview(service_case)
         logger.info(
-            "🔵 [MTM] interview complete start - case=%s interview=%s",
+            "[MTM] interview complete start - case=%s interview=%s",
             service_case.id,
             interview.id,
         )
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
             logger.warning(
-                "🟡 [MTM] interview complete invalid - case=%s errors=%s",
+                "[MTM] interview complete invalid - case=%s errors=%s",
                 service_case.id,
                 serializer.errors,
             )
@@ -453,7 +455,7 @@ class MTMServiceCaseViewSet(
             interview, serializer.validated_data, mark_completed=True
         )
         logger.info(
-            "🟢 [MTM] interview completed - case=%s interview=%s completed_at=%s",
+            "[MTM] interview completed - case=%s interview=%s completed_at=%s",
             service_case.id,
             interview.id,
             interview.completed_at,
@@ -473,7 +475,7 @@ class MTMServiceCaseViewSet(
 
         if request.method == "GET":
             logger.info(
-                "🔵 [MTM] assessment fetch - case=%s assessment=%s",
+                "[MTM] assessment fetch - case=%s assessment=%s",
                 service_case.id,
                 assessment.id,
             )
@@ -483,14 +485,14 @@ class MTMServiceCaseViewSet(
             )
 
         logger.info(
-            "🔵 [MTM] assessment draft save start - case=%s assessment=%s",
+            "[MTM] assessment draft save start - case=%s assessment=%s",
             service_case.id,
             assessment.id,
         )
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
             logger.warning(
-                "🟡 [MTM] assessment draft invalid - case=%s errors=%s",
+                "[MTM] assessment draft invalid - case=%s errors=%s",
                 service_case.id,
                 serializer.errors,
             )
@@ -498,7 +500,7 @@ class MTMServiceCaseViewSet(
 
         assessment = self._save_assessment_payload(assessment, serializer.validated_data)
         logger.info(
-            "🟢 [MTM] assessment draft saved - case=%s assessment=%s",
+            "[MTM] assessment draft saved - case=%s assessment=%s",
             service_case.id,
             assessment.id,
         )
@@ -515,14 +517,14 @@ class MTMServiceCaseViewSet(
         service_case = self.get_object()
         assessment = self._get_or_create_assessment(service_case)
         logger.info(
-            "🔵 [MTM] assessment complete start - case=%s assessment=%s",
+            "[MTM] assessment complete start - case=%s assessment=%s",
             service_case.id,
             assessment.id,
         )
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
             logger.warning(
-                "🟡 [MTM] assessment complete invalid - case=%s errors=%s",
+                "[MTM] assessment complete invalid - case=%s errors=%s",
                 service_case.id,
                 serializer.errors,
             )
@@ -532,7 +534,7 @@ class MTMServiceCaseViewSet(
             assessment, serializer.validated_data, mark_completed=True
         )
         logger.info(
-            "🟢 [MTM] assessment completed - case=%s assessment=%s completed_at=%s",
+            "[MTM] assessment completed - case=%s assessment=%s completed_at=%s",
             service_case.id,
             assessment.id,
             assessment.completed_at,
@@ -550,7 +552,7 @@ class MTMServiceCaseViewSet(
         from .serializers import MTMPlanSummarySerializer
 
         if request.method == "GET":
-            logger.info("🔵 [MTM] plan fetch - case=%s plan=%s", service_case.id, plan.id)
+            logger.info("[MTM] plan fetch - case=%s plan=%s", service_case.id, plan.id)
             serializer = MTMPlanSummarySerializer(plan)
             return success_response(data=serializer.data)
 
@@ -563,7 +565,7 @@ class MTMServiceCaseViewSet(
             for field, value in serializer.validated_data.items():
                 setattr(plan, field, value)
             plan.save()
-            logger.info("🟢 [MTM] plan draft saved - case=%s", service_case.id)
+            logger.info("[MTM] plan draft saved - case=%s", service_case.id)
             return success_response(data=MTMPlanSummarySerializer(plan).data)
 
     @action(detail=True, methods=["post"], url_path="plan/complete")
@@ -584,7 +586,7 @@ class MTMServiceCaseViewSet(
             if service_case.status in ["assessing", "interviewing", "pending"]:
                 service_case.transition_to("intervening", note="干预计划已制定，自动进入干预阶段")
             
-        logger.info("🟢 [MTM] plan completed - case=%s", service_case.id)
+        logger.info("[MTM] plan completed - case=%s", service_case.id)
         return success_response(data=MTMPlanSummarySerializer(plan).data)
 
     @action(detail=True, methods=["get", "post"], url_path="follow-ups")
@@ -604,10 +606,10 @@ class MTMServiceCaseViewSet(
 
             with transaction.atomic():
                 follow_up = serializer.save(service_case=service_case)
-                logger.info("🟢 [MTM] follow-up created - case=%s id=%s", service_case.id, follow_up.id)
+                logger.info("[MTM] follow-up created - case=%s id=%s", service_case.id, follow_up.id)
                 
                 if service_case.status == "intervening":
-                    service_case.transition_to("follow_up", note="随访记录已创建，自动进入随访阶段")
+                    service_case.transition_to("following_up", note="随访记录已创建，自动进入随访阶段")
 
             return success_response(data=MTMFollowUpSummarySerializer(follow_up).data)
 
@@ -621,11 +623,8 @@ class MTMServiceCaseViewSet(
         service_case = self.get_object()
         
         # 依赖已有关系和序列化器，拼接完整的报告对象
-        from .serializers import (
-            MTMServiceCaseDetailSerializer,
-        )
+        from .serializers import MTMServiceCaseDetailSerializer
         from apps.medical_records.models import MedicalRecord
-        from apps.medical_records.serializers import MedicalRecordListSerializer
         
         # 1. 基础服务单详情 (含问诊、评估、计划、随访的最新快照)
         case_data = MTMServiceCaseDetailSerializer(service_case).data
@@ -633,7 +632,7 @@ class MTMServiceCaseViewSet(
         # 2. PMR: 患者当前的用药记录 (聚合其在系统中维护的 MedicalRecord / Medicines)
         # 获取患者当前所有有效的处方和用药记录
         patient = service_case.patient
-        active_records = MedicalRecord.objects.filter(patient=patient).prefetch_related("medicines").order_by("-visit_date")
+        active_records = MedicalRecord.objects.filter(user=patient).order_by("-visit_date")
         
         pmr_data = []
         for record in active_records:
@@ -643,17 +642,14 @@ class MTMServiceCaseViewSet(
                 "hospital": record.hospital,
                 "department": record.department,
                 "diagnosis": record.diagnosis,
-                "medicines": [
-                    {
-                        "name": m.medicine_name,
-                        "dosage": m.dosage,
-                        "frequency": m.frequency,
-                        "instructions": m.instructions
-                    } for m in record.medicines.all()
-                ]
+                "medicines": record.prescribed_medicines or [],
             })
             
         # 组装完整的 Report 结构
+        interview_data = case_data.get("interview") or {}
+        assessment_data = case_data.get("assessment") or {}
+        plan_data = case_data.get("plan") or {}
+
         report_data = {
             "case_info": {
                 "case_number": case_data.get("case_number"),
@@ -666,16 +662,16 @@ class MTMServiceCaseViewSet(
             "pharmacist_info": case_data.get("assigned_pharmacist"),
             "pmr": {
                 "medical_records": pmr_data,
-                "allergies": case_data.get("interview", {}).get("allergy_history", []),
-                "medication_history": case_data.get("interview", {}).get("medication_history", []),
-                "lifestyle": case_data.get("interview", {}).get("lifestyle_info", {}),
+                "allergies": interview_data.get("allergy_history", []),
+                "medication_history": interview_data.get("medication_history", []),
+                "lifestyle": interview_data.get("lifestyle_info", {}),
             },
-            "assessment": case_data.get("assessment", {}),
-            "map": case_data.get("plan", {}),
+            "assessment": assessment_data,
+            "map": plan_data,
             "follow_ups": case_data.get("follow_ups", [])
         }
 
-        logger.info("🔵 [MTM] report generated - case=%s", service_case.id)
+        logger.info("[MTM] report generated - case=%s", service_case.id)
         return success_response(data=report_data)
 
 
@@ -693,7 +689,7 @@ class MTMServiceCaseViewSet(
             soap_data = request.data
             service_case.soap_notes = soap_data
             service_case.save(update_fields=["soap_notes", "updated_at"])
-            logger.info("🟢 [MTM] SOAP notes updated - case=%s", service_case.id)
+            logger.info("[MTM] SOAP notes updated - case=%s", service_case.id)
             return success_response(data=service_case.soap_notes)
 
     @action(detail=True, methods=["post"], url_path="soap/generate")
@@ -703,9 +699,9 @@ class MTMServiceCaseViewSet(
         """
         service_case = self.get_object()
         
-        from django.conf import settings
-        if not getattr(settings, "BAICHUAN_M3_ENABLED", False):
-            return error_response("AI 服务未启用", status_code=503)
+        runtime_config, error = get_ai_runtime_config()
+        if error is not None:
+            return error
             
         # 收集上下文信息 (问诊记录、评估记录)
         patient_data = {
@@ -732,10 +728,21 @@ class MTMServiceCaseViewSet(
         from apps.core.agents.soap_agent import SoapAgent
         
         try:
-            logger.info("🔵 [MTM] SOAP AI Generation start - case=%s", service_case.id)
+            logger.info("[MTM] SOAP AI Generation start - case=%s", service_case.id)
             agent = SoapAgent(user_id=request.user.id, session_id=f"mtm_soap_{service_case.id}")
+            agent.base_url = runtime_config.base_url
+            agent.api_key = runtime_config.api_key
+            agent.model = runtime_config.model
+            agent.timeout_seconds = runtime_config.timeout_seconds
             soap_json = agent.generate(patient_data)
             return success_response(data=soap_json)
-        except Exception as e:
-            logger.error("🔴 [MTM] SOAP Generation Failed: %s", str(e))
-            return error_response(f"AI 生成失败: {str(e)}", status_code=500)
+        except Exception as exc:
+            logger.error("[MTM] SOAP Generation Failed: %s", str(exc))
+            return build_ai_failure_response(
+                exc,
+                trace={
+                    "endpoint": "mtm_generate_soap",
+                    "service_case_id": service_case.id,
+                    "user_id": getattr(request.user, "id", None),
+                },
+            )

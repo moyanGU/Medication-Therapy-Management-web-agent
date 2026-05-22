@@ -199,80 +199,6 @@
       </div>
     </div>
 
-    <!-- 统计卡片（临时隐藏：总病历数、本月新增、总费用、平均满意度） -->
-    <div
-      v-if="false"
-      class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6"
-    >
-      <!-- 总病历数 -->
-      <div class="bg-white rounded-lg shadow-sm border p-6">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-gray-600">总病历数</p>
-            <p class="text-2xl font-bold text-gray-900">
-              {{ statistics.totalRecords }}
-            </p>
-          </div>
-          <div
-            class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center"
-          >
-            <FileText class="w-6 h-6 text-blue-600" />
-          </div>
-        </div>
-      </div>
-
-      <!-- 本月新增 -->
-      <div class="bg-white rounded-lg shadow-sm border p-6">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-gray-600">本月新增</p>
-            <p class="text-2xl font-bold text-gray-900">
-              {{ statistics.monthlyRecords }}
-            </p>
-          </div>
-          <div
-            class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center"
-          >
-            <TrendingUp class="w-6 h-6 text-green-600" />
-          </div>
-        </div>
-      </div>
-
-      <!-- 总费用 -->
-      <div class="bg-white rounded-lg shadow-sm border p-6">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-gray-600">总费用</p>
-            <p class="text-2xl font-bold text-gray-900">
-              ¥{{ statistics.totalCost.toLocaleString() }}
-            </p>
-          </div>
-          <div
-            class="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center"
-          >
-            <DollarSign class="w-6 h-6 text-yellow-600" />
-          </div>
-        </div>
-      </div>
-
-      <!-- 平均满意度 -->
-      <div class="bg-white rounded-lg shadow-sm border p-6">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-gray-600">平均满意度</p>
-            <p class="text-2xl font-bold text-gray-900">
-              {{ safeToFixed(statistics.avgSatisfaction, 1) }}
-            </p>
-          </div>
-          <div
-            class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center"
-          >
-            <Star class="w-6 h-6 text-purple-600" />
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- 病历列表 -->
     <div class="bg-white rounded-lg shadow-sm border">
       <!-- 列表头部 -->
@@ -472,9 +398,7 @@ import {
   Search,
   RotateCcw,
   FileText,
-  TrendingUp,
   DollarSign,
-  Star,
   AlertCircle,
   Calendar,
   Building,
@@ -657,12 +581,6 @@ const loadStatistics = async () => {
 }
 
 // 安全格式化函数，避免 undefined.toFixed 报错
-function safeToFixed(value, digits = 2) {
-  const num = Number(value)
-  if (Number.isFinite(num)) return num.toFixed(digits)
-  return (0).toFixed(digits)
-}
-
 /**
  * 加载分类数据
  */

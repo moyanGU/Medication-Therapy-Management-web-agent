@@ -1,9 +1,9 @@
 import re
 
-from django.conf import settings
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
+from .ai_runtime import build_ai_failure_response, get_ai_runtime_config
 from .models import SessionMemory
 from .utils import error_response, success_response
 
@@ -34,7 +34,9 @@ def _sanitize_messages(messages):
             continue
         if len(content) > 2000:
             content = content[:2000]
-        sanitized.append({"role": "ai" if role == "assistant" else role, "content": content})
+        sanitized.append(
+            {"role": "ai" if role == "assistant" else role, "content": content}
+        )
     return sanitized[-60:]
 
 
@@ -58,7 +60,9 @@ def _build_session_memory_response(session_id: str, memory: SessionMemory | None
     return {
         "session_id": session_id,
         "summary": str(payload.get("summary") or ""),
-        "messages": payload.get("messages") if isinstance(payload.get("messages"), list) else [],
+        "messages": payload.get("messages")
+        if isinstance(payload.get("messages"), list)
+        else [],
         "updated_at": payload.get("updated_at"),
     }
 
@@ -76,7 +80,9 @@ def _handle_session_memory_get(request, user_id):
 
 def _handle_session_memory_post(request, user_id):
     try:
-        session_id = _normalize_session_id(str((request.data or {}).get("session_id") or ""))
+        session_id = _normalize_session_id(
+            str((request.data or {}).get("session_id") or "")
+        )
     except ValueError as exc:
         return error_response(str(exc), "VALIDATION_ERROR", 400)
 
@@ -94,12 +100,6 @@ def _handle_session_memory_post(request, user_id):
         {"session_id": session_id, "updated_at": memory.updated_at.isoformat()},
         "保存成功",
     )
-
-
-def _require_ai_enabled():
-    if not getattr(settings, "BAICHUAN_M3_ENABLED", False):
-        return error_response("AI 服务未启用", "AI_DISABLED", 503)
-    return None
 
 
 def _resolve_summarize_messages(memory, request):
@@ -134,12 +134,14 @@ def session_memory_summarize(request):
     if error is not None:
         return error
 
-    error = _require_ai_enabled()
+    runtime_config, error = get_ai_runtime_config()
     if error is not None:
         return error
 
     try:
-        session_id = _normalize_session_id(str((request.data or {}).get("session_id") or ""))
+        session_id = _normalize_session_id(
+            str((request.data or {}).get("session_id") or "")
+        )
     except ValueError as exc:
         return error_response(str(exc), "VALIDATION_ERROR", 400)
 
@@ -152,19 +154,33 @@ def session_memory_summarize(request):
         from apps.core.agents.memory_agent import SessionMemoryAgent
 
         agent = SessionMemoryAgent(user_id=user_id, session_id=session_id)
+        agent.base_url = runtime_config.base_url
+        agent.api_key = runtime_config.api_key
+        agent.model = runtime_config.model
+        agent.timeout_seconds = runtime_config.timeout_seconds
         summary_text = agent.summarize(messages)
-    except Exception:
-        return error_response("AI 生成失败", "AI_GENERATION_FAILED", 500)
+    except Exception as exc:
+        return build_ai_failure_response(
+            exc,
+            trace={
+                "endpoint": "session_memory_summarize",
+                "session_id": session_id,
+                "user_id": user_id,
+            },
+        )
 
     summary_text = _truncate_summary(summary_text)
-
-    memory, created = SessionMemory.objects.update_or_create(
+    memory, _ = SessionMemory.objects.update_or_create(
         user_id=user_id,
         session_id=session_id,
         defaults={"summary": summary_text, "messages": messages},
     )
 
     return success_response(
-        {"session_id": session_id, "summary": summary_text, "updated_at": memory.updated_at.isoformat()},
+        {
+            "session_id": session_id,
+            "summary": summary_text,
+            "updated_at": memory.updated_at.isoformat(),
+        },
         "生成成功",
     )

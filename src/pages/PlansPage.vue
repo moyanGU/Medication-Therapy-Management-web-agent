@@ -215,17 +215,6 @@
         </div>
       </div>
 
-      <!-- 相互作用检测结果容器（临时隐藏） -->
-      <div v-if="false" class="mt-8">
-        <h2 class="text-lg font-medium text-gray-900 mb-4">相互作用检测结果</h2>
-        <!-- 结果列表 -->
-        <div class="bg-white rounded-lg shadow p-6">
-          <p class="text-sm text-gray-500">
-            该区域暂时隐藏，待后续接入真实检测接口后启用。
-          </p>
-        </div>
-      </div>
-
       <!-- 创建计划表单（弹窗） -->
       <PlanForm
         v-if="showCreateDialog"

@@ -627,11 +627,20 @@ function parseMedicineDraftName(task: string): string {
 }
 
 function parseQuantityValue(task: string): string {
-  const quantityMatch = task.match(
-    /(\d+(?:\.\d+)?)\s*(盒|瓶|支|片|粒|包|袋|贴|个|毫升|ml|ML)(?!\s*(?:每天|每日|一次|早晚|提醒))/
+  const quantityMatches = Array.from(
+    task.matchAll(/(\d+(?:\.\d+)?)\s*(盒|瓶|支|片|粒|包|袋|贴|个|毫升|ml|ML)/g)
   )
-  if (quantityMatch) {
-    return quantityMatch[1]
+  for (const match of quantityMatches) {
+    const start = match.index ?? 0
+    const prevChar = start > 0 ? task[start - 1] : ''
+    const prefix = task.slice(Math.max(0, start - 4), start)
+    if (/[A-Za-z0-9]/.test(prevChar)) {
+      continue
+    }
+    if (/(一次|每次)$/.test(prefix)) {
+      continue
+    }
+    return match[1]
   }
 
   const stockMatch = task.match(/(?:库存|剩余|数量|备货)\s*(\d+(?:\.\d+)?)/)
@@ -640,6 +649,51 @@ function parseQuantityValue(task: string): string {
   }
 
   return ''
+}
+
+function parseMedicineDraftNameFallback(task: string): string {
+  const match = task.match(
+    /(?:\u6dfb\u52a0|\u65b0\u589e|\u65b0\u5efa|\u521b\u5efa)\s*(?:\u4e00\u4e2a|\u4e00\u79cd)?\s*(?:\u65b0\u836f|\u836f\u54c1|\u836f\u7269)?[\uFF0C,\s]*([\u4e00-\u9fa5A-Za-z0-9()（）-]{2,32})/
+  )
+  return (match?.[1] || '').trim().slice(0, 40)
+}
+
+function parseQuantityValueFallback(task: string): string {
+  const packageMatch = task.match(
+    /(\d+(?:\.\d+)?)\s*(?:\u76d2|\u74f6|\u652f|\u7247|\u7c92|\u5305|\u888b)(?!\s*(?:\/|\u6bcf\u5929|\u6bcf\u65e5|\u4e00\u6b21|\u6bcf\u6b21))/
+  )
+  return packageMatch?.[1] || ''
+}
+
+function parseMedicineSpecificationFallback(task: string): string {
+  const match = task.match(
+    /(\d+(?:\.\d+)?)\s*(?:\u6beb\u514b|mg|MG|\u514b|g|G|\u6beb\u5347|ml|ML)/
+  )
+  return (match?.[0] || '').trim().slice(0, 60)
+}
+
+function parseMedicineUsageDescription(task: string): string {
+  const frequencyMatch = task.match(
+    /(?:\u6bcf\u5929|\u6bcf\u65e5)\s*(\d+(?:\.\d+)?|[\u4e00\u4e8c\u4e24\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u534a]+)\s*\u6b21/
+  )
+  const doseMatch = task.match(
+    /(?:\u4e00\u6b21|\u6bcf\u6b21)\s*(\d+(?:\.\d+)?|[\u4e00\u4e8c\u4e24\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u534a]+)\s*(?:\u7247|\u7c92|\u6beb\u5347|ml|ML|\u6beb\u514b|mg|MG|\u514b|g|G|\u6ef4|\u55b7|\u8d34|\u9488)/
+  )
+  const segments: string[] = []
+  if (frequencyMatch?.[0]) {
+    segments.push(frequencyMatch[0].replace(/\s+/g, ''))
+  }
+  if (doseMatch?.[0]) {
+    segments.push(doseMatch[0].replace(/\s+/g, ''))
+  }
+  if (segments.length === 0) {
+    return ''
+  }
+  return `\u7528\u6cd5\u7528\u91cf\uFF1A${segments.join('\uFF1B')}`.slice(0, 120)
+}
+
+function isGenericMedicineDraftName(name: string): boolean {
+  return /^(?:\u65b0\u836f|\u836f\u54c1|\u836f\u7269)$/.test(name.trim())
 }
 
 export function buildMedicineDraftPayload(
@@ -652,7 +706,8 @@ export function buildMedicineDraftPayload(
   const hasMedicineKeyword = /(药品|药物|库存|药盒|胶囊|片剂|口服液|注射剂|软膏|滴剂)/.test(
     normalized
   )
-  if (!hasMedicineKeyword && !isMedicinePage) {
+  const hasMedicineSignal = /(?:\u65b0\u836f|\u836f\u7247|\u6beb\u514b|mg|MG|\u53e3\u670d\u6db2|\u6ce8\u5c04\u5242)/.test(normalized)
+  if (!hasMedicineKeyword && !hasMedicineSignal && !isMedicinePage) {
     return null
   }
   if (!/(创建|新建|新增|添加|登记|录入|填写|准备|草稿|补充)/.test(normalized)) {
@@ -665,7 +720,11 @@ export function buildMedicineDraftPayload(
   }
   const summary: string[] = []
 
-  const medicineName = parseMedicineDraftName(task)
+  const parsedMedicineName = parseMedicineDraftName(task)
+  const medicineName =
+    parsedMedicineName && !isGenericMedicineDraftName(parsedMedicineName)
+      ? parsedMedicineName
+      : parseMedicineDraftNameFallback(task)
   if (medicineName) {
     query.name = medicineName
     summary.push(`药品名称：${medicineName}`)
@@ -677,7 +736,7 @@ export function buildMedicineDraftPayload(
     summary.push(`药品类型：${parseMedicineTypeLabel(medicineType)}`)
   }
 
-  const quantity = parseQuantityValue(task)
+  const quantity = parseQuantityValue(task) || parseQuantityValueFallback(task)
   if (quantity) {
     query.quantity = quantity
     summary.push(`库存数量：${quantity}`)
@@ -745,6 +804,22 @@ export function buildMedicineDraftPayload(
   } else if (/非处方药|OTC|otc/.test(task)) {
     query.is_prescription = '0'
     summary.push('分类：非处方药')
+  }
+
+  if (!query.specification) {
+    const specificationFallback = parseMedicineSpecificationFallback(task)
+    if (specificationFallback) {
+      query.specification = specificationFallback
+      summary.push(`规格：${query.specification}`)
+    }
+  }
+
+  if (!query.description) {
+    const usageDescription = parseMedicineUsageDescription(task)
+    if (usageDescription) {
+      query.description = usageDescription
+      summary.push(`说明：${query.description}`)
+    }
   }
 
   if (!query.name && !query.quantity && !query.specification && !query.manufacturer) {

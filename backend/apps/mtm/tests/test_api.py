@@ -1,8 +1,9 @@
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.medical_records.models import MedicalRecord
 from apps.mtm.models import (
     MTMAssessment,
     MTMFollowUp,
@@ -362,3 +363,98 @@ class MTMServiceCaseApiTest(TestCase):
         self.assertTrue(valid_response.json()["success"])
         assessment = MTMAssessment.objects.get(service_case=service_case)
         self.assertIsNotNone(assessment.completed_at)
+
+    def test_report_returns_pmr_and_map_blocks(self):
+        """
+        验证 report 接口会返回 PMR/MAP 聚合数据
+        """
+        service_case = MTMServiceCase.objects.create(
+            patient=self.patient,
+            assigned_pharmacist=self.pharmacist,
+            service_goal="梳理双源用药记录",
+        )
+        MTMInterview.objects.create(
+            service_case=service_case,
+            medication_history=[{"name": "缬沙坦", "dosage": "5mg"}],
+            allergy_history=[{"item": "青霉素"}],
+            lifestyle_info={"exercise": "每周三次"},
+        )
+        MTMAssessment.objects.create(
+            service_case=service_case,
+            summary="存在潜在相互作用风险",
+            risk_level="medium",
+        )
+        MTMPlan.objects.create(
+            service_case=service_case,
+            interventions=[{"title": "核对用药时间"}],
+        )
+        MedicalRecord.objects.create(
+            user=self.patient,
+            visit_date=timezone.localdate(),
+            hospital="协和医院",
+            department="心内科",
+            doctor="张医生",
+            diagnosis="高血压",
+            prescribed_medicines=[
+                {
+                    "name": "缬沙坦",
+                    "dosage": "5mg",
+                    "frequency": "qd",
+                    "instructions": "早餐后服用",
+                }
+            ],
+        )
+
+        response = self.client.get(f"/api/mtm/service-cases/{service_case.id}/report/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        data = response.json()["data"]
+        self.assertEqual(data["case_info"]["case_number"], service_case.case_number)
+        self.assertEqual(len(data["pmr"]["medical_records"]), 1)
+        self.assertEqual(
+            data["pmr"]["medical_records"][0]["medicines"][0]["name"],
+            "缬沙坦",
+        )
+        self.assertEqual(data["assessment"]["risk_level"], "medium")
+        self.assertEqual(data["map"]["interventions"][0]["title"], "核对用药时间")
+
+    def test_follow_up_create_and_complete_plan_flow(self):
+        """
+        验证随访新增与计划完成流程不会因序列化器或状态机错误失败
+        """
+        service_case = MTMServiceCase.objects.create(
+            patient=self.patient,
+            assigned_pharmacist=self.pharmacist,
+            status="intervening",
+        )
+
+        plan_response = self.client.post(
+            f"/api/mtm/service-cases/{service_case.id}/plan/complete/",
+            {
+                "interventions": [{"title": "加强服药提醒"}],
+                "priority": "high",
+                "patient_confirmation_status": "pending",
+                "patient_confirmation_notes": "",
+            },
+            format="json",
+        )
+        self.assertEqual(plan_response.status_code, 200)
+        service_case.refresh_from_db()
+        self.assertEqual(service_case.status, "intervening")
+
+        follow_up_response = self.client.post(
+            f"/api/mtm/service-cases/{service_case.id}/follow-ups/",
+            {
+                "follow_up_time": timezone.now().isoformat(),
+                "follow_up_method": "phone",
+                "execution_status": "pending",
+                "risk_change": "unknown",
+                "summary": "电话随访记录",
+                "next_follow_up_time": None,
+            },
+            format="json",
+        )
+        self.assertEqual(follow_up_response.status_code, 200)
+        service_case.refresh_from_db()
+        self.assertEqual(service_case.status, "following_up")

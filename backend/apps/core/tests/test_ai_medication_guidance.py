@@ -67,6 +67,7 @@ class MedicationGuidanceTest(TestCase):
         self.assertTrue(body.get("success"))
         self.assertFalse(body.get("data", {}).get("blocked"))
         self.assertEqual(body.get("data", {}).get("answer"), "用药建议内容")
+        self.assertFalse(body.get("data", {}).get("fallback_used"))
         self.assertEqual(calls["n"], 2)
 
     @override_settings(
@@ -129,6 +130,7 @@ class MedicationGuidanceTest(TestCase):
         self.assertTrue(body.get("success"))
         self.assertFalse(body.get("data", {}).get("blocked"))
         self.assertEqual(body.get("data", {}).get("answer"), "用药建议内容")
+        self.assertFalse(body.get("data", {}).get("fallback_used"))
         self.assertEqual(calls["n"], 2)
 
     @override_settings(
@@ -168,6 +170,7 @@ class MedicationGuidanceTest(TestCase):
         body = resp.json()
         self.assertTrue(body.get("success"))
         self.assertTrue(body.get("data", {}).get("blocked"))
+        self.assertFalse(body.get("data", {}).get("fallback_used"))
 
     @override_settings(
         BAICHUAN_M3_ENABLED=True,
@@ -198,6 +201,58 @@ class MedicationGuidanceTest(TestCase):
             resp = self.client.post(
                 "/api/ai/medication-guidance/",
                 {"question": "阿司匹林的用药方法"},
+                format="json",
+            )
+        finally:
+            views.requests.post = orig
+
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body.get("success"))
+        self.assertFalse(body.get("data", {}).get("blocked"))
+        self.assertIn("阿司匹林", body.get("data", {}).get("answer", ""))
+        self.assertFalse(body.get("data", {}).get("fallback_used"))
+
+    @override_settings(
+        BAICHUAN_M3_ENABLED=True,
+        BAICHUAN_M3_API_BASE_URL="http://llm.test",
+        BAICHUAN_M3_API_KEY="",
+        BAICHUAN_M3_MODEL="m",
+        BAICHUAN_M3_TIMEOUT_SECONDS=3,
+        BAICHUAN_M3_MAX_OUTPUT_TOKENS=64,
+        BAICHUAN_M3_CLASSIFIER_MAX_TOKENS=64,
+    )
+    def test_medication_guidance_named_drug_question_not_blocked_when_classifier_rejects(self):
+        from apps.core import views
+
+        calls = {"n": 0}
+
+        def _mock_post(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return _MockResponse(
+                    200,
+                    {
+                        "choices": [
+                            {
+                                "message": {
+                                    "content": '{"allowed": false, "reason": "Question is incomplete or invalid."}'
+                                }
+                            }
+                        ]
+                    },
+                )
+            return _MockResponse(
+                200,
+                {"choices": [{"message": {"content": "阿司匹林通常建议饭后或随餐服用。"}}]},
+            )
+
+        orig = views.requests.post
+        views.requests.post = _mock_post
+        try:
+            resp = self.client.post(
+                "/api/ai/medication-guidance/",
+                {"question": "阿司匹林怎么吃？"},
                 format="json",
             )
         finally:

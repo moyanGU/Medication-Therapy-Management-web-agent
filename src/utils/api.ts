@@ -182,10 +182,25 @@ const getApiErrorMessage = (error: unknown) => {
 }
 
 const getApiErrorCode = (error: unknown) => {
-  const details = (error as { details?: { error_code?: unknown } } | undefined)?.details
+  const details = (error as {
+    details?: {
+      error_code?: unknown
+      error?: { code?: unknown; type?: unknown }
+    }
+  } | undefined)?.details
   const detailCode = details?.error_code
   if (typeof detailCode === 'string' && detailCode.trim()) {
     return detailCode.trim()
+  }
+
+  const nestedCode = details?.error?.code
+  if (typeof nestedCode === 'string' && nestedCode.trim()) {
+    return nestedCode.trim()
+  }
+
+  const nestedType = details?.error?.type
+  if (typeof nestedType === 'string' && nestedType.trim()) {
+    return nestedType.trim().toUpperCase()
   }
 
   const code = (error as { code?: unknown } | undefined)?.code
@@ -1243,9 +1258,13 @@ class ApiClient {
       const decoder = new TextDecoder('utf-8')
       let buffer = ''
 
-      while (true) {
+      let reading = true
+      while (reading) {
         const { done, value } = await reader.read()
-        if (done) break
+        if (done) {
+          reading = false
+          continue
+        }
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
@@ -1296,6 +1315,7 @@ export const api = new ApiClient()
 
 // 导出类型和错误类
 export { ApiClient, ApiError }
+export { getApiErrorCode }
 export type {
   ApiErrorKind,
   ApiResponse,

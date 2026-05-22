@@ -96,28 +96,108 @@ function resolvePageAgentProxyBaseURL(): string {
  * 为页面助手构造认证请求函数，统一透传登录令牌。
  */
 function createAuthenticatedFetch(): typeof fetch {
+  let refreshPromise: Promise<boolean> | null = null
+
+  const tryRefreshAccessToken = async (): Promise<boolean> => {
+    const refreshToken = window.localStorage.getItem('refresh_token')
+    if (!refreshToken) {
+      return false
+    }
+
+    if (refreshPromise) {
+      return refreshPromise
+    }
+
+    const refreshUrl = `${resolveApiBaseURL().replace(/\/+$/, '')}/auth/refresh/`
+    refreshPromise = (async () => {
+      try {
+        const response = await fetch(refreshUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+          credentials: 'same-origin',
+        })
+
+        const raw = await response.json().catch(() => null)
+        if (!response.ok || !raw || raw.success !== true) {
+          return false
+        }
+
+        const payload = raw.data && typeof raw.data === 'object' ? raw.data : {}
+        const access =
+          payload.access_token || payload.access || payload?.tokens?.access || ''
+        const nextRefresh =
+          payload.refresh_token || payload.refresh || payload?.tokens?.refresh || ''
+
+        if (typeof access !== 'string' || !access.trim()) {
+          return false
+        }
+
+        window.localStorage.setItem('access_token', access)
+        if (typeof nextRefresh === 'string' && nextRefresh.trim()) {
+          window.localStorage.setItem('refresh_token', nextRefresh)
+        }
+        return true
+      } catch {
+        return false
+      } finally {
+        refreshPromise = null
+      }
+    })()
+
+    return refreshPromise
+  }
+
   return async (input, init) => {
-    const headers = new Headers(init?.headers)
+    const doFetch = async () => {
+      const headers = new Headers(init?.headers)
+      const token =
+        window.localStorage.getItem('access_token') ||
+        window.localStorage.getItem('token')
+
+      if (token) {
+        headers.set('Authorization', `Bearer ${token}`)
+      }
+
+      return fetch(input, {
+        ...init,
+        headers,
+        credentials: 'same-origin',
+      })
+    }
+
+    let response = await doFetch()
+    if (response.status !== 401) {
+      return response
+    }
+
+    const refreshed = await tryRefreshAccessToken()
+    if (!refreshed) {
+      return response
+    }
+
+    response = await doFetch()
+    if (response.status !== 401) {
+      return response
+    }
+
     const token =
       window.localStorage.getItem('access_token') ||
       window.localStorage.getItem('token')
-
-    if (token) {
-      headers.set('Authorization', `Bearer ${token}`)
+    if (!token) {
+      window.localStorage.removeItem('access_token')
+      window.localStorage.removeItem('refresh_token')
     }
-
-    return fetch(input, {
-      ...init,
-      headers,
-      credentials: 'same-origin',
-    })
+    return response
   }
 }
 
 /**
  * 生成面向 mtm-helper 的页面级指令。
  */
-function getPageInstructions(url: string): string {
+function getPageInstructions(): string {
   const scope = getCurrentPageAgentScopeDescription()
   const pageKey = getCurrentPageKey()
   const routeSpecificInstructions: Record<PageAgentPageKey, string> = {
@@ -144,7 +224,6 @@ function getPageInstructions(url: string): string {
     '优先总结页面上的关键信息、异常状态、缺失项、必填项与下一步建议。',
     '如果存在业务专用工具，优先调用对应工具再给出结论。',
     `当前页面标题：${document.title || '未知页面'}`,
-    `当前页面地址：${url}`,
     `当前页面范围：${scope}`,
     `页面专项要求：${routeSpecificInstructions[pageKey]}`,
   ].join('\n')
@@ -692,6 +771,151 @@ function buildPageAgentAnswer(result: ExecutionResult): string {
   return lines.join('\n')
 }
 
+function extractUserTask(task: string): string {
+  const match = task.match(/(?:^|\n)TASK:\s*([\s\S]+)$/i)
+  return (match?.[1] || task).trim()
+}
+
+function detectReadOnlyIntent(task: string): 'summary' | 'anomaly' | 'next-step' | null {
+  if (/(下一步建议|下一步该做什么|接下来.*建议|优先处理什么|下一步怎么做)/.test(task)) {
+    return 'next-step'
+  }
+
+  if (/(异常状态|异常情况|风险状态|最值得关注的异常|最值得关注的状态)/.test(task)) {
+    return 'anomaly'
+  }
+
+  if (/(总结当前页面|总结.*最重要|当前页面.*最重要.*信息|页面.*关键信息|页面.*概览)/.test(task)) {
+    return 'summary'
+  }
+
+  return null
+}
+
+function buildLocalSnapshotForPage(pageKey: PageAgentPageKey) {
+  switch (pageKey) {
+    case 'dashboard':
+      return buildDashboardSnapshot()
+    case 'medicines':
+      return buildMedicineSnapshot()
+    case 'reminders':
+      return buildReminderSnapshot()
+    default:
+      return buildCommonPageSnapshot()
+  }
+}
+
+function collectSnapshotMetrics(snapshot: Record<string, any>): string[] {
+  const metrics = Array.isArray(snapshot.metrics) ? snapshot.metrics : []
+  return metrics
+    .filter((item) => item && typeof item.label === 'string' && typeof item.value === 'string')
+    .slice(0, 4)
+    .map((item) => `${item.label}：${item.value}`)
+}
+
+function collectSnapshotSections(snapshot: Record<string, any>): string[] {
+  const groups = [
+    snapshot.sections,
+    snapshot.navigation,
+    snapshot.block_preview,
+  ].flatMap((items) => (Array.isArray(items) ? items : []))
+
+  return Array.from(new Set(groups.filter(Boolean))).slice(0, 8)
+}
+
+function collectSnapshotSignals(snapshot: Record<string, any>, sections: string[]): string[] {
+  const signals = Array.isArray(snapshot.attention_signals)
+    ? snapshot.attention_signals.filter(Boolean)
+    : []
+  const sectionSignals = sections.filter((item) =>
+    /(待确认|未响应|待发送|已过期|即将过期|库存不足|停用|失败|延迟|预警|风险|复诊|缺失)/.test(
+      item
+    )
+  )
+  return Array.from(new Set([...signals, ...sectionSignals])).slice(0, 4)
+}
+
+function buildNextStepSuggestion(pageKey: PageAgentPageKey, signals: string[], sections: string[]) {
+  const merged = [...signals, ...sections].join(' ')
+
+  if (/库存不足|已过期|即将过期|预警/.test(merged)) {
+    return '建议先进入药品管理，优先核对库存不足或临期药品，避免影响后续用药。'
+  }
+  if (/待确认|未响应|待发送|延迟/.test(merged)) {
+    return '建议先处理提醒相关的待确认和未响应事项，先把今天会影响执行的任务清掉。'
+  }
+  if (/复诊|随访|就医/.test(merged)) {
+    return '建议先核对复诊或随访安排，补齐日期和状态，避免后续记录断档。'
+  }
+
+  switch (pageKey) {
+    case 'dashboard':
+      return '建议先查看今日待处理和库存预警相关卡片，再决定进入药品管理还是提醒管理继续处理。'
+    case 'medicines':
+      return '建议先核对药品列表里的库存、效期和缺失字段，再处理需要新增或补录的药品。'
+    case 'reminders':
+      return '建议先查看活跃提醒和待处理提醒，再优先修正会影响今天执行的提醒项。'
+    case 'medical-records':
+      return '建议先核对最近就医记录和后续复诊安排，再补齐缺失字段或新增记录。'
+    default:
+      return '建议先处理页面中最明显的风险提示，再补齐当前列表或表单里缺失的信息。'
+  }
+}
+
+function buildLocalReadOnlyAnswer(task: string): PageAgentTaskResult | null {
+  const intent = detectReadOnlyIntent(task)
+  if (!intent) {
+    return null
+  }
+
+  const pageKey = getCurrentPageKey()
+  const snapshot = buildLocalSnapshotForPage(pageKey) as Record<string, any>
+  const metrics = collectSnapshotMetrics(snapshot)
+  const sections = collectSnapshotSections(snapshot)
+  const signals = collectSnapshotSignals(snapshot, sections)
+  const lines: string[] = []
+
+  if (intent === 'summary') {
+    lines.push('当前页面最重要的信息：')
+    if (metrics.length > 0) {
+      lines.push(...metrics.map((item) => `- ${item}`))
+    } else if (sections.length > 0) {
+      lines.push(`- 当前页面重点集中在：${sections.slice(0, 3).join('、')}`)
+    } else {
+      lines.push('- 当前页面可见信息较少，暂未提取到明确的概览指标。')
+    }
+    if (signals.length > 0) {
+      lines.push(`- 另外需要留意：${signals.join('、')}`)
+    }
+  } else if (intent === 'anomaly') {
+    if (signals.length > 0) {
+      lines.push(`当前最值得关注的异常状态是：${signals[0]}。`)
+      if (signals.length > 1) {
+        lines.push(`同时页面里还出现了：${signals.slice(1).join('、')}。`)
+      }
+    } else {
+      lines.push('当前页面没有识别到明显的异常标签或高风险提示。')
+      if (metrics.length > 0) {
+        lines.push(`你可以继续重点看这些概览指标：${metrics.slice(0, 3).join('，')}。`)
+      }
+    }
+  } else {
+    lines.push(buildNextStepSuggestion(pageKey, signals, sections))
+    if (signals.length > 0) {
+      lines.push(`优先依据页面里的这些信号处理：${signals.join('、')}。`)
+    }
+  }
+
+  lines.push('', '执行来源：页面规则')
+
+  return {
+    success: true,
+    answer: lines.join('\n'),
+    steps: ['步骤 1：识别为只读页面分析任务', '步骤 2：基于当前页面快照直接生成结果'],
+    proposal: null,
+  }
+}
+
 /**
  * 执行当前页面的分析或辅助填写任务。
  */
@@ -700,13 +924,11 @@ export async function executePageAgentTask(
   onStep?: OnStepCallback
 ): Promise<PageAgentTaskResult> {
   const pathname = window.location.pathname
-  const normalizedTask = task.trim()
+  const normalizedTask = extractUserTask(task)
   console.log('[PageAgent] 开始处理任务', {
     task: normalizedTask,
     pathname,
   })
-
-  currentOnStep = onStep || null
 
   if (!canUsePageAgentOnCurrentPage(pathname)) {
     throw new Error(
@@ -741,11 +963,18 @@ export async function executePageAgentTask(
     }
   }
 
+  const localAnswer = buildLocalReadOnlyAnswer(normalizedTask)
+  if (localAnswer) {
+    console.log('[PageAgent] 命中只读页面规则直答', { task: normalizedTask, pathname })
+    return localAnswer
+  }
+
   const agent = getPageAgent()
+  currentOnStep = onStep || null
   const normalizedPrompt = [
     '请基于当前 mtm-helper 页面完成保守分析或辅助填写任务。',
     '不要自动提交，也不要假设隐藏数据存在。',
-    `用户任务：${normalizedTask}`,
+    `用户任务：${normalizedTask.slice(0, 240)}`,
   ].join('\n')
 
   let result

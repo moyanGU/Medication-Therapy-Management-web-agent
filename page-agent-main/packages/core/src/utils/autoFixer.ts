@@ -133,7 +133,17 @@ function validateAction(action: any, tools: Map<string, PageAgentTool>): any {
 	const toolName = Object.keys(action)[0]
 	if (!toolName) return action
 
-	const tool = tools.get(toolName)
+	const normalizedToolName = normalizeToolName(toolName)
+	const rawValue = action[toolName]
+	const toolNameMap = new Map<string, string>()
+	for (const key of tools.keys()) {
+		toolNameMap.set(normalizeToolName(key), key)
+	}
+	const canonicalToolName =
+		tools.get(toolName) && toolName
+			? toolName
+			: toolNameMap.get(normalizedToolName) ?? inferToolNameFromActionText(rawValue, toolNameMap) ?? toolName
+	const tool = tools.get(canonicalToolName)
 	if (!tool) {
 		const available = Array.from(tools.keys()).join(', ')
 		throw new InvokeError(
@@ -142,7 +152,14 @@ function validateAction(action: any, tools: Map<string, PageAgentTool>): any {
 		)
 	}
 
-	let value = action[toolName]
+	let value = rawValue
+	if (value === undefined && normalizedToolName && normalizedToolName !== toolName) {
+		value = action[normalizedToolName]
+	}
+	if (value === undefined && canonicalToolName !== toolName) {
+		value = action[canonicalToolName]
+	}
+	value = normalizeActionValue(canonicalToolName, value)
 	const schema = tool.inputSchema
 
 	// coerce primitive input for single-field tools
@@ -160,11 +177,97 @@ function validateAction(action: any, tools: Map<string, PageAgentTool>): any {
 	if (!result.success) {
 		throw new InvokeError(
 			InvokeErrorType.INVALID_TOOL_ARGS,
-			`Invalid input for action "${toolName}": ${z.prettifyError(result.error)}`
+			`Invalid input for action "${canonicalToolName}": ${z.prettifyError(result.error)}`
 		)
 	}
 
-	return { [toolName]: result.data }
+	return { [canonicalToolName]: result.data }
+}
+
+function normalizeToolName(name: string): string {
+	return String(name || '')
+		.trim()
+		.replace(/\s+/g, '_')
+		.replace(/[^\w-]/g, '')
+		.replace(/_+/g, '_')
+		.replace(/^_|_$/g, '')
+		.toLowerCase()
+}
+
+function inferToolNameFromActionText(
+	value: unknown,
+	toolNameMap: Map<string, string>
+): string | null {
+	if (typeof value !== 'string') {
+		return null
+	}
+
+	const normalizedValue = normalizeToolName(value)
+	if (!normalizedValue) {
+		return null
+	}
+
+	const directMatch = toolNameMap.get(normalizedValue)
+	if (directMatch) {
+		return directMatch
+	}
+
+	if (normalizedValue.includes('scroll')) {
+		return toolNameMap.get('scroll') ?? null
+	}
+	if (normalizedValue.includes('wait') || normalizedValue.includes('sleep')) {
+		return toolNameMap.get('wait') ?? null
+	}
+	if (
+		normalizedValue.includes('done') ||
+		normalizedValue.includes('finish') ||
+		normalizedValue.includes('complete') ||
+		normalizedValue.includes('end')
+	) {
+		return toolNameMap.get('done') ?? null
+	}
+
+	return null
+}
+
+function normalizeActionValue(toolName: string, value: any): any {
+	if (typeof value !== 'string') {
+		return value
+	}
+
+	const normalizedValue = value.trim().toLowerCase()
+
+	if (toolName === 'scroll') {
+		const directionDown = !/(up|向上|上滚|上滑|顶部)/.test(normalizedValue)
+		return {
+			down: directionDown,
+			num_pages: 0.1,
+		}
+	}
+
+	if (toolName === 'wait') {
+		const secondsMatch = normalizedValue.match(/(\d+(?:\.\d+)?)/)
+		const seconds = secondsMatch ? Number(secondsMatch[1]) : 1
+		return {
+			seconds: Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, 10) : 1,
+		}
+	}
+
+	if (toolName === 'done') {
+		if (/^(done|finish|complete|end|stop|完成|结束)$/.test(normalizedValue)) {
+			return {
+				success: true,
+				text: '',
+			}
+		}
+
+		return {
+			success: true,
+			text: value,
+		}
+	}
+
+	return value
 }
 
 /**

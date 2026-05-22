@@ -82,25 +82,17 @@ class PageAgentProxyTest(TestCase):
         BAICHUAN_M3_TIMEOUT_SECONDS=5,
         BAICHUAN_M3_MAX_OUTPUT_TOKENS=256,
     )
-    def test_page_agent_proxy_retries_without_v1_when_primary_returns_unexpected_shape(self):
+    def test_page_agent_proxy_returns_ai_invalid_response_when_primary_returns_error_body(self):
         from apps.core import views
 
         captured_urls = []
 
         def _mock_post(*args, **kwargs):
             captured_urls.append(args[0])
-            if args[0].endswith("/v1/chat/completions"):
-                return _MockResponse(
-                    200,
-                    {"error": {"message": "Unexpected endpoint or method"}},
-                    text='{"error":{"message":"Unexpected endpoint or method"}}',
-                )
             return _MockResponse(
                 200,
-                {
-                    "id": "chatcmpl-test-fallback",
-                    "choices": [{"message": {"content": "fallback ok"}}],
-                },
+                {"error": {"message": "Unexpected endpoint or method"}},
+                text='{"error":{"message":"Unexpected endpoint or method"}}',
             )
 
         orig = views.requests.post
@@ -118,15 +110,17 @@ class PageAgentProxyTest(TestCase):
         finally:
             views.requests.post = orig
 
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 502)
         self.assertEqual(
             captured_urls,
-            [
-                "http://llm.test/v1/chat/completions",
-                "http://llm.test/chat/completions",
-            ],
+            ["http://llm.test/v1/chat/completions"],
         )
-        self.assertEqual(resp.json()["choices"][0]["message"]["content"], "fallback ok")
+        body = resp.json()
+        self.assertEqual(body["error_code"], "AI_INVALID_RESPONSE")
+        self.assertEqual(body["status_code"], 502)
+        self.assertEqual(body["error"]["type"], "ai_invalid_response")
+        self.assertEqual(body["error"]["code"], "AI_INVALID_RESPONSE")
+        self.assertIn("AI", body["error"]["message"])
 
     @override_settings(
         BAICHUAN_M3_ENABLED=True,
@@ -259,7 +253,8 @@ class PageAgentProxyTest(TestCase):
             views._openai_chat_completion = orig
 
         self.assertEqual(resp.status_code, 502)
-        self.assertEqual(resp.json()["error"]["type"], "upstream_error")
+        self.assertEqual(resp.json()["error_code"], "AI_INVALID_RESPONSE")
+        self.assertEqual(resp.json()["error"]["type"], "ai_invalid_response")
 
     @override_settings(
         BAICHUAN_M3_ENABLED=True,
@@ -275,3 +270,200 @@ class PageAgentProxyTest(TestCase):
 
         self.assertEqual(resp.status_code, 400)
         self.assertIn("messages", resp.json()["error"]["message"])
+
+    @override_settings(
+        BAICHUAN_M3_ENABLED=True,
+        BAICHUAN_M3_API_BASE_URL="http://llm.test",
+        BAICHUAN_M3_API_KEY="secret-key",
+        BAICHUAN_M3_MODEL="proxy-model",
+        BAICHUAN_M3_TIMEOUT_SECONDS=5,
+        BAICHUAN_M3_MAX_OUTPUT_TOKENS=256,
+    )
+    def test_page_agent_proxy_does_not_force_tool_choice_without_tools(self):
+        from apps.core import views
+
+        captured = {}
+
+        def _mock_post(*args, **kwargs):
+            captured["json"] = kwargs.get("json", {})
+            return _MockResponse(
+                200,
+                {
+                    "id": "chatcmpl-test",
+                    "choices": [{"message": {"content": "椤甸潰鎽樿"}}],
+                },
+            )
+
+        orig = views.requests.post
+        views.requests.post = _mock_post
+        try:
+            resp = self.client.post(
+                "/api/ai/page-agent/chat/completions/",
+                {
+                    "messages": [{"role": "user", "content": "鎬荤粨褰撳墠椤甸潰"}],
+                    "temperature": 0.2,
+                    "max_tokens": 999,
+                },
+                format="json",
+            )
+        finally:
+            views.requests.post = orig
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn("tool_choice", captured["json"])
+
+    @override_settings(
+        BAICHUAN_M3_ENABLED=True,
+        BAICHUAN_M3_API_BASE_URL="http://llm.test",
+        BAICHUAN_M3_API_KEY="secret-key",
+        BAICHUAN_M3_MODEL="proxy-model",
+        BAICHUAN_M3_TIMEOUT_SECONDS=5,
+        BAICHUAN_M3_MAX_OUTPUT_TOKENS=256,
+    )
+    def test_page_agent_proxy_prefers_native_tool_calls_when_upstream_supports_them(self):
+        from apps.core import views
+
+        captured_urls = []
+
+        def _mock_post(*args, **kwargs):
+            captured_urls.append(args[0])
+            return _MockResponse(
+                200,
+                {
+                    "id": "chatcmpl-test",
+                    "choices": [
+                        {
+                            "message": {
+                                "role": "assistant",
+                                "content": "",
+                                "tool_calls": [
+                                    {
+                                        "id": "call_1",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "AgentOutput",
+                                            "arguments": '{"text":"页面摘要","success":true}',
+                                        },
+                                    }
+                                ],
+                            },
+                            "finish_reason": "tool_calls",
+                        }
+                    ],
+                },
+            )
+
+        def _mock_completion(**kwargs):
+            raise AssertionError("fallback should not run when upstream already returned tool_calls")
+
+        orig_post = views.requests.post
+        orig_completion = views._openai_chat_completion
+        views.requests.post = _mock_post
+        views._openai_chat_completion = _mock_completion
+        try:
+            resp = self.client.post(
+                "/api/ai/page-agent/chat/completions/",
+                {
+                    "messages": [{"role": "user", "content": "总结当前页面"}],
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": "AgentOutput",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "text": {"type": "string"},
+                                        "success": {"type": "boolean"},
+                                    },
+                                    "required": ["text", "success"],
+                                },
+                            },
+                        }
+                    ],
+                    "tool_choice": {
+                        "type": "function",
+                        "function": {"name": "AgentOutput"},
+                    },
+                },
+                format="json",
+            )
+        finally:
+            views.requests.post = orig_post
+            views._openai_chat_completion = orig_completion
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(captured_urls, ["http://llm.test/v1/chat/completions"])
+        self.assertEqual(
+            resp.json()["choices"][0]["message"]["tool_calls"][0]["function"]["name"],
+            "AgentOutput",
+        )
+
+    @override_settings(
+        BAICHUAN_M3_ENABLED=True,
+        BAICHUAN_M3_API_BASE_URL="http://llm.test",
+        BAICHUAN_M3_API_KEY="secret-key",
+        BAICHUAN_M3_MODEL="proxy-model",
+        BAICHUAN_M3_TIMEOUT_SECONDS=5,
+        BAICHUAN_M3_MAX_OUTPUT_TOKENS=256,
+    )
+    def test_page_agent_proxy_sends_string_tool_choice_to_upstream(self):
+        from apps.core import views
+
+        captured = {}
+
+        def _mock_post(*args, **kwargs):
+            captured["json"] = kwargs.get("json", {})
+            return _MockResponse(
+                200,
+                {"error": {"message": "Invalid tool_choice type: 'object'"}},
+                text='{"error":{"message":"Invalid tool_choice type: \'object\'"}}',
+            )
+
+        def _mock_completion(**kwargs):
+            self.assertIn("AgentOutput", kwargs["messages"][0]["content"])
+            return '{"text":"page summary","success":true}'
+
+        orig_post = views.requests.post
+        orig_completion = views._openai_chat_completion
+        views.requests.post = _mock_post
+        views._openai_chat_completion = _mock_completion
+        try:
+            resp = self.client.post(
+                "/api/ai/page-agent/chat/completions/",
+                {
+                    "messages": [{"role": "user", "content": "总结当前页面"}],
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": "AgentOutput",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "text": {"type": "string"},
+                                        "success": {"type": "boolean"},
+                                    },
+                                    "required": ["text", "success"],
+                                },
+                            },
+                        }
+                    ],
+                    "tool_choice": {
+                        "type": "function",
+                        "function": {"name": "AgentOutput"},
+                    },
+                },
+                format="json",
+            )
+        finally:
+            views.requests.post = orig_post
+            views._openai_chat_completion = orig_completion
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(captured["json"]["tool_choice"], "required")
+        self.assertNotIn("_tool_choice_spec", captured["json"])
+        self.assertEqual(
+            resp.json()["choices"][0]["message"]["tool_calls"][0]["function"]["name"],
+            "AgentOutput",
+        )

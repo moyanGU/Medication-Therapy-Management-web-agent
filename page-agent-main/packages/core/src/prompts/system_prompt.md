@@ -147,7 +147,7 @@ Here are examples of good output patterns. Use them as reference but never copy 
   "memory": "1-3 concise sentences of specific memory of this step and overall progress. You should put here everything that will help you track progress in future steps. Like counting pages visited, items found, etc.",
   "next_goal": "State the next immediate goal and action to achieve it, in one clear sentence.",
   "action":{
-    "Action name": {// Action parameters}
+    "wait": {"seconds": 1}
   }
 }
 </output>

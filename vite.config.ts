@@ -5,9 +5,6 @@ import Inspector from 'unplugin-vue-dev-locator/vite'
 import traeBadgePlugin from 'vite-plugin-trae-solo-badge'
 import { VitePWA } from 'vite-plugin-pwa'
 
-/**
- * 仅按少量重依赖组做最小拆包，优先缓解大 chunk warning。
- */
 function createManualChunks(id: string): string | undefined {
   if (!id.includes('node_modules')) {
     return undefined
@@ -32,13 +29,11 @@ function createManualChunks(id: string): string | undefined {
   return undefined
 }
 
-// https://vite.dev/config/
 export default defineConfig({
   build: {
     sourcemap: 'hidden',
     outDir: 'dist',
     emptyOutDir: true,
-    // 强制复制 public 目录到构建产物，避免某些环境下未拷贝导致 /icons/* 等资源缺失
     copyPublicDir: true,
     rollupOptions: {
       output: {
@@ -46,14 +41,10 @@ export default defineConfig({
       },
     },
   },
-  // 明确声明 public 目录，确保 Vite 在不同环境下行为一致
   publicDir: 'public',
   base: '/',
   plugins: [
     vue({
-      // Ensure absolute URLs like "/icons/app-icon.svg" in Vue SFC templates
-      // are preserved as-is and not transformed into Rollup imports.
-      // This keeps references to assets in /public working in production builds.
       template: {
         transformAssetUrls: {
           includeAbsolute: false,
@@ -105,26 +96,26 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'), // ✅ 定义 @ = src
+      '@': path.resolve(__dirname, './src'),
+      '@page-agent/core': path.resolve(
+        __dirname,
+        './page-agent-main/packages/core/src/PageAgentCore.ts'
+      ),
+      '@page-agent/page-controller': path.resolve(
+        __dirname,
+        './page-agent-main/packages/page-controller/src/PageController.ts'
+      ),
     },
   },
   optimizeDeps: {
-    exclude: [
-      'wouter',
-      'lucide-react',
-      'simple-icons',
-      'motion/react',
-      'page-agent',
-      'rough-notation'
-    ]
+    exclude: ['wouter', 'lucide-react', 'simple-icons', 'motion/react', 'page-agent', 'rough-notation'],
   },
   server: {
     host: '0.0.0.0',
     port: 5173,
     strictPort: true,
     watch: {
-      ignored: ['**/backend/venv/**', '**/backend/.venv/**', '**/page-agent-main/**']
-    }
-  }
-  // 已移除 server.proxy，避免使用代理，所有请求应直接指向后端基地址
+      ignored: ['**/backend/venv/**', '**/backend/.venv/**'],
+    },
+  },
 })

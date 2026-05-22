@@ -486,6 +486,23 @@ BAICHUAN_M3_CLASSIFIER_MAX_TOKENS = int(
 )
 # -------------------------------------------------------------------------------
 
+# ---------------- AI Fallback (OpenAI Compatible) ----------------
+AI_FALLBACK_API_BASE_URL = os.getenv(
+    "AI_FALLBACK_API_BASE_URL", os.getenv("OPENAI_API_BASE_URL", "")
+).strip()
+AI_FALLBACK_API_KEY = os.getenv("AI_FALLBACK_API_KEY", os.getenv("OPENAI_API_KEY", "")).strip()
+AI_FALLBACK_MODEL = os.getenv("AI_FALLBACK_MODEL", os.getenv("OPENAI_MODEL", "")).strip()
+AI_FALLBACK_TIMEOUT_SECONDS = float(
+    os.getenv("AI_FALLBACK_TIMEOUT_SECONDS", os.getenv("OPENAI_TIMEOUT_SECONDS", "30"))
+)
+AI_FALLBACK_MAX_OUTPUT_TOKENS = int(
+    os.getenv("AI_FALLBACK_MAX_OUTPUT_TOKENS", "1024")
+)
+AI_FALLBACK_CLASSIFIER_MAX_TOKENS = int(
+    os.getenv("AI_FALLBACK_CLASSIFIER_MAX_TOKENS", "256")
+)
+# -------------------------------------------------------------------------------
+
 # Logging
 # 日志级别与滚动策略可通过环境变量调控，避免单文件无限增长
 LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG" if DEBUG else "INFO")

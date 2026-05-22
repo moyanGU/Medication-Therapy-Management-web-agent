@@ -9,10 +9,16 @@ export type AssistantMode = 'page-agent' | 'medication'
 
 type SummaryCache = Record<string, string>
 
+const MAX_CONTEXT_CHARS = 240
+
+function trimContext(value: string, limit = MAX_CONTEXT_CHARS) {
+  const text = (value || '').trim()
+  if (!text || text.length <= limit) return text
+  return `${text.slice(0, limit)}...`
+}
+
 export function createAssistantEngine() {
   const summaryCache: SummaryCache = {}
-
-  // 跨页面共享上下文 (Global cross-route reasoning)
   let globalContextMemory = ''
 
   const getSessionIdBase = (pathname: string) => {
@@ -26,9 +32,8 @@ export function createAssistantEngine() {
     return 'app:default'
   }
 
-  const buildSessionId = (pathname: string, mode: AssistantMode) => {
-    return `${getSessionIdBase(pathname)}:${mode}`
-  }
+  const buildSessionId = (pathname: string, mode: AssistantMode) =>
+    `${getSessionIdBase(pathname)}:${mode}`
 
   const ensureSummary = async (sessionId: string) => {
     if (summaryCache[sessionId] !== undefined) return summaryCache[sessionId]
@@ -44,28 +49,24 @@ export function createAssistantEngine() {
 
   const augmentUserText = (mode: AssistantMode, text: string, summary: string) => {
     const cleaned = (text || '').trim()
-    
-    // 合并跨路由全局记忆和当前页面记忆
-    let combinedContext = ''
-    if (globalContextMemory) {
-      combinedContext += `【全局跨页面记忆】\n${globalContextMemory}\n\n`
-    }
-    if (summary) {
-      combinedContext += `【当前页面记忆】\n${summary}\n\n`
-    }
-    
-    if (!combinedContext) return cleaned
+    const parts: string[] = []
 
-    if (mode === 'page-agent') {
-      return `${combinedContext.trim()}\n\n任务：${cleaned}`
-    }
-    return `${combinedContext.trim()}\n\n问题：${cleaned}`
+    const globalSummary = trimContext(globalContextMemory)
+    if (globalSummary) parts.push(`[GLOBAL]\n${globalSummary}`)
+
+    const pageSummary = trimContext(summary)
+    if (pageSummary) parts.push(`[PAGE]\n${pageSummary}`)
+
+    if (!parts.length) return cleaned
+
+    const prefix = trimContext(parts.join('\n\n'), 500)
+    return mode === 'page-agent'
+      ? `${prefix}\n\nTASK: ${cleaned}`
+      : `${prefix}\n\nQUESTION: ${cleaned}`
   }
 
   const syncGlobalContext = (newContext: string) => {
-    if (newContext) {
-      globalContextMemory = newContext
-    }
+    if (newContext) globalContextMemory = trimContext(newContext, 320)
   }
 
   const persist = async (sessionId: string, messages: SessionMemoryMessage[]) => {
@@ -75,12 +76,15 @@ export function createAssistantEngine() {
       const shouldSummarize =
         (!summary && messages.length >= 10) || (summary && messages.length % 16 === 0)
       if (!shouldSummarize) return summary
-      const result = await summarizeSessionMemory(sessionId, messages)
-      summaryCache[sessionId] = result.summary || ''
-      
-      // 更新跨路由记忆 (保持全局感知)
-      syncGlobalContext(result.summary || '')
-      
+
+      try {
+        const result = await summarizeSessionMemory(sessionId, messages)
+        summaryCache[sessionId] = result.summary || ''
+        syncGlobalContext(result.summary || '')
+      } catch {
+        // keep current summary if summarization fails
+      }
+
       return summaryCache[sessionId]
     } catch {
       return summaryCache[sessionId] || ''
@@ -95,4 +99,3 @@ export function createAssistantEngine() {
     syncGlobalContext,
   }
 }
-

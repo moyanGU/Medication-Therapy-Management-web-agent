@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildReminderDraftPayload } from '../services/pageAgentDraftParser.ts'
+import {
+  buildMedicineDraftPayload,
+  buildReminderDraftPayload,
+} from '../services/pageAgentDraftParser.ts'
 
 test('解析早晚各一次与长期草稿', () => {
   const result = buildReminderDraftPayload(
@@ -292,4 +295,18 @@ test('解析中文半片剂量', () => {
 test('非提醒创建意图不返回草稿', () => {
   const result = buildReminderDraftPayload('帮我看看今天的提醒情况', '2026-03-26')
   assert.equal(result, null)
+})
+test('medicine draft parses add-new-medicine request with usage summary', () => {
+  const result = buildMedicineDraftPayload(
+    '添加一个新药，维生素B1片，10毫克，100片。用药时间是每天3次，一次1片',
+    '2026-05-21'
+  )
+
+  assert.ok(result)
+  assert.equal(result.query.name, '维生素B1片')
+  assert.equal(result.query.medicine_type, 'tablet')
+  assert.equal(result.query.specification, '10毫克')
+  assert.equal(result.query.quantity, '100')
+  assert.equal(result.query.description, '用法用量：每天3次；一次1片')
+  assert.equal(result.query.open_dialog, '1')
 })

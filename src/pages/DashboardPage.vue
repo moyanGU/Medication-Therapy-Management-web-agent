@@ -1309,9 +1309,9 @@ const checkProactiveGuide = () => {
     setTimeout(() => {
       let task = ''
       if (isPharmacist.value) {
-        task = '您好！我是您的 AI 助理。这里是 MTM 工作台。您可以从【服务单】开始接单，并进行患者的五维用药评估，随后我会协助您一键生成 SOAP 药历和 PMR/MAP 报告。有什么我可以帮您的吗？'
+        task = '您好，我是您的 AI 助理。可从【服务单】开始接单。'
       } else {
-        task = '爷爷奶奶您好！我是您的专属用药助手。看您有很多药要吃，别担心，我会按时提醒您。您可以先去【用药记录】添加您正在吃的药，或者直接对我说“我要添加药品”哦。'
+        task = '您好，我是您的专属用药助手。可先去【用药记录】添加正在吃的药。'
       }
       
       // Trigger the AiAssistant via route query

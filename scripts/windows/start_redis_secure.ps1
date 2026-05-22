@@ -1,97 +1,135 @@
 <#
- .SYNOPSIS
-  从 backend/.env 读取 REDIS_PASSWORD 并安全启动本地 Redis（Windows），确保与 Django 配置一致。
+.SYNOPSIS
+  Read REDIS_PASSWORD from backend/.env and start local Redis on Windows.
 
- .DESCRIPTION
-  - 自动解析仓库根目录下 backend/.env，提取 REDIS_PASSWORD 环境变量。
-  - 使用 D:\Redis-x64-3.0.504\redis-server.exe 按仓库根目录下 redis.conf 启动服务。
-  - 若读取到 REDIS_PASSWORD，则以 --requirepass 方式启用认证；否则以无密码方式启动（仅用于本地开发）。
-  - 输出关键日志，便于控制台诊断。
-
- .PARAMETER EnvPath
-  可选，显式指定 .env 文件路径；不指定时默认读取 仓库根目录/backend/.env。
-
- .PARAMETER RedisExe
-  可选，显式指定 redis-server.exe 路径；默认为 D:\Redis-x64-3.0.504\redis-server.exe。
-
- .NOTES
-  - 请勿将敏感信息提交到版本库。此脚本仅在本地开发环境使用。
-  - 启动后可通过 `netstat -ano | findstr 6379` 验证监听端口。
+.DESCRIPTION
+  - Default env file: backend/.env
+  - Default Redis server: D:\Redis-x64-3.0.504\redis-server.exe
+  - If REDIS_PASSWORD exists, start Redis with --requirepass
+  - If port 6379 is already listening, skip startup
 #>
 
 param(
   [string]$EnvPath = "",
-  [string]$RedisExe = "D:\\Redis-x64-3.0.504\\redis-server.exe"
+  [string]$RedisExe = ""
+)
+
+$ErrorActionPreference = "Stop"
+
+$defaultRedisCandidates = @(
+  "D:\\Redis-x64-3.0.504\\redis-server.exe",
+  "C:\\Redis\\redis-server.exe",
+  "C:\\Program Files\\Redis\\redis-server.exe"
 )
 
 function Get-RepoRoot {
-  <# 获取仓库根目录 #>
-  try {
-    $root = Resolve-Path (Join-Path $PSScriptRoot "..\..") | Select-Object -ExpandProperty Path
-    return $root
-  } catch {
-    Write-Warning "[start_redis_secure] 无法解析仓库根目录，使用当前脚本目录上两级为根"
-    return (Join-Path $PSScriptRoot "..\..")
-  }
+  return (Resolve-Path (Join-Path $PSScriptRoot "..\\..")).Path
 }
 
-function Parse-DotEnv([string]$Path) {
-  <# 解析 .env 文件为字典 #>
+function Parse-DotEnv {
+  param([string]$Path)
+
   $result = @{}
   if (-not (Test-Path $Path)) {
-    Write-Warning "[start_redis_secure] .env 文件不存在: $Path"
-    return $result
+    throw "Missing .env file: $Path"
   }
-  Get-Content -Path $Path | ForEach-Object {
-    $line = $_.Trim()
-    if (-not $line) { return }
-    if ($line.StartsWith('#')) { return }
-    if ($line -match '^(?<key>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<val>.*)$') {
-      $key = $Matches['key']
-      $val = $Matches['val'].Trim()
-      # 去除包裹引号
-      if ($val.StartsWith('"') -and $val.EndsWith('"')) { $val = $val.Trim('"') }
-      if ($val.StartsWith("'") -and $val.EndsWith("'")) { $val = $val.Trim("'") }
-      $result[$key] = $val
+
+  foreach ($line in Get-Content -Path $Path) {
+    $trimmed = $line.Trim()
+    if (-not $trimmed -or $trimmed.StartsWith("#")) {
+      continue
+    }
+
+    if ($trimmed -match "^(?<key>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<value>.*)$") {
+      $key = $Matches["key"]
+      $value = $Matches["value"].Trim()
+      if ($value.StartsWith('"') -and $value.EndsWith('"')) {
+        $value = $value.Substring(1, $value.Length - 2)
+      }
+      elseif ($value.StartsWith("'") -and $value.EndsWith("'")) {
+        $value = $value.Substring(1, $value.Length - 2)
+      }
+      $result[$key] = $value
     }
   }
+
   return $result
 }
 
+function Test-PortListening {
+  param([int]$Port)
+
+  $match = netstat -ano | Select-String ":$Port\s+.*LISTENING"
+  return $null -ne $match
+}
+
+function Resolve-ExecutablePath {
+  param(
+    [string]$PreferredPath,
+    [string[]]$Candidates,
+    [string]$CommandName,
+    [string]$Label
+  )
+
+  if ($PreferredPath) {
+    if (Test-Path $PreferredPath) {
+      return (Resolve-Path $PreferredPath).Path
+    }
+
+    throw "Configured $Label path does not exist: $PreferredPath"
+  }
+
+  $command = Get-Command $CommandName -ErrorAction SilentlyContinue
+  if ($command -and $command.Source -and (Test-Path $command.Source)) {
+    return $command.Source
+  }
+
+  foreach ($candidate in $Candidates) {
+    if (Test-Path $candidate) {
+      return (Resolve-Path $candidate).Path
+    }
+  }
+
+  throw "Could not find $Label. Pass -RedisExe explicitly or add $CommandName to PATH."
+}
+
 $repoRoot = Get-RepoRoot
-Write-Host "[start_redis_secure] 仓库根目录: $repoRoot"
+$envFile = if ($EnvPath) { $EnvPath } else { Join-Path $repoRoot "backend\\.env" }
+$redisConf = Join-Path $repoRoot "redis.conf"
+$resolvedRedisExe = Resolve-ExecutablePath -PreferredPath $RedisExe -Candidates $defaultRedisCandidates -CommandName "redis-server" -Label "redis-server.exe"
 
-$envFile = if ($EnvPath) { $EnvPath } else { Join-Path $repoRoot "backend\.env" }
-Write-Host "[start_redis_secure] 读取 .env: $envFile"
+Write-Host "[start_redis_secure] repo root: $repoRoot"
+Write-Host "[start_redis_secure] env file : $envFile"
+Write-Host "[start_redis_secure] redis exe : $resolvedRedisExe"
+
+if (-not (Test-Path $redisConf)) {
+  throw "Missing redis.conf: $redisConf"
+}
+
+if (Test-PortListening -Port 6379) {
+  Write-Host "[start_redis_secure] Port 6379 is already listening. Skip startup."
+  exit 0
+}
+
 $envVars = Parse-DotEnv -Path $envFile
+$redisPassword = $envVars["REDIS_PASSWORD"]
 
-$redisPassword = $envVars['REDIS_PASSWORD']
+$arguments = @("`"$redisConf`"")
 if ($redisPassword) {
-  Write-Host "[start_redis_secure] 检测到 REDIS_PASSWORD（已屏蔽）"
-  # 注入当前会话环境变量，但不回显具体值
-  $env:REDIS_PASSWORD = $redisPassword
-} else {
-  Write-Warning "[start_redis_secure] 未在 .env 中检测到 REDIS_PASSWORD，将以无密码方式启动（仅开发环境允许）"
+  $arguments += "--requirepass"
+  $arguments += $redisPassword
+  Write-Host "[start_redis_secure] Starting Redis with requirepass."
+}
+else {
+  Write-Warning "[start_redis_secure] REDIS_PASSWORD not found. Starting Redis without password."
 }
 
-$confPath = Join-Path $repoRoot "redis.conf"
-if (-not (Test-Path $confPath)) {
-  Write-Error "[start_redis_secure] 未找到 redis.conf: $confPath"
-  exit 1
+Start-Process -FilePath $resolvedRedisExe -ArgumentList $arguments -WindowStyle Minimized
+Start-Sleep -Seconds 2
+
+if (Test-PortListening -Port 6379) {
+  Write-Host "[start_redis_secure] Redis is listening on 6379."
+  exit 0
 }
 
-if (-not (Test-Path $RedisExe)) {
-  Write-Error "[start_redis_secure] 未找到 redis-server.exe: $RedisExe"
-  exit 1
-}
-
-Write-Host "[start_redis_secure] 使用配置文件启动: $confPath"
-if ($redisPassword) {
-  Write-Host "[start_redis_secure] 以启用认证方式启动 Redis"
-  Start-Process -FilePath $RedisExe -ArgumentList "`"$confPath`"", "--requirepass $redisPassword" -WindowStyle Minimized
-} else {
-  Write-Host "[start_redis_secure] 以无密码方式启动 Redis（仅开发环境）"
-  Start-Process -FilePath $RedisExe -ArgumentList "`"$confPath`"" -WindowStyle Minimized
-}
-
-Write-Host "[start_redis_secure] 已发起启动，请使用 'netstat -ano | findstr 6379' 验证监听状态"
+throw "Redis did not start listening on 6379. Please inspect the local Redis process."

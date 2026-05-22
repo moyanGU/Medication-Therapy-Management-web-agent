@@ -28,12 +28,42 @@ class MedicationAgent(BaseAgent):
             return True
 
         q_compact = re.sub(r"\s+", "", q).lower()
-        keyword_hits = [
-            "药", "用药", "服用", "剂量", "用法", "用量", "禁忌", "副作用", "相互作用",
-            "饭前", "饭后", "一次", "每日", "多久", "aspirin", "amoxicillin", "ibuprofen",
-            "paracetamol", "acetaminophen", "阿司匹林", "阿莫西林", "布洛芬", "头孢", "对乙酰氨基酚",
+        drug_keywords = [
+            "aspirin",
+            "amoxicillin",
+            "ibuprofen",
+            "paracetamol",
+            "acetaminophen",
+            "阿司匹林",
+            "阿莫西林",
+            "布洛芬",
+            "头孢",
+            "对乙酰氨基酚",
         ]
-        return any(k in q_compact for k in keyword_hits)
+        if any(k in q_compact for k in drug_keywords):
+            return True
+
+        intent_keywords = [
+            "药",
+            "用药",
+            "服用",
+            "剂量",
+            "用法",
+            "用量",
+            "禁忌",
+            "副作用",
+            "相互作用",
+            "饭前",
+            "饭后",
+            "一次",
+            "每日",
+            "多久",
+            "怎么吃",
+            "怎么服",
+            "怎么用",
+            "说明书",
+        ]
+        return any(k in q_compact for k in intent_keywords)
 
     def check_intent(self, question: str, medicine_context: dict | None) -> dict:
         """

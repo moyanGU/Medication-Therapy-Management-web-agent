@@ -13,12 +13,27 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from .ai_runtime import get_ai_runtime_config
 from .utils import error_response, success_response
 
 logger = logging.getLogger("mtm_helper")
+
+
+def _is_ops_user(user) -> bool:
+    return bool(
+        user
+        and getattr(user, "is_authenticated", False)
+        and (getattr(user, "is_staff", False) or getattr(user, "is_admin", False))
+    )
+
+
+def _require_ops_user(request):
+    if _is_ops_user(getattr(request, "user", None)):
+        return None
+    return error_response("鏉冮檺涓嶈冻", "PERMISSION_DENIED", 403)
 
 
 def _set_service_status(health_status: dict, service: str, ok: bool, err: str | None = None):
@@ -130,6 +145,85 @@ def _collect_cache_diagnostics(problems: list[str]):
     except Exception as e:
         problems.append("Redis 探活异常")
         return {"status": "unhealthy", "error": str(e)}
+
+
+def _parse_ai_upstream_host_port(raw_url: str):
+    try:
+        parsed = urlparse((raw_url or "").strip())
+        if not parsed.hostname:
+            return None
+        if parsed.port:
+            return parsed.hostname, int(parsed.port)
+        if parsed.scheme == "https":
+            return parsed.hostname, 443
+        if parsed.scheme == "http":
+            return parsed.hostname, 80
+    except Exception:
+        return None
+    return None
+
+
+def _build_ai_upstream_url_mode(raw_url: str) -> str:
+    parsed = urlparse((raw_url or "").strip())
+    if not parsed.scheme or not parsed.hostname:
+        return ""
+    port = parsed.port
+    if port:
+        return f"{parsed.scheme}://{parsed.hostname}:{port}"
+    return f"{parsed.scheme}://{parsed.hostname}"
+
+
+def _probe_ai_upstream(raw_url: str, timeout_seconds: float = 0.3) -> bool:
+    host_port = _parse_ai_upstream_host_port(raw_url)
+    if not host_port:
+        return False
+    host, port = host_port
+    try:
+        with socket.create_connection((host, port), timeout=timeout_seconds):
+            return True
+    except Exception:
+        return False
+
+
+def _collect_ai_diagnostics(problems: list[str]):
+    base_url = str(getattr(settings, "BAICHUAN_M3_API_BASE_URL", "") or "").strip()
+    model = str(getattr(settings, "BAICHUAN_M3_MODEL", "") or "").strip()
+    enabled = bool(getattr(settings, "BAICHUAN_M3_ENABLED", False))
+    timeout_seconds = float(getattr(settings, "BAICHUAN_M3_TIMEOUT_SECONDS", 30) or 30)
+
+    payload = {
+        "enabled": enabled,
+        "configured": False,
+        "status": "disabled" if not enabled else "misconfigured",
+        "model": model,
+        "timeout_seconds": timeout_seconds,
+        "upstream_url_mode": _build_ai_upstream_url_mode(base_url),
+    }
+
+    runtime_config, error = get_ai_runtime_config()
+    if error is not None:
+        error_code = str(error.data.get("error_code") or "")
+        payload["error_code"] = error_code
+        if error_code == "AI_DISABLED":
+            payload["status"] = "disabled"
+            return payload
+        payload["status"] = "misconfigured"
+        problems.append(f"AI 运行时不可用: {error_code}")
+        return payload
+
+    payload["configured"] = True
+    payload["status"] = "healthy"
+    payload["model"] = runtime_config.model
+    payload["timeout_seconds"] = runtime_config.timeout_seconds
+    payload["upstream_url_mode"] = _build_ai_upstream_url_mode(runtime_config.base_url)
+
+    if not _probe_ai_upstream(runtime_config.base_url):
+        payload["status"] = "unhealthy"
+        payload["error_code"] = "AI_UPSTREAM_UNAVAILABLE"
+        payload["error"] = "tcp probe failed"
+        problems.append("AI 上游服务不可达")
+
+    return payload
 
 
 def _collect_notification_diagnostics(problems: list[str]):
@@ -252,14 +346,19 @@ def health_check(request):
 
 
 @api_view(["GET"])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def diagnostics(request):
+    permission_error = _require_ops_user(request)
+    if permission_error is not None:
+        return permission_error
+
     problems = []
     details = {
         "env": {},
         "dependencies": {},
         "database": {},
         "cache": {},
+        "ai": {},
         "notifications": {},
     }
 
@@ -273,6 +372,7 @@ def diagnostics(request):
         details["dependencies"] = _collect_dependency_versions(importer, problems)
         details["database"] = _collect_database_diagnostics(problems)
         details["cache"] = _collect_cache_diagnostics(problems)
+        details["ai"] = _collect_ai_diagnostics(problems)
         details["notifications"] = _collect_notification_diagnostics(problems)
 
         diagnostics_payload = {
@@ -280,6 +380,7 @@ def diagnostics(request):
             "dependencies": details.get("dependencies") or {},
             "database": details.get("database") or {},
             "cache": details.get("cache") or {},
+            "ai": details.get("ai") or {},
             "notifications": details.get("notifications") or {},
         }
 
@@ -305,8 +406,12 @@ def diagnostics(request):
 
 
 @api_view(["GET"])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def system_info(request):
+    permission_error = _require_ops_user(request)
+    if permission_error is not None:
+        return permission_error
+
     try:
         import platform
         import sys
@@ -326,6 +431,7 @@ def system_info(request):
             },
             "database": {"engine": "MySQL", "version": None},
             "cache": {"backend": "Redis", "version": None},
+            "ai": _collect_ai_diagnostics([]),
         }
 
         try:

@@ -1,10 +1,9 @@
 import json
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from django.conf import settings
-from apps.core.views import _openai_chat_completion, _extract_json_object, _openai_chat_completion_stream
 
 logger = logging.getLogger("mtm_helper.agents")
 
@@ -29,6 +28,11 @@ class BaseAgent(ABC):
     def get_system_prompt(self) -> str:
         pass
 
+    def _get_views_module(self):
+        from apps.core import views
+
+        return views
+
     def run(self, user_input: str, context: Dict[str, Any] = None) -> str:
         """
         非流式执行子代理任务
@@ -41,7 +45,8 @@ class BaseAgent(ABC):
 
         logger.info(f"[{self.__class__.__name__}] Run start", extra={"user_id": self.user_id})
         try:
-            return _openai_chat_completion(
+            views = self._get_views_module()
+            return views._openai_chat_completion(
                 base_url=self.base_url,
                 api_key=self.api_key,
                 model=self.model,
@@ -66,7 +71,8 @@ class BaseAgent(ABC):
 
         logger.info(f"[{self.__class__.__name__}] Stream start", extra={"user_id": self.user_id})
         try:
-            for chunk in _openai_chat_completion_stream(
+            views = self._get_views_module()
+            for chunk in views._openai_chat_completion_stream(
                 base_url=self.base_url,
                 api_key=self.api_key,
                 model=self.model,

@@ -2,12 +2,12 @@ import json
 import logging
 import re
 
-from django.conf import settings
 from django.http import StreamingHttpResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
 from .ai_llm import _looks_unhelpful_answer, _normalize_llm_answer
+from .ai_runtime import classify_ai_exception, get_ai_runtime_config
 from .utils import error_response, success_response
 
 logger = logging.getLogger("mtm_helper")
@@ -27,16 +27,6 @@ def _validate_question(question: str):
     if len(question) > 2000:
         return error_response("问题过长，请精简后再试", "VALIDATION_ERROR", 400)
     return None
-
-
-def _validate_ai_config():
-    if not getattr(settings, "BAICHUAN_M3_ENABLED", False):
-        return None, None, error_response("AI 服务未启用", "AI_DISABLED", 503)
-    base_url = getattr(settings, "BAICHUAN_M3_API_BASE_URL", "")
-    model = getattr(settings, "BAICHUAN_M3_MODEL", "")
-    if not base_url or not model:
-        return None, None, error_response("AI 服务配置缺失", "AI_CONFIG_MISSING", 503)
-    return base_url, model, None
 
 
 def _load_medicine_context(medicine_id, user):
@@ -63,24 +53,35 @@ def _load_medicine_context(medicine_id, user):
         return None
 
 
-def _check_medication_intent(question: str, medicine_context: dict | None, user_id):
-    try:
-        from apps.core.agents.medication_agent import MedicationAgent
+def _build_medication_agent(user_id, runtime_config):
+    from apps.core.agents.medication_agent import MedicationAgent
 
-        agent = MedicationAgent(user_id=user_id)
+    agent = MedicationAgent(user_id=user_id)
+    agent.base_url = runtime_config.base_url
+    agent.api_key = runtime_config.api_key
+    agent.model = runtime_config.model
+    agent.timeout_seconds = runtime_config.timeout_seconds
+    return agent
+
+
+def _check_medication_intent(question: str, medicine_context: dict | None, user_id, runtime_config):
+    agent = _build_medication_agent(user_id, runtime_config)
+    try:
         intent = agent.check_intent(question, medicine_context)
-        return bool(intent.get("allowed")), str(intent.get("reason") or "")
+        return bool(intent.get("allowed")), str(intent.get("reason") or ""), None
     except Exception as e:
         logger.warning(f"[AI] classifier failed: {e}")
-        return True, ""
+        allowed = agent._is_probably_medication_question(question, medicine_context)
+        if allowed:
+            return True, "", e
+        return False, "当前仅支持药物信息与用药指导咨询", e
 
 
 def _blocked_payload(reason: str):
     return {
         "blocked": True,
-        "reason": reason
-        or "当前仅支持药物信息与用药指导咨询（不支持诊断/检查/疾病治疗方案）。",
-        "answer": "当前仅支持药物信息与用药指导咨询。请将问题改为具体药物的用法用量、注意事项、相互作用、不良反应等。",
+        "reason": reason or "当前仅支持药物信息与用药指导咨询",
+        "answer": "当前仅支持药物信息与用药指导咨询，请改问具体药品的用法、用量、注意事项、相互作用或不良反应。",
     }
 
 
@@ -100,7 +101,12 @@ def _run_medication_agent_stream(agent, question: str, medicine_context: dict | 
         fallback_answer = _fallback_medication_guidance_answer(question, medicine_context)
         yield (
             json.dumps(
-                {"error": "generation_failed", "fallback": fallback_answer},
+                {
+                    "error": classify_ai_exception(e),
+                    "error_code": classify_ai_exception(e),
+                    "fallback": fallback_answer,
+                    "fallback_used": True,
+                },
                 ensure_ascii=False,
             )
             + "\n"
@@ -126,30 +132,28 @@ def _fallback_medication_guidance_answer(question: str, medicine_context: dict |
 
     q = (question or "").strip()
     q_compact = re.sub(r"\s+", "", q)
+    is_aspirin = ("阿司匹林" in q_compact) or ("aspirin" in q.lower())
     is_ibuprofen = ("布洛芬" in q_compact) or ("ibuprofen" in q.lower())
+
+    if is_aspirin:
+        return (
+            "阿司匹林的通用用药建议如下：\n"
+            "1. 常见口服做法是餐后或随餐服用，并用足量温水送服，以减少胃部刺激。\n"
+            "2. 不同适应证和规格差异很大，例如抗血小板与止痛退热的剂量并不相同，请先确认规格和用途。\n"
+            "3. 如合并胃溃疡、消化道出血、阿司匹林过敏、哮喘、抗凝药同用或妊娠晚期，应先咨询医生。\n"
+            "4. 若出现黑便、呕血、明显胃痛、呼吸困难或皮疹肿胀，应及时就医。\n\n"
+            "如果你告诉我药品规格、用途，以及使用者年龄/既往病史，我可以继续按说明书要点帮你整理。"
+        )
 
     if is_ibuprofen:
         return (
-            "我可以给你布洛芬（Ibuprofen）的通用用药指导，但需要先确认几个关键信息，避免给出不合适的剂量：\n"
-            "1）使用者年龄/体重（儿童剂量按体重计算）\n"
-            "2）药品规格与剂型（如 0.2g 片、缓释、混悬液等）\n"
-            "3）用途（退烧/止痛）与是否合并胃病、肾病、哮喘、正在备孕/怀孕等\n\n"
-            "一般用法要点（请以说明书为准）：\n"
-            "- 成人常见 OTC 剂量：200–400mg/次，间隔约 6–8 小时按需；24 小时内不建议超过 1200mg（处方可更高需医生指导）。\n"
-            "- 尽量随餐或餐后服用，减少胃部刺激；避免与其他 NSAIDs（如双氯芬酸、萘普生）同服。\n"
-            "- 慎用/避免：消化道溃疡或出血史、严重肾功能不全、对阿司匹林/NSAIDs 过敏、妊娠晚期等。\n"
-            "- 何时就医：黑便/呕血、严重腹痛、呼吸困难/皮疹肿胀、持续高热或疼痛不缓解。\n\n"
-            "你把“规格（比如 0.2g/片）+ 年龄/体重 + 主要症状（退烧/止痛）”告诉我，我再按更贴近说明书的方式给出服用建议。"
+            "我可以给你布洛芬的通用用药指导，但需要先确认年龄、体重、药品规格和用途。\n"
+            "一般建议饭后服用，避免与其他 NSAIDs 同服；如有胃病、肾功能问题、妊娠晚期或过敏史，应先咨询医生。"
         )
 
     drug_tip = f"（{drug_name}）" if drug_name else ""
     return (
-        f"我可以提供药物{drug_tip}的用药指导，但需要你补充信息后才能更准确：\n"
-        "1）药品名称/规格/剂型（如 0.25g 胶囊、缓释片、口服液等）\n"
-        "2）使用者年龄/体重，是否怀孕/哺乳\n"
-        "3）用途（退烧/止痛/抗过敏等）与既往病史（胃病、肝肾功能、哮喘、出血倾向）\n"
-        "4）正在使用的其他药物（尤其抗凝药、其他止痛药、激素、降压药等）\n\n"
-        "先给通用安全要点：尽量按说明书剂量与间隔服用，避免重复成分/同类药叠加；若出现过敏、严重胃痛/黑便、头晕乏力明显或症状持续不缓解，请及时就医。"
+        f"我可以提供药物{drug_tip}的通用用药指导，但还需要你补充药品名称、规格、用途、年龄体重，以及是否合并用药或特殊病史。"
     )
 
 
@@ -162,14 +166,16 @@ def medication_guidance(request):
     if error is not None:
         return error
 
-    _, _, error = _validate_ai_config()
+    runtime_config, error = get_ai_runtime_config()
     if error is not None:
         return error
 
     medicine_context = _load_medicine_context(medicine_id, request.user)
-
-    allowed, reason = _check_medication_intent(
-        question, medicine_context, getattr(request.user, "id", None)
+    allowed, reason, _ = _check_medication_intent(
+        question,
+        medicine_context,
+        getattr(request.user, "id", None),
+        runtime_config,
     )
     if not allowed:
         payload = _blocked_payload(reason)
@@ -177,16 +183,16 @@ def medication_guidance(request):
             return _ndjson_single(payload)
         return success_response(payload, "已拦截非用药咨询")
 
-    from apps.core.agents.medication_agent import MedicationAgent
-
-    agent = MedicationAgent(user_id=getattr(request.user, "id", None))
+    agent = _build_medication_agent(getattr(request.user, "id", None), runtime_config)
     if stream_requested:
         return StreamingHttpResponse(
             _run_medication_agent_stream(agent, question, medicine_context),
             content_type="application/x-ndjson",
         )
 
-    answer, fallback_used, message = _run_medication_agent(agent, question, medicine_context)
+    answer, fallback_used, message = _run_medication_agent(
+        agent, question, medicine_context
+    )
     if fallback_used:
         return success_response(
             {"blocked": False, "answer": answer, "fallback_used": True},
@@ -199,5 +205,6 @@ def medication_guidance(request):
         fallback_used = True
 
     return success_response(
-        {"blocked": False, "answer": answer, "fallback_used": fallback_used}, "生成成功"
+        {"blocked": False, "answer": answer, "fallback_used": fallback_used},
+        "生成成功",
     )

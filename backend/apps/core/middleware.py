@@ -301,7 +301,7 @@ class RequestLoggingMiddleware(MiddlewareMixin):
         jwt_user: str,
     ):
         logger.info(
-            f"🔵 [Request] API请求开始: {request.method} {request.get_full_path()} - "
+            f"[Request] API请求开始: {request.method} {request.get_full_path()} - "
             f"Request ID: {request.request_id} - "
             f"User: {getattr(request.user, 'username', 'Anonymous')} - "
             f"IP: {self._get_client_ip(request)} - "

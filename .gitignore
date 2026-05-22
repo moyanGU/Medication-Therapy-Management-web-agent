@@ -29,6 +29,7 @@ backend/.venv/
 *.vue.tmp
 *.pyc
 __pycache__/
+.playwright-mcp/
 backend/runserver.out
 backend/query
 backend/media/

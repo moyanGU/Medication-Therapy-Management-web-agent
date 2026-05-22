@@ -562,6 +562,4 @@ class MTMFollowUpFormSerializer(serializers.ModelSerializer):
             "risk_change",
             "summary",
             "next_follow_up_time",
-            "notes",
         ]
-

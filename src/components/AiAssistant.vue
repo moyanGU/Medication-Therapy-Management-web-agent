@@ -350,6 +350,12 @@
                     class="prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1"
                   >
                     <div
+                      v-if="msg.aiUnavailable"
+                      class="mb-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800"
+                    >
+                      AI 暂不可用
+                    </div>
+                    <div
                       v-if="msg.mode === 'page-agent'"
                       class="mb-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
                     >
@@ -510,7 +516,7 @@ import {
 } from '@/services/pageAgentService'
 import { useSpeech } from '@/composables/useSpeech'
 import { useToast } from '@/composables/useToast'
-import { api, logApiErrorEvent } from '@/utils/api'
+import { api, getApiErrorCode, logApiErrorEvent } from '@/utils/api'
 import { createAssistantEngine } from '@/services/assistantEngine'
 import type { SessionMemoryMessage } from '@/services/sessionMemory'
 import {
@@ -526,6 +532,7 @@ type ChatMessage = {
   loading?: boolean
   error?: boolean
   fallbackUsed?: boolean
+  aiUnavailable?: boolean
   proposal?: PageAgentActionProposal | null
   actionState?: 'pending' | 'confirmed' | 'cancelled' | 'failed'
 }
@@ -1130,32 +1137,9 @@ const retryLast = () => {
   }
 }
 
-type MedicationGuidancePayload = {
-  blocked: boolean
-  answer: string
-  reason?: string
-  fallback_used?: boolean
-}
-
-const resolveMedicationGuidancePayload = (
-  resp: {
-    data?: unknown
-  }
-): MedicationGuidancePayload => {
-  const primary =
-    resp.data && typeof resp.data === 'object' ? (resp.data as Record<string, unknown>) : null
-  const nested =
-    primary?.data && typeof primary.data === 'object'
-      ? (primary.data as Record<string, unknown>)
-      : null
-  const payload = nested ?? primary ?? {}
-
-  return {
-    blocked: Boolean(payload.blocked),
-    answer: typeof payload.answer === 'string' ? payload.answer.trim() : '',
-    reason: typeof payload.reason === 'string' ? payload.reason.trim() : undefined,
-    fallback_used: Boolean(payload.fallback_used),
-  }
+const getAssistantErrorCode = (error: unknown) => {
+  const code = getApiErrorCode(error)
+  return typeof code === 'string' ? code.trim() : ''
 }
 
 const buildMedicationGuidanceErrorMessage = (error: any) => {
@@ -1163,15 +1147,21 @@ const buildMedicationGuidanceErrorMessage = (error: any) => {
     return '登录已过期或未登录，请重新登录后再试。'
   }
 
-  const errorCode = error?.details?.error_code
+  const errorCode = getAssistantErrorCode(error)
   if (errorCode === 'AI_CONFIG_MISSING') {
     return 'AI 服务配置还没完成，请联系管理员检查后端 .env 里的百川模型配置。'
   }
   if (errorCode === 'AI_DISABLED') {
     return 'AI 服务当前没有开启，请联系管理员开启后再试。'
   }
-  if (errorCode === 'AI_GENERATION_FAILED') {
-    return 'AI 生成回答失败了，请稍后再试一次。'
+  if (errorCode === 'AI_UPSTREAM_UNAVAILABLE') {
+    return 'AI 服务当前暂时不可用，请稍后再试。'
+  }
+  if (errorCode === 'AI_UPSTREAM_TIMEOUT') {
+    return 'AI 服务响应超时，请稍后再试。'
+  }
+  if (errorCode === 'AI_INVALID_RESPONSE') {
+    return 'AI 服务返回了异常结果，请稍后再试。'
   }
   if (errorCode === 'VALIDATION_ERROR') {
     return '请输入具体一点的用药问题，例如“布洛芬饭后吃吗？”。'
@@ -1185,9 +1175,29 @@ const buildMedicationGuidanceErrorMessage = (error: any) => {
 }
 
 const buildPageAgentErrorMessage = (error: any) => {
+  const errorCode = getAssistantErrorCode(error)
+  if (errorCode === 'AI_DISABLED') {
+    return '页面助手当前未启用，请联系管理员开启 AI 服务。'
+  }
+  if (errorCode === 'AI_CONFIG_MISSING') {
+    return '页面助手当前配置不完整，请联系管理员检查后端 AI 配置。'
+  }
+  if (errorCode === 'AI_UPSTREAM_UNAVAILABLE') {
+    return '页面助手当前不可用，请稍后重试。'
+  }
+  if (errorCode === 'AI_UPSTREAM_TIMEOUT') {
+    return '页面助手响应超时，请稍后重试。'
+  }
+  if (errorCode === 'AI_INVALID_RESPONSE') {
+    return '页面助手返回了异常结果，请稍后重试。'
+  }
+  if (errorCode === 'VALIDATION_ERROR') {
+    return '页面助手请求格式不正确，请刷新页面后重试。'
+  }
+
   const message = typeof error?.message === 'string' ? error.message.trim() : ''
   if (/Unexpected token\s*</i.test(message)) {
-    return '页面助手请求没有拿到 JSON 结果，通常是后端地址配置或登录态异常。请刷新页面后重试；若仍失败，我会继续用页面规则直接回答。'
+    return '页面助手当前返回了非 JSON 结果，请刷新页面后重试。'
   }
   if (/Failed to fetch|NetworkError|网络/i.test(message)) {
     return '页面助手连接失败，请检查后端服务和网络状态后重试。'
@@ -1230,25 +1240,22 @@ const sendMedicationGuidanceMessage = async (text: string, aiMsgIndex: number) =
             answerText += data.chunk
             scopedMessages[aiMsgIndex].content = answerText
           } else if (data.error) {
-             // Handle stream error
-             if (data.fallback) {
-               answerText = data.fallback
-               fallbackUsed = true
-               scopedMessages[aiMsgIndex].content = answerText
-               scopedMessages[aiMsgIndex].fallbackUsed = true
-             }
+            if (data.fallback) {
+              answerText = data.fallback
+              fallbackUsed = true
+              scopedMessages[aiMsgIndex].content = answerText
+              scopedMessages[aiMsgIndex].fallbackUsed = true
+            }
           } else if (data.blocked !== undefined) {
-             // Blocked response
-             blocked = true
-             reason = data.reason
-             answerText = data.answer || ''
-             scopedMessages[aiMsgIndex].content = answerText
+            blocked = true
+            reason = data.reason
+            answerText = data.answer || ''
+            scopedMessages[aiMsgIndex].content = answerText
           } else if (data.answer !== undefined) {
-             // non-streamed response fallback
-             answerText = data.answer
-             fallbackUsed = Boolean(data.fallback_used)
-             scopedMessages[aiMsgIndex].content = answerText
-             scopedMessages[aiMsgIndex].fallbackUsed = fallbackUsed
+            answerText = data.answer
+            fallbackUsed = Boolean(data.fallback_used)
+            scopedMessages[aiMsgIndex].content = answerText
+            scopedMessages[aiMsgIndex].fallbackUsed = fallbackUsed
           }
         }
         scrollToBottom()
@@ -1348,11 +1355,13 @@ const sendPageAgentMessage = async (text: string, aiMsgIndex: number) => {
     })
     console.error('Page Agent Error:', e)
     const msg = buildPageAgentErrorMessage(e)
+    const errorCode = getAssistantErrorCode(e)
     scopedMessages[aiMsgIndex] = {
       role: 'ai',
       mode: 'page-agent',
       content: msg,
       error: true,
+      aiUnavailable: ['AI_DISABLED', 'AI_CONFIG_MISSING', 'AI_UPSTREAM_UNAVAILABLE', 'AI_UPSTREAM_TIMEOUT'].includes(errorCode),
       proposal: null,
     }
     await assistantEngine.persist(memSessionId, buildMemoryMessages('page-agent'))
